@@ -1,0 +1,14 @@
+# Operating-system and editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Local archives and packaged releases
+*.zip
+*.7z
+*.rar
