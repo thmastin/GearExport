@@ -102,3 +102,7 @@ Suggested smoke test:
 3. Run `/itemx` on a known item and compare TSM values.
 4. Run `/bagsx` and verify live carried quantities and stack aggregation.
 5. Copy each report with `Ctrl+C` and verify the complete Markdown output.
+
+## License
+
+GearExport is available under the [MIT License](LICENSE).
