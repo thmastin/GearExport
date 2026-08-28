@@ -17,6 +17,7 @@ The resulting layout should be:
 ```text
 Interface\AddOns\GearExport\GearExport.toc
 Interface\AddOns\GearExport\GearExport.lua
+Interface\AddOns\GearExport\BankCleanup.lua
 ```
 
 Start World of Warcraft or run `/reload` after updating the addon.
@@ -29,6 +30,7 @@ Start World of Warcraft or run `/reload` after updating the addon.
 | `/itemx` | Export the item currently under the mouse pointer. |
 | `/itemx <item link or item ID>` | Export a specific item. |
 | `/bagsx` | Export carried inventory, available location quantities, vendor values, and TSM market data. |
+| `/bankx` | Import, review, and execute an assisted normal-bank cleanup plan one move per click. |
 | `/gearhelp` | Show command help. |
 | `/gearx help` | Show command help. |
 
@@ -78,6 +80,20 @@ TSM's public API can query location quantities for a known item, but it does not
 
 GearExport does not maintain a separate persistent inventory database.
 
+## Assisted bank cleanup
+
+`/bankx` imports a strict, versioned plan produced from an inventory review:
+
+```text
+GEARX_BANK_PLAN_V1
+DEPOSIT|2589|20
+WITHDRAW|6291|5
+```
+
+Only `DEPOSIT` and `WITHDRAW` are supported. Importing a plan never moves an item. The player must review the plan and explicitly click **Execute Next Move** for each transfer. GearExport revalidates live inventory before that click, performs at most one transfer, waits for Anniversary inventory events to settle, and verifies the exact result before enabling the next move.
+
+Each plan line must be satisfiable from one physical source stack. GearExport stops safely if inventory changed, the cursor is occupied, an item is locked, destination capacity is unavailable, or exact post-move verification fails. There is no Execute All or unattended transfer loop. Execution requires the normal character bank to be open.
+
 ## SavedVariables
 
 `GearExportDB` stores only:
@@ -93,7 +109,7 @@ The currently tested optional integration is TradeSkillMaster 4 using its public
 
 ## Development
 
-The addon intentionally consists of one Lua file and one TOC file. Keep changes small, avoid Retail-only assumptions, and test in the Anniversary client after modifying API-facing behavior.
+The exporter and assisted bank-cleanup implementation are kept in separate Lua files. Keep changes small, avoid Retail-only assumptions, and test in the Anniversary client after modifying API-facing behavior.
 
 Suggested smoke test:
 
@@ -101,7 +117,8 @@ Suggested smoke test:
 2. Run `/gearx` and verify equipment and professions.
 3. Run `/itemx` on a known item and compare TSM values.
 4. Run `/bagsx` and verify live carried quantities and stack aggregation.
-5. Copy each report with `Ctrl+C` and verify the complete Markdown output.
+5. Open `/bankx` and verify plan import does not move inventory.
+6. Copy each report with `Ctrl+C` and verify the complete Markdown output.
 
 ## License
 

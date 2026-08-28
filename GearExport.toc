@@ -5,3 +5,4 @@
 ## SavedVariables: GearExportDB
 
 GearExport.lua
+BankCleanup.lua
