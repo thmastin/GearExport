@@ -554,6 +554,89 @@ local function BuildInventoryReport()
     return table.concat(output, "\n")
 end
 
+local TRAINER_STATUS_LABELS = {
+    available = "Available",
+    used = "Known",
+    unavailable = "Unavailable",
+}
+
+local function TrainerWindowIsOpen()
+    return ClassTrainerFrame and ClassTrainerFrame:IsShown()
+end
+
+local function CollectTrainerReport()
+    if not TrainerWindowIsOpen() or type(GetNumTrainerServices) ~= "function"
+        or type(GetTrainerServiceInfo) ~= "function" then
+        return nil
+    end
+
+    local _, class = UnitClass("player")
+    local report = {
+        character = {
+            name = UnitName("player") or "Unknown Character",
+            level = UnitLevel("player"),
+            class = class or "Unknown",
+            money = GetMoney and GetMoney() or 0,
+        },
+        trainer = {
+            name = UnitName("npc"),
+            type = IsTradeskillTrainer and IsTradeskillTrainer() and "Trade Skill Trainer"
+                or IsTalentTrainer and IsTalentTrainer() and "Talent Trainer"
+                or "Trainer",
+        },
+        services = {},
+    }
+
+    for index = 1, GetNumTrainerServices() do
+        local name, subText, serviceType = GetTrainerServiceInfo(index)
+        -- The legacy API includes category headers in the filtered service list.
+        if name and serviceType ~= "header" then
+            local cost = type(GetTrainerServiceCost) == "function" and GetTrainerServiceCost(index) or nil
+            local requiredLevel = type(GetTrainerServiceLevelReq) == "function"
+                and GetTrainerServiceLevelReq(index) or nil
+            table.insert(report.services, {
+                name = name,
+                rank = subText,
+                status = serviceType,
+                cost = tonumber(cost),
+                requiredLevel = tonumber(requiredLevel),
+            })
+        end
+    end
+    return report
+end
+
+local function RenderTrainerReport(report)
+    local output = { "# Trainer Export", "", "## Character", "" }
+    table.insert(output, "* Name: " .. MarkdownText(report.character.name))
+    table.insert(output, "* Level: " .. tostring(report.character.level or "Unknown"))
+    table.insert(output, "* Class: " .. MarkdownText(report.character.class))
+    table.insert(output, "* Money: " .. FormatMoney(report.character.money))
+    table.insert(output, "")
+    table.insert(output, "## Trainer")
+    table.insert(output, "")
+    table.insert(output, "* Name: " .. MarkdownText(report.trainer.name or "Unknown"))
+    table.insert(output, "* Type: " .. MarkdownText(report.trainer.type))
+    table.insert(output, "")
+    table.insert(output, "## Services")
+    table.insert(output, "")
+    table.insert(output, "| Ability | Rank | Required Level | Cost | Status | Affordable |")
+    table.insert(output, "| --- | --- | ---: | ---: | --- | --- |")
+    for _, service in ipairs(report.services) do
+        local status = TRAINER_STATUS_LABELS[service.status] or service.status or "Unknown"
+        local affordable = service.cost ~= nil
+            and (report.character.money >= service.cost and "Yes" or "No") or "Unknown"
+        table.insert(output, string.format("| %s | %s | %s | %s | %s | %s |",
+            MarkdownText(service.name), MarkdownText(service.rank and service.rank ~= "" and service.rank or "—"),
+            service.requiredLevel or "—", service.cost and FormatMoney(service.cost) or "—",
+            MarkdownText(status), affordable))
+    end
+    if #report.services == 0 then
+        table.insert(output, "| No services exposed by the current trainer filters. | — | — | — | — | — |")
+    end
+    return table.concat(output, "\n")
+end
+
 local frame = CreateFrame("Frame", "GearExportFrame", UIParent)
 frame:SetSize(620, 520)
 frame:SetPoint("CENTER")
@@ -622,6 +705,7 @@ local function BuildHelpReport()
         "* `/itemx <item link or item ID>` — Export a specific item.",
         "* `/itemx help` — Show this help.",
         "* `/bagsx` — Export current-character inventory and market values.",
+        "* `/trainerx` — Export the currently open trainer window.",
         "",
         "Reports are selected automatically. Press `Ctrl+C` to copy and Escape to close.",
     }, "\n")
@@ -663,4 +747,15 @@ SlashCmdList.GEARHELP = function() ShowReport(BuildHelpReport()) end
 SLASH_GEARINVENTORYEXPORT1 = "/bagsx"
 SlashCmdList.GEARINVENTORYEXPORT = function(argument)
     ShowReport(IsHelpArgument(argument) and BuildHelpReport() or BuildInventoryReport())
+end
+
+SLASH_GEARTRAINEREXPORT1 = "/trainerx"
+SlashCmdList.GEARTRAINEREXPORT = function(argument)
+    if IsHelpArgument(argument) then ShowReport(BuildHelpReport()); return end
+    local report = CollectTrainerReport()
+    if not report then
+        print("GearExport: Open a trainer window before using /trainerx.")
+        return
+    end
+    ShowReport(RenderTrainerReport(report))
 end
