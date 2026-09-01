@@ -684,9 +684,19 @@ close:SetPoint("BOTTOM", 0, 15)
 close:SetText("Close")
 close:SetScript("OnClick", function() frame:Hide() end)
 
-local function ShowReport(report)
+local function ShowReport(report, slot)
     GearExportDB = GearExportDB or {}
-    GearExportDB.latestExport = report
+    GearExportDB.exports = GearExportDB.exports or {}
+    GearExportDB.exportMeta = GearExportDB.exportMeta or {}
+    if slot then
+        GearExportDB.exports[slot] = report
+        GearExportDB.exportMeta[slot] = {
+            time = date("%Y-%m-%d %H:%M:%S"),
+            character = UnitName("player"),
+            level = UnitLevel("player"),
+        }
+        GearExportDB.latestExport = report
+    end
     frame:Show()
     scroll:SetVerticalScroll(0)
     edit:SetText(report)
@@ -721,6 +731,8 @@ events:RegisterEvent("ADDON_LOADED")
 events:SetScript("OnEvent", function(_, _, loadedAddon)
     if loadedAddon ~= ADDON_NAME then return end
     GearExportDB = GearExportDB or {}
+    GearExportDB.exports = GearExportDB.exports or {}
+    GearExportDB.exportMeta = GearExportDB.exportMeta or {}
     local position = GearExportDB.position
     if position then
         frame:ClearAllPoints()
@@ -733,12 +745,14 @@ table.insert(UISpecialFrames, "GearExportFrame")
 SLASH_GEAREXPORT1 = "/gearexport"
 SLASH_GEAREXPORT2 = "/gearx"
 SlashCmdList.GEAREXPORT = function(argument)
-    ShowReport(IsHelpArgument(argument) and BuildHelpReport() or BuildCharacterReport())
+    if IsHelpArgument(argument) then ShowReport(BuildHelpReport()); return end
+    ShowReport(BuildCharacterReport(), "character")
 end
 
 SLASH_GEARITEMEXPORT1 = "/itemx"
 SlashCmdList.GEARITEMEXPORT = function(argument)
-    ShowReport(IsHelpArgument(argument) and BuildHelpReport() or BuildItemReport(argument))
+    if IsHelpArgument(argument) then ShowReport(BuildHelpReport()); return end
+    ShowReport(BuildItemReport(argument), "item")
 end
 
 SLASH_GEARHELP1 = "/gearhelp"
@@ -746,7 +760,8 @@ SlashCmdList.GEARHELP = function() ShowReport(BuildHelpReport()) end
 
 SLASH_GEARINVENTORYEXPORT1 = "/bagsx"
 SlashCmdList.GEARINVENTORYEXPORT = function(argument)
-    ShowReport(IsHelpArgument(argument) and BuildHelpReport() or BuildInventoryReport())
+    if IsHelpArgument(argument) then ShowReport(BuildHelpReport()); return end
+    ShowReport(BuildInventoryReport(), "inventory")
 end
 
 SLASH_GEARTRAINEREXPORT1 = "/trainerx"
@@ -757,5 +772,5 @@ SlashCmdList.GEARTRAINEREXPORT = function(argument)
         print("GearExport: Open a trainer window before using /trainerx.")
         return
     end
-    ShowReport(RenderTrainerReport(report))
+    ShowReport(RenderTrainerReport(report), "trainer")
 end

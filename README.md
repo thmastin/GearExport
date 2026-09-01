@@ -98,7 +98,9 @@ Each plan line must be satisfiable from one physical source stack. GearExport st
 
 `GearExportDB` stores only:
 
-- The latest generated Markdown report
+- `exports` — the most recent Markdown report for each export type, kept in its own slot (`character` from `/gearx`, `inventory` from `/bagsx`, `trainer` from `/trainerx`, `item` from `/itemx`). Each slot is a plain string and survives a `/reload`, so every export can be read at once. Command help is never persisted.
+- `exportMeta` — for each slot, the `time`, `character`, and `level` the export was generated at, so a reader can tell how fresh each slot is.
+- `latestExport` — the single most recent report, updated on every export for backward compatibility.
 - The exporter window position
 
 ## Compatibility
