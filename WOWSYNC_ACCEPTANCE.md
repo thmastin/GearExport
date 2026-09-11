@@ -167,6 +167,26 @@ For each case record pass/fail, client build, relevant export, and any Lua error
       injection, simulated input, clicks, gameplay actions, and a command channel.
 - [x] No new account/focused slash commands or companion functionality added in v1.
 
+## Classic Era compatibility implementation
+
+- [x] Dedicated `classic-era-compat` branch created; TBC `main` history was not
+      rewritten.
+- [x] Classic Era TOC targets interface `11509`; TBC TOC remains `20506`.
+- [x] Both targets load one shared WoWSync core, collectors, renderer, and UI.
+- [x] Narrow `WoWSyncCompat.lua` normalizes containers, bank ranges, spellbook
+      enumeration, profession evidence, trainer reads, optional map access, and
+      delayed item-data events.
+- [x] Spellbook/profession collection no longer assumes a fixed General-tab index.
+- [x] Classic-shaped automated coverage includes alternate tab ordering, delayed
+      item data, optional map APIs, and Classic interface metadata.
+- [ ] Classic Era in-game smoke testing: login, bags, bank, equipment, trainer,
+      professions, multiple characters, SYNC, and deterministic output.
+- [ ] Final Classic build regression against the live client and release package.
+
+The account/alt export modes and read-only external companion remain documented
+extension paths only. BankCleanup remains a separate, read-only dependency boundary
+for WoWSync and is not modified by the Classic compatibility work.
+
 ## README LLM documentation — completed after primary validation
 
 The user explicitly confirmed validation passed and requested these prompts in the

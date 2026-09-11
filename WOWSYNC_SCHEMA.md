@@ -1,5 +1,20 @@
 # WoWSync v1 developer contract
 
+## Client compatibility
+
+The schema and canonical text export are shared by the TBC Anniversary and Classic
+Era packaging targets. TBC loads through `GearExport.toc` with interface `20506`;
+Classic Era loads through `GearExport-ClassicEra.toc` with interface `11509`.
+`WoWSyncCompat.lua` provides only narrow API normalization. Character/build/interface
+metadata in the `character` section identifies the active client.
+
+Client content is not interchangeable: item and spell IDs, item-link variants,
+trainer services, ranks, costs, and profession skills come from the active client.
+The schema keeps those values in the same fields. Delayed item information and
+partially populated trainer windows remain explicitly partial rather than being
+filled with inferred values. The renderer does not read client APIs and therefore
+produces the same deterministic format for either target.
+
 WoWSync is loaded by GearExport after the legacy exporter and BankCleanup. It has
 no required dependencies. BankCleanup does not consume WoWSync data or callbacks.
 
