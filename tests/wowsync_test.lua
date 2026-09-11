@@ -156,6 +156,7 @@ if arg[1] then
     load(arg[1], {})
     baseline = legacyMatrix()
 end
+load("WoWSyncCompat.lua", {})
 local addon = {}
 load("GearExport.lua", addon)
 local current = legacyMatrix()
@@ -413,4 +414,44 @@ WoWSyncDB = { schemaVersion = 999, characters = { sentinel = true } }; S.record 
 check(not S.Initialize(), "future schema fails closed")
 check(WoWSyncDB.characters.sentinel, "future database not overwritten")
 WoWSyncDB = db
+
+-- Classic Era-shaped compatibility fixture: the General spellbook tab is second,
+-- and item data arrives through ITEM_DATA_LOAD_RESULT.
+local classicTabs, classicSkills = false, false
+local originalBuild, originalTabs, originalTabInfo, originalSkillCount, originalSkillInfo =
+    GetBuildInfo, GetNumSpellTabs, GetSpellTabInfo, GetNumSkillLines, GetSkillLineInfo
+GetBuildInfo = function() return "1.15.9", "69547", "", 11509 end
+GetNumSpellTabs = function() return classicTabs and 2 or originalTabs() end
+GetSpellTabInfo = function(tab)
+    if not classicTabs then return originalTabInfo(tab) end
+    if tab == 1 then return "Combat", 1, 0, 1 end
+    return "General", 1, 1, 1
+end
+GetNumSkillLines = function() return classicSkills and 3 or originalSkillCount() end
+GetSkillLineInfo = function(index)
+    if not classicSkills then return originalSkillInfo(index) end
+    if index == 1 then return "Professions", true, true end
+    if index == 2 then return "Mining", false, true, 100, 0, 0, 150, true end
+    return "First Aid", false, true, 75, 0, 0, 150, false
+end
+GetSpellBookItemName = function(index)
+    if classicTabs then return index == 1 and "Combat spell" or "First Aid", "Rank 1" end
+    return index == 1 and "Mining" or "New spell", "Rank 1"
+end
+GetSpellBookItemInfo = function(index) return "SPELL", 300 + index end
+GetSpellLink = function(index) return "|Hspell:" .. (300 + index) .. "|h[Spell]|h" end
+classicTabs, classicSkills = true, true
+event("SPELLS_CHANGED"); event("PLAYER_LEVEL_UP"); advance(1)
+check(S.record.sections.character.data.interface == 11509, "Classic interface metadata captured")
+check(S.record.sections.professions.data.entries[1].name == "First Aid", "profession evidence works when General is tab 2")
+check(S.record.sections.spells.data.entries[1].spellID == 301, "Classic spell IDs remain stable")
+itemPending = true; event("BAG_UPDATE"); advance(2)
+check(S.record.sections.bags.completeness == "partial", "Classic delayed item metadata is partial")
+itemPending = false; event("ITEM_DATA_LOAD_RESULT", 100, true); advance(1)
+check(S.record.sections.bags.completeness == "complete", "Classic item data event refreshes snapshot")
+local oldMap = C_Map; C_Map = nil; event("ZONE_CHANGED"); advance(1)
+check(S.record.sections.location.data.zone == "Thunder Bluff", "Classic optional map APIs fall back safely")
+C_Map = oldMap
+GetBuildInfo, GetNumSpellTabs, GetSpellTabInfo, GetNumSkillLines, GetSkillLineInfo =
+    originalBuild, originalTabs, originalTabInfo, originalSkillCount, originalSkillInfo
 print("PASS: " .. passed .. " assertions; " .. movingCalls .. " gameplay actions")

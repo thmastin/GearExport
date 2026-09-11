@@ -1,5 +1,6 @@
 local _, addon = ...
 local S, readers = addon.Sync, addon.Readers
+local Compat = WoWSyncCompat or {}
 
 local function Optional(fn, ...)
     if type(fn) ~= "function" then return nil end
@@ -27,28 +28,29 @@ S.collectors.character = function()
 end
 
 S.collectors.location = function()
-    local mapID = C_Map and Optional(C_Map.GetBestMapForUnit, "player")
-    local position = mapID and Optional(C_Map.GetPlayerMapPosition, mapID, "player")
-    local x, y
-    if position then x, y = position:GetXY() end
-    return { zone = Optional(GetRealZoneText), subzone = Optional(GetSubZoneText), mapID = mapID,
-        x = x and math.floor(x * 10000 + 0.5) / 100, y = y and math.floor(y * 10000 + 0.5) / 100 }
+    if Compat.GetLocation then return Compat.GetLocation() end
+    return { zone = Optional(GetRealZoneText), subzone = Optional(GetSubZoneText) }
 end
 
 local function Containers(bank)
     if bank and not S.bankOpen then return nil, { reason = "Bank closed" } end
-    local api = C_Container or {}
-    local slots = api.GetContainerNumSlots or GetContainerNumSlots
-    local freeSlots = api.GetContainerNumFreeSlots or GetContainerNumFreeSlots
-    if not slots or not (api.GetContainerItemInfo or GetContainerItemInfo) then
+    local slots = Compat.GetContainerSlotCount or function(bag) return Optional(GetContainerNumSlots, bag) end
+    local freeSlots = Compat.GetContainerFreeSlots
+    local getInfo = Compat.GetContainerInfo or function() return nil end
+    if not slots or not getInfo then
         return nil, { reason = "Container APIs unavailable" }
     end
-    local bags = {}
-    if bank then
-        bags[1] = BANK_CONTAINER or -1
-        for bag = (NUM_BAG_SLOTS or 4) + 1, (NUM_BAG_SLOTS or 4) + (NUM_BANKBAGSLOTS or 7) do bags[#bags + 1] = bag end
-    else
-        for bag = 0, NUM_BAG_SLOTS or 4 do bags[#bags + 1] = bag end
+    local bagRanges, bankRanges
+    if Compat.GetBankRanges then bagRanges, bankRanges = Compat.GetBankRanges() end
+    local bags = bank and bankRanges or bagRanges
+    if not bags then
+        bags = {}
+        if bank then
+            bags[1] = BANK_CONTAINER or -1
+            for bag = (NUM_BAG_SLOTS or 4) + 1, (NUM_BAG_SLOTS or 4) + (NUM_BANKBAGSLOTS or 7) do bags[#bags + 1] = bag end
+        else
+            for bag = 0, (NUM_BAG_SLOTS or 4) do bags[#bags + 1] = bag end
+        end
     end
     local data = { containers = {} }
     local incomplete, locked = false, false
@@ -60,11 +62,12 @@ local function Containers(bank)
         local free, family
         if freeSlots then free, family = freeSlots(bag) end
         local container = { id = bag, capacity = count, free = free, family = family, slots = {} }
-        local inventoryID = bag > 0 and Optional(api.ContainerIDToInventoryID or ContainerIDToInventoryID, bag)
-        if bag > 0 and inventoryID then
-            local link = GetInventoryItemLink("player", inventoryID)
-            local equipped = link or Optional(GetInventoryItemID, "player", inventoryID)
-                or Optional(GetInventoryItemTexture, "player", inventoryID)
+        local link, equippedID, equippedTexture
+        if Compat.GetContainerBagIdentity then
+            link, equippedID, equippedTexture = Compat.GetContainerBagIdentity(bag)
+        end
+        if bag > 0 and (link or equippedID or equippedTexture) then
+            local equipped = link or equippedID or equippedTexture
             if equipped and count == 0 then
                 return nil, { reason = "Equipped bag capacity pending", retry = true }
             end
@@ -74,16 +77,10 @@ local function Containers(bank)
         local occupied = 0
         for slot = 1, count do
             local info
-            if api.GetContainerItemInfo then
-                info = api.GetContainerItemInfo(bag, slot)
-            else
-                local texture, quantity, isLocked, quality, _, _, link = GetContainerItemInfo(bag, slot)
-                link = link or Optional(GetContainerItemLink, bag, slot)
-                if texture or link then info = { stackCount = quantity, isLocked = isLocked, quality = quality, hyperlink = link } end
-            end
+            info = getInfo(bag, slot)
             if info then
                 occupied = occupied + 1
-                local link = info.hyperlink or Optional(api.GetContainerItemLink or GetContainerItemLink, bag, slot)
+                local link = info.hyperlink or (Compat.GetContainerLink and Compat.GetContainerLink(bag, slot))
                 local id = info.itemID or link and tonumber(link:match("item:(%d+)"))
                 if not id or not info.stackCount then return nil, { reason = "Item identity/quantity pending", retry = true } end
                 local item = S.Item(link, id)
@@ -136,11 +133,11 @@ S.collectors.professions = function()
         return nil, { reason = "Classic skill/spellbook APIs unavailable" }
     end
     if GetNumSkillLines() == 0 then return nil, { reason = "Skill lines not ready", retry = true } end
-    local _, _, offset, count = GetSpellTabInfo(1)
-    if offset == nil or count == nil then return nil, { reason = "General spellbook not ready", retry = true } end
+    local spellNames, spellError = Compat.GetProfessionSpellEvidence and Compat.GetProfessionSpellEvidence()
+    if not spellNames and spellError then return nil, { reason = spellError, retry = true } end
     local entries, collapsed = readers.Professions()
     table.sort(entries, function(a, b) return a.name < b.name end)
-    return { entries = entries, identification = "abandonable skill lines and ranked General spells" },
+    return { entries = entries, identification = "abandonable skill lines and ranked trade-skill spells" },
         { completeness = collapsed and "partial" or "complete", reason = collapsed and "Collapsed skill headers; visible skills only" or nil }
 end
 
@@ -149,23 +146,18 @@ S.collectors.spells = function()
         return nil, { reason = "Classic spellbook enumeration unavailable" }
     end
     local entries, seen, incomplete = {}, {}, false
-    local tabs = GetNumSpellTabs()
-    if not tabs or tabs == 0 then return nil, { reason = "Spellbook not ready", retry = true } end
-    for tab = 1, tabs do
-        local _, _, offset, count = GetSpellTabInfo(tab)
-        if not offset or not count then return nil, { reason = "Spellbook tab not ready", retry = true } end
-        for index = offset + 1, offset + count do
-            local name, rank = GetSpellBookItemName(index, BOOKTYPE_SPELL)
-            local kind, id = Optional(GetSpellBookItemInfo, index, BOOKTYPE_SPELL)
-            local link = Optional(GetSpellLink, index, BOOKTYPE_SPELL)
-            id = link and tonumber(link:match("spell:(%d+)")) or (kind == "SPELL" and id or nil)
-            if name then
-                local key = id and tostring(id) or name .. "\031" .. (rank or "")
+    local tabs, spellError = Compat.EnumerateSpellbook and Compat.EnumerateSpellbook()
+    if not tabs then return nil, { reason = spellError or "Spellbook not ready", retry = true } end
+    for _, tab in ipairs(tabs) do
+        for _, entry in ipairs(tab.entries) do
+            if entry.name then
+                local key = entry.spellID and tostring(entry.spellID) or entry.name .. "\031" .. (entry.rank or "")
                 if not seen[key] then
-                    entries[#entries + 1] = { spellID = id, name = name, rank = rank, kind = kind }
+                    entries[#entries + 1] = { spellID = entry.spellID, name = entry.name,
+                        rank = entry.rank, kind = entry.kind }
                     seen[key] = true
                 end
-                if not id then incomplete = true end
+                if not entry.spellID then incomplete = true end
             else incomplete = true end
         end
     end
@@ -199,7 +191,8 @@ S.collectors.trainer = function()
         filters[status] = Optional(GetTrainerServiceTypeFilter, status)
     end
     for index = 1, GetNumTrainerServices() do
-        local name, _, kind, expanded = GetTrainerServiceInfo(index)
+        local service = Compat.GetTrainerService and Compat.GetTrainerService(index)
+        local name, kind, expanded = service and service.name, service and service.status, service and service.expanded
         if not name then missing = true end
         if kind == "header" and not expanded then collapsed = true end
     end
