@@ -1,4 +1,6 @@
-local ADDON_NAME = ...
+local ADDON_NAME, addon = ...
+addon = addon or {}
+addon.Readers = addon.Readers or {}
 
 local SLOT_NAMES = {
     [1] = "Head", [2] = "Neck", [3] = "Shoulder", [4] = "Shirt",
@@ -34,7 +36,7 @@ end
 
 local function GetEquippedTooltipStats(slotID)
     local values = {}
-    if not slotID then return values end
+    if not slotID then return values, false end
 
     statScanTooltip = statScanTooltip or CreateFrame(
         "GameTooltip", "GearExportStatScanTooltip", UIParent, "GameTooltipTemplate"
@@ -43,7 +45,7 @@ local function GetEquippedTooltipStats(slotID)
     statScanTooltip:SetOwner(UIParent, "ANCHOR_NONE")
     statScanTooltip:ClearLines()
     local ok = pcall(statScanTooltip.SetInventoryItem, statScanTooltip, "player", slotID)
-    if not ok then return values end
+    if not ok then return values, false end
 
     for lineIndex = 2, statScanTooltip:NumLines() do
         for _, side in ipairs({ "Left", "Right" }) do
@@ -69,8 +71,10 @@ local function GetEquippedTooltipStats(slotID)
             end
         end
     end
+    -- Measure the tooltip we just read, before Hide/cleanup can reset its lines.
+    local ready = statScanTooltip:NumLines() > 0
     statScanTooltip:Hide()
-    return values
+    return values, ready
 end
 
 local function MarkdownText(value)
@@ -91,14 +95,14 @@ local function FormatMoney(copper)
     return table.concat(parts, " ")
 end
 
-local function GetUsefulStats(itemLink, slotID)
-    if not itemLink then return "" end
+local function CollectUsefulStats(itemLink, slotID)
+    if not itemLink then return {} end
     local values = GetItemStats and GetItemStats(itemLink) or {}
     if type(values) ~= "table" then values = {} end
 
     -- On BCC, GetItemStats() may omit random-property stats. The resolved
     -- equipped-item tooltip contains the effective stats for that instance.
-    local tooltipValues = GetEquippedTooltipStats(slotID)
+    local tooltipValues, tooltipReady = GetEquippedTooltipStats(slotID)
 
     local output = {}
     for statIndex, stat in ipairs(STAT_SOURCES) do
@@ -112,8 +116,19 @@ local function GetUsefulStats(itemLink, slotID)
             end
         end
         if amount and amount ~= 0 then
-            table.insert(output, stat[1] .. " " .. (amount > 0 and "+" or "") .. amount)
+            table.insert(output, { name = stat[1], value = amount })
         end
+    end
+    return output, tooltipReady
+end
+
+addon.Readers.EquipmentStats = CollectUsefulStats
+addon.Readers.SlotNames = SLOT_NAMES
+
+local function GetUsefulStats(itemLink, slotID)
+    local output = {}
+    for _, stat in ipairs(CollectUsefulStats(itemLink, slotID)) do
+        table.insert(output, stat.name .. " " .. (stat.value > 0 and "+" or "") .. stat.value)
     end
     return table.concat(output, ", ")
 end
@@ -137,10 +152,8 @@ local function BuildEquipmentSection(output)
     table.insert(output, "")
 end
 
-local function BuildProfessionsSection(output)
-    table.insert(output, "## Professions")
-    table.insert(output, "")
-    local before = #output
+local function CollectProfessions()
+    local entries, collapsed = {}, false
 
     -- Burning Crusade Classic does not provide the modern profession index API.
     -- Primary professions are abandonable skill lines. Secondary professions are
@@ -160,14 +173,27 @@ local function BuildProfessionsSection(output)
 
     if GetNumSkillLines and GetSkillLineInfo then
         for skillIndex = 1, GetNumSkillLines() do
-            local name, isHeader, _, rank, _, _, maxRank, isAbandonable = GetSkillLineInfo(skillIndex)
+            local name, isHeader, isExpanded, rank, _, _, maxRank, isAbandonable = GetSkillLineInfo(skillIndex)
+            if isHeader and not isExpanded then collapsed = true end
             if name and not isHeader and rank and maxRank and maxRank > 0
                 and (isAbandonable or tradeSkillSpells[name]) then
-                table.insert(output, string.format("* %s: %s / %s", MarkdownText(name), rank, maxRank))
+                table.insert(entries, { name = name, rank = rank, maxRank = maxRank })
             end
         end
     end
-    if #output == before then table.insert(output, "* No known professions found") end
+    return entries, collapsed
+end
+
+addon.Readers.Professions = CollectProfessions
+
+local function BuildProfessionsSection(output)
+    table.insert(output, "## Professions")
+    table.insert(output, "")
+    local entries = CollectProfessions()
+    for _, entry in ipairs(entries) do
+        table.insert(output, string.format("* %s: %s / %s", MarkdownText(entry.name), entry.rank, entry.maxRank))
+    end
+    if #entries == 0 then table.insert(output, "* No known professions found") end
     table.insert(output, "")
 end
 
@@ -564,7 +590,7 @@ local function TrainerWindowIsOpen()
     return ClassTrainerFrame and ClassTrainerFrame:IsShown()
 end
 
-local function CollectTrainerReport()
+local function CollectTrainerReport(enrich)
     if not TrainerWindowIsOpen() or type(GetNumTrainerServices) ~= "function"
         or type(GetTrainerServiceInfo) ~= "function" then
         return nil
@@ -594,17 +620,21 @@ local function CollectTrainerReport()
             local cost = type(GetTrainerServiceCost) == "function" and GetTrainerServiceCost(index) or nil
             local requiredLevel = type(GetTrainerServiceLevelReq) == "function"
                 and GetTrainerServiceLevelReq(index) or nil
-            table.insert(report.services, {
+            local service = {
                 name = name,
                 rank = subText,
                 status = serviceType,
                 cost = tonumber(cost),
                 requiredLevel = tonumber(requiredLevel),
-            })
+            }
+            if enrich then enrich(service, index) end
+            table.insert(report.services, service)
         end
     end
     return report
 end
+
+addon.Readers.Trainer = CollectTrainerReport
 
 local function RenderTrainerReport(report)
     local output = { "# Trainer Export", "", "## Character", "" }
@@ -684,9 +714,19 @@ close:SetPoint("BOTTOM", 0, 15)
 close:SetText("Close")
 close:SetScript("OnClick", function() frame:Hide() end)
 
-local function ShowReport(report)
+local function ShowReport(report, slot)
     GearExportDB = GearExportDB or {}
-    GearExportDB.latestExport = report
+    GearExportDB.exports = GearExportDB.exports or {}
+    GearExportDB.exportMeta = GearExportDB.exportMeta or {}
+    if slot then
+        GearExportDB.exports[slot] = report
+        GearExportDB.exportMeta[slot] = {
+            time = date("%Y-%m-%d %H:%M:%S"),
+            character = UnitName("player"),
+            level = UnitLevel("player"),
+        }
+        GearExportDB.latestExport = report
+    end
     frame:Show()
     scroll:SetVerticalScroll(0)
     edit:SetText(report)
@@ -721,6 +761,8 @@ events:RegisterEvent("ADDON_LOADED")
 events:SetScript("OnEvent", function(_, _, loadedAddon)
     if loadedAddon ~= ADDON_NAME then return end
     GearExportDB = GearExportDB or {}
+    GearExportDB.exports = GearExportDB.exports or {}
+    GearExportDB.exportMeta = GearExportDB.exportMeta or {}
     local position = GearExportDB.position
     if position then
         frame:ClearAllPoints()
@@ -733,12 +775,14 @@ table.insert(UISpecialFrames, "GearExportFrame")
 SLASH_GEAREXPORT1 = "/gearexport"
 SLASH_GEAREXPORT2 = "/gearx"
 SlashCmdList.GEAREXPORT = function(argument)
-    ShowReport(IsHelpArgument(argument) and BuildHelpReport() or BuildCharacterReport())
+    if IsHelpArgument(argument) then ShowReport(BuildHelpReport()); return end
+    ShowReport(BuildCharacterReport(), "character")
 end
 
 SLASH_GEARITEMEXPORT1 = "/itemx"
 SlashCmdList.GEARITEMEXPORT = function(argument)
-    ShowReport(IsHelpArgument(argument) and BuildHelpReport() or BuildItemReport(argument))
+    if IsHelpArgument(argument) then ShowReport(BuildHelpReport()); return end
+    ShowReport(BuildItemReport(argument), "item")
 end
 
 SLASH_GEARHELP1 = "/gearhelp"
@@ -746,7 +790,8 @@ SlashCmdList.GEARHELP = function() ShowReport(BuildHelpReport()) end
 
 SLASH_GEARINVENTORYEXPORT1 = "/bagsx"
 SlashCmdList.GEARINVENTORYEXPORT = function(argument)
-    ShowReport(IsHelpArgument(argument) and BuildHelpReport() or BuildInventoryReport())
+    if IsHelpArgument(argument) then ShowReport(BuildHelpReport()); return end
+    ShowReport(BuildInventoryReport(), "inventory")
 end
 
 SLASH_GEARTRAINEREXPORT1 = "/trainerx"
@@ -757,5 +802,5 @@ SlashCmdList.GEARTRAINEREXPORT = function(argument)
         print("GearExport: Open a trainer window before using /trainerx.")
         return
     end
-    ShowReport(RenderTrainerReport(report))
+    ShowReport(RenderTrainerReport(report), "trainer")
 end
