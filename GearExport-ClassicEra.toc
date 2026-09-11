@@ -1,6 +1,6 @@
-## Interface: 20506
-## Title: Gear Export
-## Notes: Copyable Markdown character and item exporter
+## Interface: 11509
+## Title: Gear Export (Classic Era)
+## Notes: Copyable Markdown character and item exporter with WoWSync
 ## Version: 2.2
 ## SavedVariables: GearExportDB, WoWSyncDB
 

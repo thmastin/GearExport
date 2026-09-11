@@ -183,6 +183,9 @@ for _, event in ipairs(events) do
     local ok = pcall(frame.RegisterEvent, frame, event)
     if not ok then S.unsupportedEvents[event] = true end
 end
+if WoWSyncCompat and WoWSyncCompat.RegisterOptionalEvents then
+    for event in pairs(WoWSyncCompat.RegisterOptionalEvents(frame)) do S.optionalEvents = S.optionalEvents or {}; S.optionalEvents[event] = true end
+end
 
 frame:SetScript("OnEvent", function(_, event, arg)
     if event == "ADDON_LOADED" then
@@ -208,7 +211,7 @@ frame:SetScript("OnEvent", function(_, event, arg)
         S.Mark("equipment"); S.Mark("bags")
     elseif event == "SKILL_LINES_CHANGED" or event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE" then
         S.Mark("professions"); S.Mark("spells"); S.Mark("trainer")
-    elseif event == "GET_ITEM_INFO_RECEIVED" then
+    elseif event == "GET_ITEM_INFO_RECEIVED" or event == "ITEM_DATA_LOAD_RESULT" then
         if S.record then
             for _, key in ipairs({ "bags", "bank", "equipment" }) do
                 local section = S.record.sections[key]
