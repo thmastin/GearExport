@@ -1,4 +1,4 @@
-# Using WoWSync with an LLM GearExport
+# GearExport
 
 GearExport is a small, dependency-free World of Warcraft addon for **Burning Crusade Classic Anniversary** and **Classic Era**. It creates clean Markdown reports that can be copied into a `.md` file or pasted into ChatGPT for character, equipment, and inventory analysis.
 
