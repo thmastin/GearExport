@@ -26,6 +26,11 @@ Interface\AddOns\GearExport\WoWSyncRender.lua
 Interface\AddOns\GearExport\WoWSyncUI.lua
 ```
 
+Install exactly one packaging target in a live client: keep `GearExport.toc` for
+TBC Anniversary or keep `GearExport-ClassicEra.toc` for Classic Era. Do not leave
+both TOCs enabled in the same AddOns folder, because they load the shared files
+twice.
+
 Start World of Warcraft or run `/reload` after updating the addon.
 
 ## Commands
