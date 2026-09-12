@@ -107,6 +107,33 @@ function C.GetTrainerService(index)
         cost = tonumber(cost), requiredLevel = tonumber(requiredLevel) }
 end
 
+local function CategoryKey(value)
+    if not value or value == "" then return nil end
+    local key = tostring(value):upper():gsub("[^%w]+", "_"):gsub("^_+", ""):gsub("_+$", "")
+    return key ~= "" and key or nil
+end
+
+function C.TrainerCategory(report)
+    if not report or not report.trainer then return "UNKNOWN" end
+    local skillNames, hasSkill = {}, false
+    for _, service in ipairs(report.services or {}) do
+        local requirement = service.skillRequirement
+        if requirement and requirement.name and requirement.name ~= "" then
+            hasSkill = true
+            skillNames[CategoryKey(requirement.name)] = true
+        end
+    end
+    local skillKeys = {}
+    for key in pairs(skillNames) do skillKeys[#skillKeys + 1] = key end
+    table.sort(skillKeys)
+    if report.trainer.type == "Trade Skill Trainer" then
+        return skillKeys[1] and "PROF_" .. skillKeys[1] or "TRADE"
+    end
+    if report.trainer.type == "Talent Trainer" then return "CLASS" end
+    if hasSkill then return "WEAPON" end
+    return "CLASS"
+end
+
 function C.GetLocation()
     local mapID = C_Map and Optional(C_Map.GetBestMapForUnit, "player")
     local position = mapID and Optional(C_Map.GetPlayerMapPosition, mapID, "player")

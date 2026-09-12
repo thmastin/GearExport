@@ -182,6 +182,19 @@ For each case record pass/fail, client build, relevant export, and any Lua error
 - [ ] Classic Era in-game smoke testing: login, bags, bank, equipment, trainer,
       professions, multiple characters, SYNC, and deterministic output.
 - [ ] Final Classic build regression against the live client and release package.
+- [ ] Proper WoWSync addon icon: prepare a recognizable 64x64 or 128x128 PNG/TGA
+      asset and add the TOC `IconTexture` hook once artwork is available; no
+      placeholder artwork should be shipped.
+
+## Multi-category trainer acceptance
+
+- [x] Store the latest trainer snapshot and visit independently for each derived
+      category instead of replacing one global trainer record.
+- [x] Preserve profession, weapon, and class snapshots across later visits.
+- [x] Render deterministic `[TRAINERS]` output with one block per observed category.
+- [x] Normalize legacy single-trainer data to an explicit `UNKNOWN` category without
+      discarding the snapshot or visit.
+- [x] Keep legacy `/trainerx` output and trainer execution semantics unchanged.
 
 The account/alt export modes and read-only external companion remain documented
 extension paths only. BankCleanup remains a separate, read-only dependency boundary

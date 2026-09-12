@@ -205,13 +205,18 @@ S.collectors.trainer = function()
         if (a.status or "") ~= (b.status or "") then return (a.status or "") < (b.status or "") end
         return (a.cost or -1) < (b.cost or -1)
     end)
-    local data = { visit = S.Copy(S.record.visits.trainer), name = report.trainer.name,
+    local category = Compat.TrainerCategory and Compat.TrainerCategory(report) or "UNKNOWN"
+    S.trainerCategory = category
+    local visit = S.currentTrainerVisit or S.record.visits.trainers[category]
+    if visit then S.record.visits.trainers[category] = visit end
+    local data = { visit = S.Copy(visit), name = report.trainer.name,
         trainerType = report.trainer.type, services = report.services, filters = filters,
-        collapsed = collapsed, moneyAtVisit = report.character.money, coverage = "visible filtered services; spell IDs unavailable" }
+        collapsed = collapsed, moneyAtVisit = report.character.money,
+        coverage = "visible filtered services; spell IDs unavailable" }
     -- A zero-row response can mean filtered-out entries OR data still arriving.
     local empty = #report.services == 0
     local complete = not missing and not empty and not collapsed and filters.available and filters.unavailable and filters.used
-    return data, { completeness = complete and "complete" or "partial",
+    return { category = category, snapshot = data }, { completeness = complete and "complete" or "partial",
         reason = missing and "Trainer fields pending" or empty and "No visible services; completeness unknown"
             or not complete and "Filtered/collapsed trainer list" or nil,
         retry = missing or empty }

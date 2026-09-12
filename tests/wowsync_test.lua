@@ -7,7 +7,7 @@ local function check(value, message)
 end
 local function equal(a, b, message) check(a == b, message .. "\nexpected: " .. tostring(b) .. "\nactual: " .. tostring(a)) end
 local frames, seconds, epoch = {}, 0, 1789000000
-local guid, money, known, trainerReady = "Player-1-A", 12345, false, true
+local guid, money, known, trainerReady, trainerMode = "Player-1-A", 12345, false, true, "profession"
 local itemPending, cursor, locked, collapsed = false, false, false, false
 local movingCalls, itemReads, trainerReads = 0, 0, 0
 local itemLink = "|cff00ff00|Hitem:100:0:0:0:0:0:1:0|h[Sample]|h|r"
@@ -82,8 +82,8 @@ function GetSpellTabInfo() return "General", 1, 0, known and 2 or 1 end
 function GetSpellBookItemName(index) return index == 1 and "Mining" or "New spell", "Rank 1" end
 function GetSpellBookItemInfo(index) return "SPELL", 200 + index end
 function GetSpellLink(index) return "|Hspell:" .. (200 + index) .. "|h[Spell]|h" end
-function IsTradeskillTrainer() return true end
-function IsTalentTrainer() return false end
+function IsTradeskillTrainer() return trainerMode == "profession" end
+function IsTalentTrainer() return trainerMode == "class" end
 function GetNumTrainerServices() trainerReads = trainerReads + 1; return trainerReady and 2 or 0 end
 function GetTrainerServiceInfo(index)
     if index == 1 then return "Header", "", "header", true end
@@ -91,7 +91,10 @@ function GetTrainerServiceInfo(index)
 end
 function GetTrainerServiceCost() return 100 end
 function GetTrainerServiceLevelReq() return 30 end
-function GetTrainerServiceSkillReq() return "Mining", 75, true end
+function GetTrainerServiceSkillReq()
+    if trainerMode == "profession" then return "Mining", 75, true end
+    if trainerMode == "weapon" then return "Swords", 1, true end
+end
 function GetTrainerServiceNumAbilityReq() return 1 end
 function GetTrainerServiceAbilityReq() return "Mining", true end
 function GetTrainerServiceTypeFilter(status) return status ~= "used" end
@@ -256,17 +259,40 @@ collapsed = false; event("SKILL_LINES_CHANGED"); advance(1)
 trainerReady = false; event("TRAINER_SHOW"); advance(0.5)
 equal(S.record.sections.trainer.completeness, "partial", "empty early trainer not complete")
 trainerReady = true; event("TRAINER_UPDATE"); advance(1)
-equal(#S.record.sections.trainer.data.services, 1, "trainer updates capture services")
-equal(S.record.sections.trainer.data.services[1].skillRequirement.rank, 75, "skill requirement retained")
-check(not S.record.sections.trainer.data.services[1].spellID, "trainer index never masquerades as spell ID")
+local professionTrainer = S.record.sections.trainer.data.snapshots.PROF_MINING
+equal(#professionTrainer.services, 1, "trainer updates capture services")
+equal(professionTrainer.services[1].skillRequirement.rank, 75, "skill requirement retained")
+check(not professionTrainer.services[1].spellID, "trainer index never masquerades as spell ID")
 equal(S.record.sections.trainer.completeness, "partial", "filtered trainer coverage explicit")
 known = true; event("SPELLS_CHANGED"); event("TRAINER_UPDATE"); advance(1)
 equal(#S.record.sections.spells.data.entries, 2, "learning refreshes known spellbook")
-equal(S.record.sections.trainer.data.services[1].status, "used", "learning refreshes trainer status")
+equal(S.record.sections.trainer.data.snapshots.PROF_MINING.services[1].status, "used", "learning refreshes trainer status")
 event("TRAINER_UPDATE"); event("TRAINER_CLOSED")
 trainerReads = 0; advance(3)
 equal(trainerReads, 0, "closed trainer cancels delayed scans")
-check(S.record.visits.trainer.unreconciled, "closing pending trainer flags uncertainty")
+check(S.record.visits.trainers.PROF_MINING.unreconciled, "closing pending trainer flags uncertainty")
+
+-- Distinct trainer categories retain independent snapshots and visits.
+trainerMode, trainerReady = "weapon", true; event("TRAINER_SHOW"); event("TRAINER_UPDATE"); advance(1)
+check(S.record.sections.trainer.data.snapshots.PROF_MINING ~= nil, "weapon visit retains profession snapshot")
+check(S.record.sections.trainer.data.snapshots.WEAPON ~= nil, "weapon trainer stored separately")
+event("TRAINER_CLOSED")
+trainerMode = "class"; event("TRAINER_SHOW"); event("TRAINER_UPDATE"); advance(1)
+check(S.record.sections.trainer.data.snapshots.CLASS ~= nil, "class trainer stored separately")
+check(S.record.sections.trainer.data.snapshots.WEAPON ~= nil, "class visit retains weapon snapshot")
+event("TRAINER_CLOSED")
+local professionObserved = S.record.sections.trainer.data.snapshots.PROF_MINING.observedAt
+money = 54321; trainerMode = "class"; event("TRAINER_SHOW"); event("TRAINER_UPDATE"); advance(1)
+equal(S.record.sections.trainer.data.snapshots.CLASS.moneyAtVisit, 54321, "revisit updates class snapshot")
+equal(S.record.sections.trainer.data.snapshots.PROF_MINING.observedAt, professionObserved,
+    "revisit does not update profession snapshot")
+event("TRAINER_CLOSED")
+local trainerText = S.RenderSection("trainer", S.GetSnapshot())
+check(trainerText:find("[PROF_MINING]", 1, true) and trainerText:find("[WEAPON]", 1, true)
+    and trainerText:find("[CLASS]", 1, true), "multi-trainer export has deterministic category blocks")
+check(trainerText:find("LAST_SEEN", 1, true), "closed trainer categories retain stale state")
+local trainerTextAgain = S.RenderSection("trainer", S.GetSnapshot())
+equal(trainerTextAgain, trainerText, "multi-trainer rendering is deterministic")
 
 local callbackText
 check(S.Export(function(result) callbackText = result end), "export request accepted")
@@ -414,6 +440,20 @@ WoWSyncDB = { schemaVersion = 999, characters = { sentinel = true } }; S.record 
 check(not S.Initialize(), "future schema fails closed")
 check(WoWSyncDB.characters.sentinel, "future database not overwritten")
 WoWSyncDB = db
+
+-- Legacy single-trainer data migrates without being discarded or guessed.
+local legacyDB = { schemaVersion = 1, characters = { [guid] = {
+    identity = { guid = guid, name = "Legacy", realm = "Dreamscythe" }, sections = {
+        trainer = { data = { name = "Unknown Trainer", services = {} }, completeness = "partial" },
+    }, visits = { trainer = { openedAt = 17, name = "Unknown Trainer", session = 1 } },
+} } }
+WoWSyncDB, S.record = legacyDB, nil
+check(S.Initialize(), "legacy trainer database initializes")
+check(S.record.sections.trainer.data.snapshots.UNKNOWN.name == "Unknown Trainer",
+    "legacy trainer snapshot preserved under UNKNOWN")
+check(S.record.visits.trainers.UNKNOWN.openedAt == 17, "legacy trainer visit preserved")
+WoWSyncDB, S.record = db, nil
+check(S.Initialize(), "current database restored after migration test")
 
 -- Classic Era-shaped compatibility fixture: the General spellbook tab is second,
 -- and item data arrives through ITEM_DATA_LOAD_RESULT.

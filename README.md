@@ -60,8 +60,8 @@ WoW addons cannot write directly to the operating-system clipboard, so one manua
 WoWSync captures current character, equipment, carried inventory, professions, and
 player spellbook state automatically. Opening a bank or trainer captures its
 accessible data; changes are coalesced rather than stored as an event history.
-Bank and trainer snapshots remain available after the window closes, with their
-observation times and coverage clearly labeled.
+Bank and each observed trainer-category snapshot remain available after the window
+closes, with independent observation times and coverage clearly labeled.
 
 Play normally, then run `/wowsync` and copy the single block from `WOWSYNC v1` through
 `[END]`. A brief refresh completes before the text is selected. Normal SYNC does
@@ -70,7 +70,7 @@ it again. `/wowsync button` enables an optional unobtrusive launcher that can be
 
 The export uses compact tab-separated columns, item references that preserve
 variants, spell IDs where available, exact copper amounts, and independent sections.
-Unknown values are `?`. A previously observed closed bank/trainer is `LAST_SEEN`;
+Unknown values are `?`. Previously observed closed bank/trainer categories are `LAST_SEEN`;
 a never-observed section is `UNKNOWN`. Trainer data respects current filters and
 collapsed categories, so its coverage may be partial. Trainer spell IDs are currently
 unknown; service indices are never presented as IDs. Known spells come separately
@@ -166,7 +166,7 @@ Each plan line must be satisfiable from one physical source stack. GearExport st
 - The exporter window position
 
 `WoWSyncDB` separately stores schema-versioned current sections per character GUID,
-section freshness, the latest bank/trainer visit context, optional button settings,
+section freshness, bank and per-category trainer visit contexts, optional button settings,
 and one latest consolidated export per character. It has no per-event history.
 Because GearExport declares both variables, they share the existing
 `SavedVariables/GearExport.lua` file. WoWSync does not overwrite the traditional
@@ -221,7 +221,7 @@ The full export is the canonical handoff; a focused question does not require a
 different addon command. Set your goal or constraints where indicated.
 
 `OBSERVED` records an observation, not a guarantee that it is still current.
-`complete` describes capture coverage, not freshness. `LAST_SEEN` bank/trainer data
+`complete` describes capture coverage, not freshness. `LAST_SEEN` bank/trainer-category data
 can still be useful but must be evaluated using its own timestamp. `partial`, `?`,
 pending refreshes, and filters identify limits. An absent item, spell, or character
 in an incomplete view does not prove it does not exist.
