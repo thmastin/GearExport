@@ -144,6 +144,11 @@ function C.GetBankRanges()
     return bags, bank
 end
 
+function C.IsBankViewable()
+    if not C.IsRetail() then return true end
+    return C_Bank and Enum and Enum.BankType and Optional(C_Bank.CanViewBank, Enum.BankType.Character) == true or false
+end
+
 function C.GetContainerCategory(bag, bank)
     if not C.IsRetail() then return nil end
     return bank and "CHARACTER" or bag == Enum.BagIndex.ReagentBag and "REAGENT_BAG" or "CARRIED"
@@ -181,7 +186,8 @@ function C.EnumerateSpellbook()
                     if not item.isOffSpec then
                         if item.itemType == enum.SpellBookItemType.Spell then
                             group.entries[#group.entries + 1] = { name = item.name ~= "" and item.name or nil,
-                                spellID = item.spellID, kind = "SPELL", passive = item.isPassive }
+                                spellID = item.spellID and item.spellID > 0 and item.spellID or nil,
+                                kind = "SPELL", passive = item.isPassive }
                         elseif item.itemType == enum.SpellBookItemType.Flyout then
                             if not GetFlyoutInfo or not GetFlyoutSlotInfo then return nil, "Flyout APIs unavailable" end
                             local _, _, slots = GetFlyoutInfo(item.actionID)
@@ -317,7 +323,7 @@ function C.RegisterOptionalEvents(frame)
     local registered = {}
     local events = { "ITEM_DATA_LOAD_RESULT" }
     if C.IsRetail() then
-        for _, event in ipairs({ "BANK_TABS_CHANGED", "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED",
+        for _, event in ipairs({ "BANK_TABS_CHANGED",
             "PLAYER_SPECIALIZATION_CHANGED", "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE", "SPELL_TEXT_UPDATE" }) do
             events[#events + 1] = event
         end

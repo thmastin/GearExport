@@ -122,7 +122,7 @@ function S.GetSnapshot()
         visits = S.Copy(S.record.visits) }
     snapshot.schemaVersion = S.schemaVersion
     snapshot.generatedAt = S.Now()
-    snapshot.access = { bank = S.bankOpen, trainer = S.trainerOpen,
+    snapshot.access = { bank = S.bankOpen and (not WoWSyncCompat or WoWSyncCompat.IsBankViewable()), trainer = S.trainerOpen,
         trainerCategory = S.trainerCategory }
     snapshot.pending = {}
     for key in pairs(S.dirty) do snapshot.pending[key] = true end

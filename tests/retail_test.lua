@@ -196,6 +196,7 @@ local bankObserved = S.record.sections.bank.observedAt
 bankView = false; event("BANK_TABS_CHANGED"); advance(3)
 equal(S.record.sections.bank.observedAt, bankObserved, "unviewable bank preserves last seen data")
 check(S.record.sections.bank.lastAttemptError, "unviewable refresh reported")
+check(S.RenderSection("bank", S.GetSnapshot()):find("LAST_SEEN", 1, true), "unviewable open bank is last seen")
 event("BANKFRAME_CLOSED"); BankFrame:Hide()
 check(S.RenderSection("bank", S.GetSnapshot()):find("LAST_SEEN", 1, true), "closed bank stale label")
 bankView = true
@@ -229,6 +230,109 @@ for _, command in ipairs({ "GEAREXPORT", "GEARITEMEXPORT", "GEARINVENTORYEXPORT"
     SlashCmdList[command](command == "GEARITEMEXPORT" and "240001" or "")
     check(GearExportDB.latestExport, "Retail legacy command " .. command)
 end
+-- Movement, readiness, omitted APIs, and storage edge cases.
+local originalInfo = C_Container.GetContainerItemInfo
+C_Container.GetContainerItemInfo = function(bag, slot)
+    local info = originalInfo(bag, slot)
+    if info then info.isLocked = true end
+    return info
+end
+local bagObserved = S.record.sections.bags.observedAt
+event("ITEM_LOCK_CHANGED"); advance(3)
+equal(S.record.sections.bags.observedAt, bagObserved, "locked inventory preserves observation")
+check(S.record.sections.bags.lastAttemptError:find("movement", 1, true), "lock reason")
+C_Container.GetContainerItemInfo = originalInfo
+event("BAG_UPDATE_DELAYED"); advance(1)
+check(S.record.sections.bags.observedAt > bagObserved, "settled movement captured")
+C_Container.GetContainerItemInfo = function(bag, slot)
+    local info = originalInfo(bag, slot)
+    if info then info.hyperlink = nil end
+    return info
+end
+event("BAG_UPDATE"); advance(3)
+equal(S.record.sections.bags.completeness, "partial", "missing instance link partial")
+equal(S.record.sections.bags.data.containers[1].slots[1].itemString, nil, "generic cached link never replaces instance identity")
+C_Container.GetContainerItemInfo = originalInfo
+event("BAG_UPDATE"); advance(1)
+local originalFree = C_Container.GetContainerNumFreeSlots
+C_Container.GetContainerNumFreeSlots = function() return 0, 0 end
+bagObserved = S.record.sections.bags.observedAt
+event("BAG_UPDATE"); advance(3)
+equal(S.record.sections.bags.observedAt, bagObserved, "free/occupied mismatch does not overwrite")
+C_Container.GetContainerNumFreeSlots = originalFree
+event("BAG_UPDATE"); advance(1)
+BankFrame:Show(); event("BANKFRAME_OPENED"); advance(1)
+local tabObserved = S.record.sections.bank.observedAt
+local originalSlots = C_Container.GetContainerNumSlots
+C_Container.GetContainerNumSlots = function(bag) if bag == 6 then return 0 end; return originalSlots(bag) end
+event("BANK_TABS_CHANGED"); advance(3)
+equal(S.record.sections.bank.observedAt, tabObserved, "zero purchased-tab capacity is pending")
+C_Container.GetContainerNumSlots = originalSlots
+local originalPurchased = C_Bank.FetchNumPurchasedBankTabs
+C_Bank.FetchNumPurchasedBankTabs = function() return 3 end
+event("BANK_TABS_CHANGED"); advance(3)
+equal(S.record.sections.bank.observedAt, tabObserved, "purchased count mismatch preserves bank")
+C_Bank.FetchNumPurchasedBankTabs = originalPurchased
+event("BANK_TABS_CHANGED"); advance(1)
+event("BANKFRAME_CLOSED"); BankFrame:Hide()
+local originalCursor = GetCursorInfo
+GetCursorInfo = function() return "item", 240001 end
+bagObserved = S.record.sections.bags.observedAt
+event("ITEM_LOCK_CHANGED"); advance(3)
+equal(S.record.sections.bags.observedAt, bagObserved, "cursor movement is not captured as settled")
+GetCursorInfo = originalCursor
+event("BAG_UPDATE_DELAYED"); advance(1)
+local originalProfessions = GetProfessions
+GetProfessions = function() return nil, nil, nil, nil, nil end
+event("SKILL_LINES_CHANGED"); advance(1)
+equal(#S.record.sections.professions.data.entries, 0, "no tracked professions has empty declared coverage")
+GetProfessions = originalProfessions
+local originalProfessionInfo = GetProfessionInfo
+GetProfessionInfo = function() return nil end
+event("TRADE_SKILL_LIST_UPDATE"); advance(3)
+equal(S.record.sections.professions.completeness, "partial", "missing profession fields are partial")
+GetProfessionInfo = originalProfessionInfo
+event("TRADE_SKILL_DATA_SOURCE_CHANGED"); advance(1)
+equal(#S.record.sections.professions.data.entries, 3, "profession refresh event")
+spells[1].spellID = 0
+event("SPELL_TEXT_UPDATE"); advance(3)
+equal(S.record.sections.spells.completeness, "partial", "invalid spell identity partial")
+for _, entry in ipairs(S.record.sections.spells.data.entries) do check(entry.spellID ~= 0, "never export invalid spell ID") end
+spells[1].spellID = 1001
+event("PLAYER_SPECIALIZATION_CHANGED", "player"); advance(1)
+equal(S.record.sections.spells.completeness, "complete", "spec event refresh")
+local originalSpellAPI = C_SpellBook
+C_SpellBook = nil
+local spellsObserved = S.record.sections.spells.observedAt
+event("SPELLS_CHANGED"); advance(3)
+equal(S.record.sections.spells.observedAt, spellsObserved, "missing spell API preserves snapshot")
+C_SpellBook = originalSpellAPI
+event("SPELLS_CHANGED"); advance(1)
+local originalStats = C_Item.GetItemStats
+local secret = {}
+issecretvalue = function(value) return value == secret end
+C_Item.GetItemStats = function() return { ITEM_MOD_HASTE_RATING_SHORT = secret } end
+event("PLAYER_EQUIPMENT_CHANGED"); advance(3)
+equal(S.record.sections.equipment.completeness, "partial", "restricted stat remains partial")
+equal(#S.record.sections.equipment.data.slots[1].stats, 0, "restricted stat not exposed")
+C_Item.GetItemStats = originalStats; issecretvalue = nil
+event("PLAYER_EQUIPMENT_CHANGED"); advance(1)
+local oldRender = S.Render(S.GetSnapshot())
+local renderClock = GetServerTime
+GetServerTime = function() error("renderer queried clock") end
+local snapshot = { schemaVersion = 1, generatedAt = 42, sections = S.Copy(S.record.sections), visits = S.Copy(S.record.visits), access = {} }
+equal(S.Render(snapshot), S.Render(snapshot), "frozen rendering never reads clock")
+GetServerTime = renderClock
+check(oldRender:find("[PROFESSIONS]", 1, true), "schema sections retained")
+-- Reinitialize with the same SavedVariables as /reload would.
+local savedDB = WoWSyncDB
+local reloaded = {}
+for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncRender.lua" }) do
+    assert(loadfile(file))("GearExport", reloaded)
+end
+reloaded.Sync.Initialize()
+equal(WoWSyncDB, savedDB, "reload preserves database")
+check(WoWSyncDB.characters["Player-Retail-A"].sections.trainer.data.snapshots.PROF_ALCHEMY, "trainer persistence across reload")
 check(not SlashCmdList.BANKCLEANUP, "Retail does not load BankCleanup")
 equal(actions, 0, "no actions")
 print("PASS: " .. passed .. " Retail assertions; 0 gameplay actions")
