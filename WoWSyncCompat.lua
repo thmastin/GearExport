@@ -131,7 +131,10 @@ function C.TrainerCategory(report)
     end
     if report.trainer.type == "Talent Trainer" then return "CLASS" end
     if hasSkill then return "WEAPON" end
-    return "CLASS"
+    -- With no visible services or skill requirements, the legacy API does not
+    -- expose enough information to distinguish an empty class or weapon trainer.
+    -- Preserve the observation without making a category claim.
+    return #(report.services or {}) > 0 and "CLASS" or "UNKNOWN"
 end
 
 function C.GetLocation()

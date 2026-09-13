@@ -293,6 +293,12 @@ check(trainerText:find("[PROF_MINING]", 1, true) and trainerText:find("[WEAPON]"
 check(trainerText:find("LAST_SEEN", 1, true), "closed trainer categories retain stale state")
 local trainerTextAgain = S.RenderSection("trainer", S.GetSnapshot())
 equal(trainerTextAgain, trainerText, "multi-trainer rendering is deterministic")
+trainerMode, trainerReady = "weapon", false; event("TRAINER_SHOW"); advance(1)
+check(S.record.sections.trainer.data.snapshots.UNKNOWN ~= nil,
+    "empty ambiguous trainer is preserved as UNKNOWN")
+check(S.record.sections.trainer.data.snapshots.CLASS ~= nil,
+    "empty ambiguous trainer does not erase CLASS")
+event("TRAINER_CLOSED"); trainerReady = true
 
 local callbackText
 check(S.Export(function(result) callbackText = result end), "export request accepted")
