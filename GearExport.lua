@@ -1,6 +1,10 @@
 local ADDON_NAME, addon = ...
 addon = addon or {}
 addon.Readers = addon.Readers or {}
+local Compat = WoWSyncCompat
+-- Local adapters only: never replace Blizzard globals used by other addons.
+local GetItemInfo = Compat and Compat.GetItemInfo or GetItemInfo
+local GetItemCount = Compat and Compat.GetItemCount or GetItemCount
 
 local SLOT_NAMES = {
     [1] = "Head", [2] = "Neck", [3] = "Shoulder", [4] = "Shirt",
@@ -97,6 +101,7 @@ end
 
 local function CollectUsefulStats(itemLink, slotID)
     if not itemLink then return {} end
+    if Compat and Compat.IsRetail() then return Compat.GetEquipmentStats(itemLink, slotID) end
     local values = GetItemStats and GetItemStats(itemLink) or {}
     if type(values) ~= "table" then values = {} end
 
@@ -142,6 +147,7 @@ local function BuildEquipmentSection(output)
         local link = GetInventoryItemLink("player", slotID)
         if link then
             local name, _, _, itemLevel, requiredLevel = GetItemInfo(link)
+            if Compat then itemLevel = Compat.GetItemLevel(link, itemLevel) end
             table.insert(output, string.format("| %s | %s | %s | %s | %s |",
                 SLOT_NAMES[slotID], MarkdownText(name or link or "Unknown"),
                 itemLevel or "", requiredLevel or "", MarkdownText(GetUsefulStats(link, slotID))))
@@ -153,6 +159,10 @@ local function BuildEquipmentSection(output)
 end
 
 local function CollectProfessions()
+    if Compat and Compat.IsRetail() then
+        local data, meta = Compat.GetProfessionState()
+        return data and data.entries or {}, not data or meta.completeness == "partial"
+    end
     local entries, collapsed = {}, false
 
     -- Primary professions are abandonable skill lines. Secondary professions are
@@ -200,11 +210,14 @@ local function BuildProfessionsSection(output)
 end
 
 local function BuildBagSection(output)
-    if not GetContainerNumSlots or not GetContainerNumFreeSlots then return end
+    local getSlots = Compat and Compat.GetContainerSlotCount or GetContainerNumSlots
+    local getFree = Compat and Compat.GetContainerFreeSlots or GetContainerNumFreeSlots
+    if not getSlots or not getFree then return end
     local total, free = 0, 0
-    for bag = 0, (NUM_BAG_SLOTS or 4) do
-        total = total + (GetContainerNumSlots(bag) or 0)
-        free = free + (GetContainerNumFreeSlots(bag) or 0)
+    local lastBag = Compat and Compat.IsRetail() and Enum.BagIndex.ReagentBag or (NUM_BAG_SLOTS or 4)
+    for bag = 0, lastBag do
+        total = total + (getSlots(bag) or 0)
+        free = free + (getFree(bag) or 0)
     end
     table.insert(output, "## Bags")
     table.insert(output, "")
@@ -444,13 +457,21 @@ end
 
 local function BuildInventoryReport()
     local items = {}
-    AddContainerItems(items, 0, NUM_BAG_SLOTS or 4, "bags")
-
     local bankIsOpen = BankFrame and BankFrame:IsShown()
-    if bankIsOpen then
-        AddContainerItems(items, BANK_CONTAINER or -1, BANK_CONTAINER or -1, "bankLive")
-        AddContainerItems(items, (NUM_BAG_SLOTS or 4) + 1,
-            (NUM_BAG_SLOTS or 4) + (NUM_BANKBAGSLOTS or 7), "bankLive")
+    if Compat and Compat.IsRetail() then
+        local bags, bank = Compat.GetBankRanges()
+        for _, bag in ipairs(bags or {}) do AddContainerItems(items, bag, bag, "bags") end
+        bankIsOpen = bankIsOpen and bank ~= nil
+        if bankIsOpen then
+            for _, bag in ipairs(bank) do AddContainerItems(items, bag, bag, "bankLive") end
+        end
+    else
+        AddContainerItems(items, 0, NUM_BAG_SLOTS or 4, "bags")
+        if bankIsOpen then
+            AddContainerItems(items, BANK_CONTAINER or -1, BANK_CONTAINER or -1, "bankLive")
+            AddContainerItems(items, (NUM_BAG_SLOTS or 4) + 1,
+                (NUM_BAG_SLOTS or 4) + (NUM_BANKBAGSLOTS or 7), "bankLive")
+        end
     end
 
     local hasTSMInventory = type(TSM_API) == "table"
@@ -617,17 +638,21 @@ local function CollectTrainerReport(enrich)
 
     for index = 1, GetNumTrainerServices() do
         local name, subText, serviceType = GetTrainerServiceInfo(index)
+        local normalized = Compat and Compat.GetTrainerService(index)
+        if normalized then name, subText, serviceType = normalized.name, normalized.rank, normalized.status end
         -- The legacy API includes category headers in the filtered service list.
         if name and serviceType ~= "header" then
             local cost = type(GetTrainerServiceCost) == "function" and GetTrainerServiceCost(index) or nil
             local requiredLevel = type(GetTrainerServiceLevelReq) == "function"
                 and GetTrainerServiceLevelReq(index) or nil
+            if normalized then cost, requiredLevel = normalized.cost, normalized.requiredLevel end
             local service = {
                 name = name,
                 rank = subText,
                 status = serviceType,
                 cost = tonumber(cost),
                 requiredLevel = tonumber(requiredLevel),
+                skillLine = normalized and normalized.skillLine,
             }
             if enrich then enrich(service, index) end
             table.insert(report.services, service)

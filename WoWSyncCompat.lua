@@ -34,14 +34,14 @@ function C.GetEquipmentStats(link, slot, legacyReader)
     if not C.IsRetail() then return legacyReader(link, slot) end
     local values = Optional(C_Item and C_Item.GetItemStats, link)
     local tooltip = Optional(C_TooltipInfo and C_TooltipInfo.GetInventoryItem, "player", slot)
-    local result = {}
+    local result, missing = {}, false
     for key, value in pairs(values or {}) do
         if not (issecretvalue and issecretvalue(value)) and type(value) == "number" then
             result[#result + 1] = { name = key, value = value }
-        end
+        else missing = true end
     end
     table.sort(result, function(a, b) return a.name < b.name end)
-    return result, values ~= nil and tooltip ~= nil and tooltip.lines ~= nil and #tooltip.lines > 0
+    return result, not missing and values ~= nil and tooltip ~= nil and tooltip.lines ~= nil and #tooltip.lines > 0
 end
 
 function C.GetProfessionState(legacyReader)
