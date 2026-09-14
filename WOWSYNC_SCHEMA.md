@@ -2,9 +2,11 @@
 
 ## Client compatibility
 
-The schema and canonical text export are shared by the TBC Anniversary and Classic
-Era packaging targets. TBC loads through `GearExport.toc` with interface `20506`;
+The schema and canonical text export are shared by TBC Anniversary, Classic
+Era and the Retail validation target. TBC loads through `GearExport.toc` with interface `20506`;
 Classic Era loads through `GearExport-ClassicEra.toc` with interface `11509`.
+Retail selects `GearExport-Retail.toc`, interface `120100`, packaged as the sole
+`GearExport.toc`. Retail live acceptance remains pending.
 `WoWSyncCompat.lua` provides only narrow API normalization. Character/build/interface
 metadata in the `character` section identifies the active client.
 
@@ -13,10 +15,11 @@ trainer services, ranks, costs, and profession skills come from the active clien
 The schema keeps those values in the same fields. Delayed item information and
 partially populated trainer windows remain explicitly partial rather than being
 filled with inferred values. The renderer does not read client APIs and therefore
-produces the same deterministic format for either target.
+produces the same deterministic format for every target.
 
 WoWSync is loaded by GearExport after the legacy exporter and BankCleanup. It has
 no required dependencies. BankCleanup does not consume WoWSync data or callbacks.
+Retail excludes BankCleanup; its source and TBC/Era behavior are unchanged.
 
 `WoWSyncDB` is declared by GearExport's TOC and saved in the same
 `SavedVariables/GearExport.lua` file as `GearExportDB`. Writes update Lua memory
@@ -69,6 +72,35 @@ Unavailable data is absent, never substituted with zero. A partial snapshot may
 contain reliable quantities with pending names. No historical event list is kept.
 Transient locks/cursor activity and inconsistent occupied/free counts reject a
 container scan instead of publishing a transient inventory state.
+
+### Additive Retail fields and declared coverage
+
+The schema remains v1 and the same eight sections remain in the same order.
+Older snapshots without these optional fields render as before:
+
+- `character.clientFamily`: `Retail`, rendered as ClientFamily alongside Interface.
+- `containers[].storage`: CARRIED, REAGENT_BAG or CHARACTER, rendered as
+  `ContainerStorage <id>`. Bank only enumerates purchased character tabs; it adds
+  `purchasedTabs` and `coverage`. Account/Warband storage is API-supported but
+  deferred and never aggregated into character storage. Negative Classic bank IDs,
+  separate reagent bank and equipped bank bags do not apply to this Retail target.
+- Item identity remains the complete `itemString`; C_Item supplies modern metadata
+  and instance item level. Missing links stay partial even if generic item data is
+  cached. Exposed item stats are not a full simulation of buffs/procs/effects.
+- `professions.entries[]` optionally adds `skillLineID`, `tier`, `expansion`,
+  `category` (PRIMARY/SECONDARY). Retail rows append these columns after the
+  existing profession/skill/maxSkill columns. Coverage is tracked professions and
+  the exposed tier, not every historical tier, recipe, specialization or knowledge.
+- Retail player spellbook rows have no rank (`-`); subName is not interpreted as
+  rank. Future/off-spec/pet entries are excluded; known flyouts are expanded and IDs
+  deduplicated. Spell coverage text states this explicitly.
+- Retail trainer category uses service skill-line API evidence, not NPC name or
+  an assumption that any skill requirement means weapon training. Unknown remains
+  a separate snapshot and never overwrites named profession/class categories.
+
+Future account state should own Warband bank and account currencies once with
+independent freshness, rather than duplicate them across GUID-keyed characters.
+No account/alt export mode is introduced by the Retail compatibility target.
 
 ## Consumer API
 

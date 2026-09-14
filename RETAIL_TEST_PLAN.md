@@ -1,0 +1,78 @@
+# Retail validation build
+
+Retail implementation is ready for manual smoke testing. **Retail support is not
+complete or released:** all in-game cases below are pending. Automated mock results
+are recorded separately from client evidence.
+
+## Install
+
+Source branch: `retail-compat`. Target: Retail 12.1.0, interface 120100. Folder name
+must be `GearExport`, preserving existing slash commands and SavedVariables names.
+
+1. From the repository, run `node scripts/package.cjs Retail`.
+2. Copy `dist/Retail/GearExport` into
+   `D:\World of Warcraft\_retail_\Interface\AddOns\GearExport`.
+   The package contains one `GearExport.toc`, selected from `GearExport-Retail.toc`.
+   Do not copy the source tree's TBC default TOC or Classic flavor aliases into it.
+3. Enable **WoWSync (Retail - validation build)** in Retail's AddOns list. Restart
+   the client if this is a newly installed addon; otherwise `/reload`.
+4. Use `/wowsync`. Copy from `WOWSYNC v1` through `[END]`. Check `ClientFamily:
+   Retail`, `Interface: 120100`, character, level and MoneyCopper.
+
+BankCleanup is absent from the Retail package. `/bankx` is not a Retail command.
+The installed Anniversary and Era addons are not changed by building this package.
+The same builder accepts `TBC` and `ClassicEra` for separate packages; those retain
+BankCleanup. No libraries or TSM are required for `/wowsync`.
+
+## Manual smoke matrix — all pending
+
+Record pass/fail/N/A, actual client version/build/interface, character, relevant
+export, and the full Lua error/stack (if any). Actions below are performed manually
+by the tester; WoWSync only observes.
+
+| Case | Procedure and expected result | Status |
+| --- | --- | --- |
+| Baseline | Login, `/reload`, `/wowsync`; verify name/realm/class/faction/level/gold, zone/subzone/map/coordinates. At max level no invented XP progress. | Pending |
+| Equipment | Compare all equipped slots, ilvl and full itemRef against actual links. Inspect an enchanted/gemmed/crafted/upgraded item. Slot 18 is legacy/unused; profession equipment is not included. Stats describe exposed item stats, not every proc/buff. | Pending |
+| Delayed items | Immediately export after login/equipment changes. Missing metadata is partial, full available itemRef survives, later SYNC completes after loading. No Lua errors on restricted data. | Pending |
+| Bags | Normal bags plus reagent bag (if equipped), occupied/free counts, bound state. Move a stack manually and export after BAG_UPDATE settles; no duplicate quantity or locked intermediate snapshot. | Pending |
+| Character bank | Open bank, inspect all purchased character tabs and counts; manually mutate items and switch tabs. Check PurchasedBankTabs and CHARACTER labels. No Classic negative IDs or imaginary bank bags. | Pending |
+| Bank stale state | Close/reopen bank, change items, export immediately and after settling. Closed/unviewable data is LAST_SEEN; never visited is UNKNOWN; old data survives a failed read. | Pending |
+| Legacy bank/reagent storage | Current Retail 12.1 uses character tabs: classic main bank, equipped bank bags and separate reagent bank are N/A. Report a mismatch with the actual client rather than assuming a pass. | Pending verification |
+| Warband/account bank | Open account-only access if available. Export explicitly says API-supported but deferred; account items/copper must not appear in character bank totals. | Pending |
+| Professions | Test primary and secondary professions, including a sparse set such as only Fishing. Compare current/max skill and exposed tier/expansion. Historical tiers, knowledge and recipes are not a full catalogue here. | Pending |
+| Spellbook | Verify class/active spec/passive/racial and known flyout spells. Change spec manually, export again. No future/off-spec/pet spells, duplicates, zero IDs, or fabricated Classic ranks. | Pending |
+| Trainer profession | Visit two different profession trainers with useful services. Check service status/level/cost/requirements and independent PROF categories. Filters remain untouched. | Pending |
+| Trainer empty/class | Visit class/no-service trainer if available. Empty services remain partial; no fabricated abilities/category. Useful known category evidence is retained; generic NPC name is not category evidence. | Pending |
+| Trainer persistence | Visit a second category and UNKNOWN, close, `/reload`, export: previous categories and per-category timestamps remain. | Pending |
+| Multiple characters | Export on two characters; each has distinct GUID state. Current export includes only active character, old character snapshots survive reload/logout. | Pending |
+| UI | `/wowsync`, SYNC, `/wowsync button`, copy complete text; background events do not change text being copied. Closing while a refresh runs does not reopen window. | Pending |
+| Legacy commands | `/gearx`, `/itemx 6948` (or owned item), `/bagsx`, `/trainerx` while trainer is open. Retail bags include reagent slots; bank totals are character-only. | Pending |
+| Error/regression | Capture Lua errors via existing BugSack/BugGrabber or `/console scriptErrors 1`. Ordinary gameplay with addon loaded: no automated moves, purchases, training, casting or crafting. | Pending |
+
+## Evidence handoff
+
+Send the baseline export, bank open/closed exports, profession and two trainer
+category observations, plus actual errors and matrix results. `/reload` or normal
+logout flushes data to
+`_retail_/WTF/Account/<account>/SavedVariables/GearExport.lua` for local inspection.
+Do not supply account credentials. Saved exports and error evidence, not a successful
+mock run, are required before changing live acceptance to passed.
+
+## Automated validation
+
+Existing test dependencies are `luaparse` and `fengari-node-cli` in a temporary
+node_modules directory. Run from the repository:
+
+```text
+node tests/run.cjs <path-to-node_modules> <path-to-v2.1-GearExport.lua>
+node scripts/package.cjs Retail
+node scripts/package.cjs ClassicEra
+node scripts/package.cjs TBC
+```
+
+The v2.1 comparison source is `git show 23e0ef2:GearExport.lua` written to a temporary
+UTF-8 file. Keep that argument to run all 20 legacy output comparisons. The runner
+requires successful final markers because Fengari can exit zero after an assertion.
+Checks cover TBC/Era fixtures, Retail fixtures, Lua 5.1 parsing, deterministic shared
+rendering, observational-only code, package targets and BankCleanup's baseline hash.

@@ -560,7 +560,8 @@ local function BuildInventoryReport()
     table.insert(output, "* Vendor value: " .. FormatMoney(vendorValue))
     if (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots then
         local free, total = 0, 0
-        for bag = 0, (NUM_BAG_SLOTS or 4) do
+        local lastBag = Compat and Compat.IsRetail() and Enum.BagIndex.ReagentBag or (NUM_BAG_SLOTS or 4)
+        for bag = 0, lastBag do
             free = free + GetContainerFreeCount(bag)
             total = total + GetContainerSlotCount(bag)
         end

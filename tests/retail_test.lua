@@ -230,6 +230,8 @@ for _, command in ipairs({ "GEAREXPORT", "GEARITEMEXPORT", "GEARINVENTORYEXPORT"
     SlashCmdList[command](command == "GEARITEMEXPORT" and "240001" or "")
     check(GearExportDB.latestExport, "Retail legacy command " .. command)
 end
+SlashCmdList.GEARINVENTORYEXPORT("")
+check(GearExportDB.latestExport:find("Free bag slots: 50 / 52", 1, true), "legacy Retail summary includes reagent bag capacity")
 -- Movement, readiness, omitted APIs, and storage edge cases.
 local originalInfo = C_Container.GetContainerItemInfo
 C_Container.GetContainerItemInfo = function(bag, slot)

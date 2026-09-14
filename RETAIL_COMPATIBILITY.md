@@ -1,6 +1,6 @@
 # Retail compatibility audit and validation
 
-Status: audit complete; implementation and live acceptance pending. This is a
+Status: audit and automated implementation complete; live acceptance pending. This is a
 compatibility/package target, not a separate exporter or a public support claim.
 
 ## Baseline and API source
@@ -80,3 +80,13 @@ Use shared README/LLM prompts and a future shared icon; artwork does not block t
 Live smoke tests have **not** been performed. Automated fixtures cannot verify
 actual client readiness, restricted values, UI taint or event ordering. The final
 validation build will include exact install and smoke-test instructions.
+
+The build and smoke matrix are now available in [RETAIL_TEST_PLAN.md](RETAIL_TEST_PLAN.md).
+`node scripts/package.cjs Retail` produces the reviewable install folder.
+Checkpoint test results: 141 existing assertions including 20 legacy comparisons,
+1,229 Retail assertions, deterministic rendering, nine Lua 5.1 syntax checks,
+all three TOCs, observer action scan and BankCleanup baseline hash pass. Retail
+assertion counts include API argument/range checks repeated during event simulations.
+Historical Era acceptance checkboxes are retained as recorded; the user reports
+substantial in-game validation on that branch. This port does not claim a new
+TBC/Era live regression session.
