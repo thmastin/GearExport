@@ -77,7 +77,9 @@ TOCs remain intact. One repository can produce three game-version-specific files
 for one CurseForge project; no public release is made before live validation.
 Use shared README/LLM prompts and a future shared icon; artwork does not block this port.
 
-Live smoke tests have **not** been performed. Automated fixtures cannot verify
+An initial user-supplied live export confirms generation on 12.1.0 build 69814,
+interface 120100 (Generated 1789344996). The full live smoke checklist is still
+pending; initial evidence is recorded in `RETAIL_TEST_PLAN.md`. Automated fixtures cannot verify
 actual client readiness, restricted values, UI taint or event ordering. The final
 validation build will include exact install and smoke-test instructions.
 

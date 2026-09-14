@@ -196,6 +196,9 @@ For each case record pass/fail, client build, relevant export, and any Lua error
 - [x] BankCleanup baseline bytes unchanged; TBC/Era include it, Retail excludes it.
 - [x] Three reproducible single-TOC packages and manifest hash validation.
 - [x] Retail package installed for manual validation; file hashes verified.
+- [x] First user-supplied live WOWSYNC v1 export received: 12.1.0 build 69814,
+      interface 120100, Generated 1789344996. See initial evidence in
+      `RETAIL_TEST_PLAN.md`; the user explicitly reports the checklist is still pending.
 - [ ] Retail login/reload/export and full in-game matrix in `RETAIL_TEST_PLAN.md`.
 - [ ] Retail live multi-trainer persistence, character separation, bank freshness,
       spellbook/professions, metadata loading and error checks.

@@ -1,7 +1,7 @@
 # Retail validation build
 
 Retail implementation is ready for manual smoke testing. **Retail support is not
-complete or released:** all in-game cases below are pending. Automated mock results
+complete or released:** an initial live export has been received; the full in-game cases below remain pending. Automated mock results
 are recorded separately from client evidence.
 
 ## Install
@@ -25,6 +25,37 @@ The same builder accepts `TBC` and `ClassicEra` for separate packages; those ret
 BankCleanup. No libraries or TSM are required for `/wowsync`.
 
 ## Manual smoke matrix — all pending
+
+### Initial live export evidence
+
+The user supplied the first canonical export (Generated `1789344996`) from Retail
+12.1.0 build 69814, interface 120100, on a level-6 hunter. The user explicitly
+said the checklist still needs to be performed. This establishes successful live
+export generation, not completion of the smoke matrix or independent verification
+of every exported value. Personal character identifiers and the full inventory
+are not copied into public repository documentation.
+
+Observed in that export:
+
+- The WOWSYNC v1 envelope and all eight canonical sections are present.
+- Character, location, equipment, bags, professions and spells report OBSERVED.
+- Retail family/interface metadata, level/XP/money, zone/map/coordinates are populated.
+- Equipment retains complete itemRef payloads, item levels and exposed stats;
+  empty equipment slots remain explicit.
+- Carried storage reports 50 slots, 32 free: a 20-slot backpack and a 30-slot bag.
+  The unequipped reagent bag is represented with zero capacity, not fabricated items.
+- No professions are exposed on this character; this does not validate learned
+  professions or tier handling.
+- Spell rows have numeric identities and no invented ranks. Hunter pet-management
+  abilities appear in the player spellbook; this alone is not evidence of scanning
+  the pet spellbook. Actual learned/future/spec coverage still requires comparison.
+- Unvisited bank and trainers remain UNKNOWN / Not observed.
+
+No Lua error report accompanied the export; an error-free session has not yet
+been explicitly confirmed. Login/reload, movements, equipped reagent bag, bank,
+learned professions, trainers, alternate characters and full UI/error checks remain
+pending. Raw stat keys and full-precision numeric values are current output, not
+evidence that the exported item identities were reduced or lost.
 
 Record pass/fail/N/A, actual client version/build/interface, character, relevant
 export, and the full Lua error/stack (if any). Actions below are performed manually
