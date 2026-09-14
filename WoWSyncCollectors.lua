@@ -37,43 +37,27 @@ end
 
 local function Containers(bank)
     if bank and not S.bankOpen then return nil, { reason = "Bank closed" } end
-    local slots = Compat.GetContainerSlotCount or function(bag) return Optional(GetContainerNumSlots, bag) end
+    local slots = Compat.GetContainerSlotCount
     local freeSlots = Compat.GetContainerFreeSlots
-    local getInfo = Compat.GetContainerInfo or function() return nil end
+    local getInfo = Compat.GetContainerInfo
     if not slots or not getInfo then
         return nil, { reason = "Container APIs unavailable" }
     end
-    local bagRanges, bankRanges
-    if Compat.GetBankRanges then bagRanges, bankRanges = Compat.GetBankRanges() end
+    local bagRanges, bankRanges = Compat.GetBankRanges()
     local bags = bagRanges
     if bank then bags = bankRanges end
-    -- A missing Retail bank view is not permission to use Classic ranges.
-    if Compat.IsRetail() then
-        if not bags then return nil, { reason = "Container view unavailable", retry = true } end
-    end
-    if not bags then
-        bags = {}
-        if bank then
-            bags[1] = BANK_CONTAINER or -1
-            for bag = (NUM_BAG_SLOTS or 4) + 1, (NUM_BAG_SLOTS or 4) + (NUM_BANKBAGSLOTS or 7) do bags[#bags + 1] = bag end
-        else
-            for bag = 0, (NUM_BAG_SLOTS or 4) do bags[#bags + 1] = bag end
-        end
-    end
+    if not bags then return nil, { reason = "Container view unavailable", retry = true } end
     local data = { containers = {}, coverage = bank and Compat.GetBankCoverage() or nil }
     local incomplete, locked = false, false
     for _, bag in ipairs(bags) do
         local count = slots(bag)
-        if count == nil or ((bag == 0 or bag == (BANK_CONTAINER or -1)) and count == 0) then
+        if count == nil or (Compat.ContainerRequiresCapacity(bag, bank) and count == 0) then
             return nil, { reason = "Container capacity not ready", retry = true }
         end
         local free, family
         if freeSlots then free, family = freeSlots(bag) end
         local container = { id = bag, capacity = count, free = free, family = family, slots = {} }
         container.storage = Compat.GetContainerCategory(bag, bank)
-        if bank and Compat.IsRetail() and count == 0 then
-            return nil, { reason = "Purchased bank tab capacity pending", retry = true }
-        end
         local link, equippedID, equippedTexture
         if Compat.GetContainerBagIdentity then
             link, equippedID, equippedTexture = Compat.GetContainerBagIdentity(bag)
@@ -171,7 +155,7 @@ S.collectors.spells = function()
         return (a.rank or "") < (b.rank or "")
     end)
     return { entries = entries, coverage = Compat.IsRetail()
-        and "Retail player spellbook and known flyouts; active spec, passives and racials; no ranks; excludes future/off-spec spells, recipe catalogues and pet spellbook"
+        and "Retail player/profession spellbook and known flyouts; active spec, passives and racials; no ranks; excludes future/off-spec spells, recipe catalogues and pet spellbook"
         or "player spellbook; exposed ranks; excludes recipe catalogues and pet spellbook" },
         { completeness = incomplete and "partial" or "complete", reason = incomplete and "Some spell identities pending" or nil, retry = incomplete }
 end

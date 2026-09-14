@@ -154,6 +154,11 @@ function C.GetContainerCategory(bag, bank)
     return bank and "CHARACTER" or bag == Enum.BagIndex.ReagentBag and "REAGENT_BAG" or "CARRIED"
 end
 
+function C.ContainerRequiresCapacity(bag, bank)
+    if C.IsRetail() then return bank or bag == Enum.BagIndex.Backpack end
+    return bag == 0 or bag == (BANK_CONTAINER or -1)
+end
+
 function C.GetBankCoverage()
     if not C.IsRetail() then return nil end
     return "CHARACTER purchased tabs only; ACCOUNT/Warband API-supported but deferred; legacy main bank, bank bags and reagent bank not applicable"
@@ -173,11 +178,26 @@ function C.EnumerateSpellbook()
             or not api.GetSpellBookItemInfo or not enum or not enum.SpellBookItemType or not enum.SpellBookSpellBank then
             return nil, "Retail spellbook APIs unavailable"
         end
-        local count, result = api.GetNumSpellBookSkillLines(), {}
+        local count, result, ranges = api.GetNumSpellBookSkillLines(), {}, {}
         if not count or count == 0 then return nil, "Spellbook not ready" end
         for tab = 1, count do
             local info = api.GetSpellBookSkillLineInfo(tab)
             if not info or not info.itemIndexOffset or not info.numSpellBookItems then return nil, "Spellbook skill line pending" end
+            ranges[#ranges + 1] = info
+        end
+        -- Retail's separate professions book exposes player-bank slots outside
+        -- the class/spec skill lines. These are abilities, not recipe catalogues.
+        if not GetProfessions or not GetProfessionInfo then return nil, "Profession spellbook APIs unavailable" end
+        local professions = { GetProfessions() }
+        for position = 1, 5 do
+            if professions[position] then
+                local name, _, _, _, spells, offset = GetProfessionInfo(professions[position])
+                if spells == nil or offset == nil then return nil, "Profession spellbook pending" end
+                if spells > 0 then ranges[#ranges + 1] = { name = name,
+                    itemIndexOffset = offset, numSpellBookItems = spells } end
+            end
+        end
+        for tab, info in ipairs(ranges) do
             if not info.offSpecID then
                 local group = { name = info.name, index = tab, entries = {} }
                 for index = info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems do

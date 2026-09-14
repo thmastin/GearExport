@@ -55,13 +55,18 @@ local spells = {
 C_SpellBook = {
     GetNumSpellBookSkillLines = function() return 1 end,
     GetSpellBookSkillLineInfo = function() return { name = "General and class", itemIndexOffset = 0, numSpellBookItems = #spells } end,
-    GetSpellBookItemInfo = function(index, bank) equal(bank, 0, "player spellbook only"); return spells[index] end,
+    GetSpellBookItemInfo = function(index, bank)
+        equal(bank, 0, "player spellbook only")
+        if index == 101 then return { name = "Alchemy", spellID = 1005, itemType = 1 } end
+        return spells[index]
+    end,
 }
 function GetFlyoutInfo() return "Flyout", "", 2, true end
 function GetFlyoutSlotInfo(_, slot) return 1003, nil, slot == 1, "Known flyout" end
 function GetProfessions() return nil, 2, nil, 4, 5 end
 function GetProfessionInfo(index)
-    return index == 2 and "Alchemy" or index == 4 and "Fishing" or "Cooking", 1, 45, 100, 0, 0, 2800 + index, 0, 0, 0, "Midnight"
+    return index == 2 and "Alchemy" or index == 4 and "Fishing" or "Cooking", 1, 45, 100,
+        index == 2 and 1 or 0, 100, 2800 + index, 0, 0, 0, "Midnight"
 end
 C_TradeSkillUI = { GetProfessionInfoBySkillLineID = function() return { expansionName = "Midnight" } end, CraftRecipe = action }
 local trainerCategory = "Alchemy"
@@ -178,7 +183,8 @@ equal(#S.record.sections.bags.data.containers, 6, "canonical bags include reagen
 equal(S.record.sections.bags.data.containers[6].storage, "REAGENT_BAG", "reagent category")
 equal(S.record.sections.equipment.data.slots[1].itemString, itemRef, "all modern item modifiers preserved")
 equal(S.record.sections.equipment.data.slots[1].itemLevel, 289, "instance level in snapshot")
-equal(#S.record.sections.spells.data.entries, 4, "deduplicated learned spells")
+equal(#S.record.sections.spells.data.entries, 5, "deduplicated learned spells including profession abilities")
+equal(S.record.sections.spells.data.entries[5].spellID, 1005, "profession spell outside class tab ranges")
 equal(#S.record.sections.professions.data.entries, 3, "canonical professions")
 equal(S.record.sections.bank, nil, "closed bank not fabricated")
 local frozen = S.GetSnapshot()

@@ -91,7 +91,7 @@ Older snapshots without these optional fields render as before:
   `category` (PRIMARY/SECONDARY). Retail rows append these columns after the
   existing profession/skill/maxSkill columns. Coverage is tracked professions and
   the exposed tier, not every historical tier, recipe, specialization or knowledge.
-- Retail player spellbook rows have no rank (`-`); subName is not interpreted as
+- Retail player/profession spellbook rows have no rank (`-`); subName is not interpreted as
   rank. Future/off-spec/pet entries are excluded; known flyouts are expanded and IDs
   deduplicated. Spell coverage text states this explicitly.
 - Retail trainer category uses service skill-line API evidence, not NPC name or

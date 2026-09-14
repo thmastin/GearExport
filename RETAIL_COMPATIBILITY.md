@@ -84,9 +84,31 @@ validation build will include exact install and smoke-test instructions.
 The build and smoke matrix are now available in [RETAIL_TEST_PLAN.md](RETAIL_TEST_PLAN.md).
 `node scripts/package.cjs Retail` produces the reviewable install folder.
 Checkpoint test results: 141 existing assertions including 20 legacy comparisons,
-1,229 Retail assertions, deterministic rendering, nine Lua 5.1 syntax checks,
+1,264 Retail assertions, deterministic rendering, nine Lua 5.1 syntax checks,
 all three TOCs, observer action scan and BankCleanup baseline hash pass. Retail
 assertion counts include API argument/range checks repeated during event simulations.
 Historical Era acceptance checkboxes are retained as recorded; the user reports
 substantial in-game validation on that branch. This port does not claim a new
 TBC/Era live regression session.
+
+Final API review also includes profession-book ability slots from GetProfessionInfo's
+numSpells/spellOffset tuple, read through C_SpellBook's Player bank just as Blizzard's
+ProfessionsBook does. They can lie outside the class/spec skill-line ranges. These
+abilities are included without accessing recipe catalogues. Container range and
+required-capacity differences stay in Compat, not duplicated Classic arithmetic in
+collectors. Account-bank mutation events are intentionally not subscribed because
+that storage is outside the initial capture coverage.
+
+## Pushed development checkpoints
+
+| Commit | Checkpoint | Validation |
+| --- | --- | --- |
+| 36c82d1 | Audit and Retail TOC scaffold | 141 existing assertions; syntax/static/integrity passed |
+| 1c573de | Compatibility adapters | 37 Retail + 141 existing assertions passed |
+| 9eef1b1 | Shared collectors/renderer and legacy normalization | 462 Retail + 141 existing assertions passed |
+| d3e94ea | Expanded Retail automated coverage | 1,229 Retail + 141 existing assertions; packaging/static checks passed |
+| 63cbf12 | Installed manual validation build and reproducible packages | 1,254 Retail + 141 existing assertions; three package manifests and installed hashes passed |
+
+Each checkpoint above was committed on `retail-compat` and pushed to origin without
+force-push or history rewriting. Final regression/polish follows these checkpoints;
+its hash is available in git history. Live smoke acceptance remains outstanding.
