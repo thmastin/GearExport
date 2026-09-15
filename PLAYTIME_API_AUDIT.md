@@ -40,6 +40,42 @@ separate server requests is expected. No live acceptance is claimed here.
 
 ## Checkpoint validation
 
+### Retail missing-field investigation
+
+The reported level-78 Evoker export on Retail 12.1.0 build 69814 omitted both
+labels. Inspection of the actual `_retail_/Interface/AddOns/GearExport` install
+found September 13 files predating the playtime commit. The installed renderer
+contained neither label; the installed core had no playtime request/event code.
+Its renderer SHA-256 was
+`31f2efe5329f4a9ab55dcba03ee939144cd29031d949a6c0b6596c14d3465eb5`, versus
+`75ee3f5662263dbba1fb94edf380102085b201fe289f9ce89e9150a6b6f5997f`
+in the playtime checkpoint. Building and pushing had not updated the game install.
+
+Rechecked the build-69814 generated documentation and Retail slash/chat source:
+`RequestTimePlayed()` provides no synchronous return values. Both raw seconds
+arrive via `TIME_PLAYED_MSG(totalTimePlayed, timePlayedThisLevel)`. The generated
+event's `SynchronousEvent` annotation does not make the request a synchronous
+getter. The existing handler, bounded export wait, late response capture and
+next-SYNC retry already implement that contract; no different Retail getter was
+discovered. Both fields are rendered even with no response. This incident does
+not establish that Retail withholds either value.
+
+Correction: rebuild/install the Retail package and verify its hashes against
+current source using `scripts/verify-install.cjs`, then reload the client.
+The checker rejected the stale installed capture/compat/core/renderer files.
+`tests/retail_played_test.lua` adds a level-78 Evoker/XP fixture with a request
+that returns nothing and schedules a delayed two-value event, plus timeout
+coverage proving both labels remain present. Durations and delay are synthetic;
+we have not measured server response timing or captured live payloads in-client.
+The original Retail assertions remain intact. In-game `/reload`, `/wowsync`
+and `/played` comparison is still required after installation.
+
+Correction regression run: 207 TBC/Era assertions and 1,571 Retail assertions
+pass, including the original 1,495 Retail assertions, canonical baseline byte
+comparisons, legacy report comparisons, Lua 5.1 and unchanged BankCleanup hash.
+
+### Original playtime checkpoint results
+
 - Full `tests/run.cjs` with the v2.1 legacy baseline: 207 TBC/Era assertions,
   1,495 Retail assertions, zero gameplay actions; Lua 5.1 syntax and all release,
   Classic and Retail invariants pass.

@@ -14,10 +14,16 @@ must be `GearExport`, preserving existing slash commands and SavedVariables name
    `D:\World of Warcraft\_retail_\Interface\AddOns\GearExport`.
    The package contains one `GearExport.toc`, selected from `GearExport-Retail.toc`.
    Do not copy the source tree's TBC default TOC or Classic flavor aliases into it.
-3. Enable **WoWSync (Retail - validation build)** in Retail's AddOns list. Restart
+3. Verify the installed files before testing:
+   `node scripts/verify-install.cjs Retail "D:\World of Warcraft\_retail_\Interface\AddOns\GearExport"`.
+   A mismatch means rebuild/copy again; building or pushing alone does not install.
+4. Enable **WoWSync (Retail - validation build)** in Retail's AddOns list. Restart
    the client if this is a newly installed addon; otherwise `/reload`.
-4. Use `/wowsync`. Copy from `WOWSYNC v1` through `[END]`. Check `ClientFamily:
+5. Use `/wowsync`. Copy from `WOWSYNC v1` through `[END]`. Check `ClientFamily:
    Retail`, `Interface: 120100`, character, level and MoneyCopper.
+   `[CHARACTER]` must include `PlayedSeconds` and `LevelPlayedSeconds`, even when
+   their values are `?`. Compare both values with `/played` after response delivery.
+   A missing label indicates an older renderer, not an unavailable playtime value.
 
 BankCleanup is absent from the Retail package. `/bankx` is not a Retail command.
 The installed Anniversary and Era addons are not changed by building this package.

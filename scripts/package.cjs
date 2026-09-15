@@ -13,7 +13,7 @@ if (luaFiles.some(file => path.basename(file) !== file)) throw new Error('Unexpe
 if (target === 'Retail' && luaFiles.includes('BankCleanup.lua')) throw new Error('Retail must exclude BankCleanup');
 const output = path.join(root, 'dist', target, 'GearExport');
 const docs = ['README.md', 'LICENSE', 'WOWSYNC_SCHEMA.md', 'WOWSYNC_ACCEPTANCE.md',
-    'RETAIL_COMPATIBILITY.md', 'RETAIL_TEST_PLAN.md', 'BANK_CLEANUP_TESTS.md'];
+    'RETAIL_COMPATIBILITY.md', 'RETAIL_TEST_PLAN.md', 'BANK_CLEANUP_TESTS.md', 'PLAYTIME_API_AUDIT.md'];
 const expected = [...luaFiles, ...docs, 'GearExport.toc', 'package-manifest.json'];
 // Reject stale/foreign files rather than silently shipping an obsolete flavor TOC.
 if (fs.existsSync(output)) {

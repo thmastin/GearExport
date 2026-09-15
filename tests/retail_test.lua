@@ -334,6 +334,7 @@ GetServerTime = renderClock
 check(oldRender:find("[PROFESSIONS]", 1, true), "schema sections retained")
 -- Reinitialize with the same SavedVariables as /reload would.
 assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
+assert(loadfile("tests/retail_played_test.lua"))()(S, check, equal, advance)
 local savedDB = WoWSyncDB
 local reloaded = {}
 for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncRender.lua" }) do
