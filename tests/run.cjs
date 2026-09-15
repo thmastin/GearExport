@@ -4,6 +4,7 @@ const { spawnSync } = require('child_process');
 require('./check_lua.cjs');
 require('./check_release.cjs');
 require('./check_classic.cjs');
+require('./check_retail.cjs');
 const cli = path.join(process.argv[2], 'fengari-node-cli', 'src', 'lua-cli.js');
 const args = [cli, 'tests/wowsync_test.lua'];
 if (process.argv[3]) args.push(process.argv[3]);
@@ -13,5 +14,12 @@ process.stdout.write(result.stdout || '');
 process.stderr.write(result.stderr || '');
 // Fengari can return exit code 0 for a Lua assertion failure; require the final marker.
 if (result.error || result.status !== 0 || result.stderr || !/^PASS: \d+ assertions; 0 gameplay actions\s*$/m.test(result.stdout || '')) {
+  process.exitCode = 1;
+}
+const retail = spawnSync(process.execPath, [cli, 'tests/retail_test.lua'], { encoding: 'utf8' });
+if (retail.error) process.stderr.write(retail.error.message + '\n');
+process.stdout.write(retail.stdout || '');
+process.stderr.write(retail.stderr || '');
+if (retail.error || retail.status !== 0 || retail.stderr || !/^PASS: \d+ Retail assertions; 0 gameplay actions\s*$/m.test(retail.stdout || '')) {
   process.exitCode = 1;
 }

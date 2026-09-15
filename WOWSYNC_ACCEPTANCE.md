@@ -186,7 +186,29 @@ For each case record pass/fail, client build, relevant export, and any Lua error
       asset and add the TOC `IconTexture` hook once artwork is available; no
       placeholder artwork should be shipped.
 
-## Multi-category trainer acceptance
+## Retail compatibility validation build (2026-09-13)
+
+- [x] Audit completed before implementation; pinned live UI/API source and target
+      Retail 12.1.0 / interface 120100 recorded in `RETAIL_COMPATIBILITY.md`.
+- [x] Shared source, schema, renderer and UI; dedicated `retail-compat` branch.
+- [x] Retail fixtures, existing TBC/Era fixtures and all 20 legacy report comparisons pass.
+- [x] Deterministic rendering, Lua 5.1 parsing and observer action checks pass.
+- [x] BankCleanup baseline bytes unchanged; TBC/Era include it, Retail excludes it.
+- [x] Three reproducible single-TOC packages and manifest hash validation.
+- [x] Retail package installed for manual validation; file hashes verified.
+- [x] First user-supplied live WOWSYNC v1 export received: 12.1.0 build 69814,
+      interface 120100, Generated 1789344996. See initial evidence in
+      `RETAIL_TEST_PLAN.md`; the user explicitly reports the checklist is still pending.
+- [ ] Retail login/reload/export and full in-game matrix in `RETAIL_TEST_PLAN.md`.
+- [ ] Retail live multi-trainer persistence, character separation, bank freshness,
+      spellbook/professions, metadata loading and error checks.
+- [ ] Final public support/release acceptance after live evidence and any required fixes.
+
+Automated passes do not mark the in-game cases complete. The user's existing
+TBC/Era validation remains the baseline; this port has not performed new live
+regression sessions in those clients.
+
+## Multi-category trainer acceptance (shared model)
 
 - [x] Store the latest trainer snapshot and visit independently for each derived
       category instead of replacing one global trainer record.

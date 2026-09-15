@@ -36,8 +36,11 @@ renderers.character = function(out, data)
     Field(out, "Name", data.name); Field(out, "Realm", data.realm)
     Field(out, "Class", data.class); Field(out, "Level", data.level)
     Field(out, "Faction", data.faction); Field(out, "MoneyCopper", data.moneyCopper)
+    Field(out, "PlayedSeconds", data.playedSeconds)
+    Field(out, "LevelPlayedSeconds", data.levelPlayedSeconds)
     if data.xp and data.xpMax and data.xpMax > 0 then Field(out, "XP", data.xp .. "/" .. data.xpMax) end
     Field(out, "Client", (data.clientVersion or "?") .. " build " .. (data.clientBuild or "?"))
+    if data.clientFamily then Field(out, "ClientFamily", data.clientFamily); Field(out, "Interface", data.interface) end
 end
 renderers.location = function(out, data)
     Field(out, "Zone", data.zone)
@@ -62,6 +65,7 @@ local function Inventory(out, data)
     table.sort(containers, function(a, b) return a.id < b.id end)
     Row(out, "container", "capacity", "free", "family", "bagRef")
     for _, container in ipairs(containers) do
+        if container.storage then Field(out, "ContainerStorage " .. container.id, container.storage) end
         total = total + container.capacity
         if container.free == nil then free = nil elseif free then free = free + container.free end
         Row(out, container.id, container.capacity, container.free, container.family,
@@ -86,11 +90,21 @@ local function Inventory(out, data)
 end
 renderers.bags = Inventory
 renderers.bank = function(out, data)
+    if data.coverage then Field(out, "Coverage", data.coverage) end
     if data.visit then Field(out, "SnapshotVisit", data.visit.openedAt) end
     if data.purchasedBagSlots then Field(out, "PurchasedBankBagSlots", data.purchasedBagSlots) end
+    if data.purchasedTabs then Field(out, "PurchasedBankTabs", data.purchasedTabs) end
     Inventory(out, data)
 end
 renderers.professions = function(out, data)
+    if data.coverage then Field(out, "Coverage", data.coverage) end
+    if data.retail then
+        Row(out, "profession", "skill", "maxSkill", "skillLineID", "tier", "expansion", "category")
+        for _, entry in ipairs(data.entries) do Row(out, entry.name, entry.rank, entry.maxRank,
+            entry.skillLineID, entry.tier, entry.expansion, entry.category) end
+        if #data.entries == 0 then Field(out, "Professions", "None exposed by tracked profession APIs") end
+        return
+    end
     Row(out, "profession", "skill", "maxSkill")
     for _, entry in ipairs(data.entries) do Row(out, entry.name, entry.rank, entry.maxRank) end
     if #data.entries == 0 then Field(out, "Professions", "None identified in exposed skill lines") end

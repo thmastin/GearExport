@@ -10,7 +10,9 @@ end
 function S.Item(link, itemID)
     itemID = itemID or (link and tonumber(link:match("item:(%d+)")))
     local item = { itemID = itemID, itemString = link and link:match("(item:[^|]+)") }
-    local name, _, quality, level, requiredLevel, _, _, _, _, _, vendor = GetItemInfo(link or itemID)
+    local name, _, quality, level, requiredLevel, _, _, _, _, _, vendor = Compat.GetItemInfo(link or itemID)
+    if Compat.GetItemLevel and link then level = Compat.GetItemLevel(link, level) end
+    if not name then Compat.RequestItemData(itemID) end
     item.name, item.quality, item.itemLevel, item.requiredLevel = name, quality, level, requiredLevel
     item.vendorCopper = vendor
     return item
@@ -22,8 +24,14 @@ S.collectors.character = function()
     local data = { name = UnitName("player"), realm = GetRealmName(), class = class,
         level = UnitLevel("player"), faction = Optional(UnitFactionGroup, "player"),
         moneyCopper = GetMoney(), xp = Optional(UnitXP, "player"), xpMax = Optional(UnitXPMax, "player"),
-        clientVersion = version, clientBuild = build, interface = interface }
+        clientVersion = version, clientBuild = build, interface = interface,
+        clientFamily = Compat.IsRetail() and "Retail" or nil }
     if not data.name or not class or data.level < 1 then return nil, { reason = "Character not ready", retry = true } end
+    local played = S.played
+    if played and played.guid == UnitGUID("player") then
+        data.playedSeconds = played.total
+        if played.level == data.level then data.levelPlayedSeconds = played.levelSeconds end
+    end
     return data
 end
 
@@ -34,34 +42,27 @@ end
 
 local function Containers(bank)
     if bank and not S.bankOpen then return nil, { reason = "Bank closed" } end
-    local slots = Compat.GetContainerSlotCount or function(bag) return Optional(GetContainerNumSlots, bag) end
+    local slots = Compat.GetContainerSlotCount
     local freeSlots = Compat.GetContainerFreeSlots
-    local getInfo = Compat.GetContainerInfo or function() return nil end
+    local getInfo = Compat.GetContainerInfo
     if not slots or not getInfo then
         return nil, { reason = "Container APIs unavailable" }
     end
-    local bagRanges, bankRanges
-    if Compat.GetBankRanges then bagRanges, bankRanges = Compat.GetBankRanges() end
-    local bags = bank and bankRanges or bagRanges
-    if not bags then
-        bags = {}
-        if bank then
-            bags[1] = BANK_CONTAINER or -1
-            for bag = (NUM_BAG_SLOTS or 4) + 1, (NUM_BAG_SLOTS or 4) + (NUM_BANKBAGSLOTS or 7) do bags[#bags + 1] = bag end
-        else
-            for bag = 0, (NUM_BAG_SLOTS or 4) do bags[#bags + 1] = bag end
-        end
-    end
-    local data = { containers = {} }
+    local bagRanges, bankRanges = Compat.GetBankRanges()
+    local bags = bagRanges
+    if bank then bags = bankRanges end
+    if not bags then return nil, { reason = "Container view unavailable", retry = true } end
+    local data = { containers = {}, coverage = bank and Compat.GetBankCoverage() or nil }
     local incomplete, locked = false, false
     for _, bag in ipairs(bags) do
         local count = slots(bag)
-        if count == nil or ((bag == 0 or bag == (BANK_CONTAINER or -1)) and count == 0) then
+        if count == nil or (Compat.ContainerRequiresCapacity(bag, bank) and count == 0) then
             return nil, { reason = "Container capacity not ready", retry = true }
         end
         local free, family
         if freeSlots then free, family = freeSlots(bag) end
         local container = { id = bag, capacity = count, free = free, family = family, slots = {} }
+        container.storage = Compat.GetContainerCategory(bag, bank)
         local link, equippedID, equippedTexture
         if Compat.GetContainerBagIdentity then
             link, equippedID, equippedTexture = Compat.GetContainerBagIdentity(bag)
@@ -98,7 +99,11 @@ local function Containers(bank)
     if locked or GetCursorInfo() then return nil, { reason = "Inventory movement in progress", retry = true } end
     if bank then
         data.visit = S.Copy(S.record.visits.bank)
-        data.purchasedBagSlots = Optional(GetNumBankSlots)
+        local count, kind = Compat.GetPurchasedBankSlots()
+        if kind == "tabs" then
+            data.purchasedTabs = count
+            if count == nil or count ~= #bags then return nil, { reason = "Purchased bank tabs pending", retry = true } end
+        else data.purchasedBagSlots = count end
     end
     return data, { completeness = incomplete and "partial" or "complete",
         reason = incomplete and "Item metadata pending" or nil, retry = incomplete }
@@ -115,11 +120,11 @@ S.collectors.equipment = function()
             local item = S.Item(link, id)
             if link then
                 local ready
-                item.stats, ready = readers.EquipmentStats(link, slot)
+                item.stats, ready = Compat.GetEquipmentStats(link, slot, readers.EquipmentStats)
                 if not ready then incomplete = true end
             end
             data.slots[slot] = item
-            if not link or not item.name then incomplete = true end
+            if not link or not item.name or not item.itemLevel then incomplete = true end
         elseif (Optional(GetInventoryItemTexture, "player", slot)) then
             return nil, { reason = "Equipment identity pending", retry = true }
         end
@@ -129,22 +134,10 @@ S.collectors.equipment = function()
 end
 
 S.collectors.professions = function()
-    if not GetNumSkillLines or not GetSkillLineInfo or not GetSpellTabInfo or not GetSpellBookItemName then
-        return nil, { reason = "Classic skill/spellbook APIs unavailable" }
-    end
-    if GetNumSkillLines() == 0 then return nil, { reason = "Skill lines not ready", retry = true } end
-    local spellNames, spellError = Compat.GetProfessionSpellEvidence and Compat.GetProfessionSpellEvidence()
-    if not spellNames and spellError then return nil, { reason = spellError, retry = true } end
-    local entries, collapsed = readers.Professions()
-    table.sort(entries, function(a, b) return a.name < b.name end)
-    return { entries = entries, identification = "abandonable skill lines and ranked trade-skill spells" },
-        { completeness = collapsed and "partial" or "complete", reason = collapsed and "Collapsed skill headers; visible skills only" or nil }
+    return Compat.GetProfessionState(readers.Professions)
 end
 
 S.collectors.spells = function()
-    if not GetNumSpellTabs or not GetSpellTabInfo or not GetSpellBookItemName then
-        return nil, { reason = "Classic spellbook enumeration unavailable" }
-    end
     local entries, seen, incomplete = {}, {}, false
     local tabs, spellError = Compat.EnumerateSpellbook and Compat.EnumerateSpellbook()
     if not tabs then return nil, { reason = spellError or "Spellbook not ready", retry = true } end
@@ -166,7 +159,9 @@ S.collectors.spells = function()
         if a.name ~= b.name then return a.name < b.name end
         return (a.rank or "") < (b.rank or "")
     end)
-    return { entries = entries, coverage = "player spellbook; exposed ranks; excludes recipe catalogues and pet spellbook" },
+    return { entries = entries, coverage = Compat.IsRetail()
+        and "Retail player/profession spellbook and known flyouts; active spec, passives and racials; no ranks; excludes future/off-spec spells, recipe catalogues and pet spellbook"
+        or "player spellbook; exposed ranks; excludes recipe catalogues and pet spellbook" },
         { completeness = incomplete and "partial" or "complete", reason = incomplete and "Some spell identities pending" or nil, retry = incomplete }
 end
 

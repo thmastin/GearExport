@@ -462,6 +462,7 @@ WoWSyncDB, S.record = db, nil
 check(S.Initialize(), "current database restored after migration test")
 
 -- Classic Era-shaped compatibility fixture: the General spellbook tab is second,
+assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
 -- and item data arrives through ITEM_DATA_LOAD_RESULT.
 local classicTabs, classicSkills = false, false
 local originalBuild, originalTabs, originalTabInfo, originalSkillCount, originalSkillInfo =
@@ -498,6 +499,7 @@ check(S.record.sections.bags.completeness == "complete", "Classic item data even
 local oldMap = C_Map; C_Map = nil; event("ZONE_CHANGED"); advance(1)
 check(S.record.sections.location.data.zone == "Thunder Bluff", "Classic optional map APIs fall back safely")
 C_Map = oldMap
+assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
 GetBuildInfo, GetNumSpellTabs, GetSpellTabInfo, GetNumSkillLines, GetSkillLineInfo =
     originalBuild, originalTabs, originalTabInfo, originalSkillCount, originalSkillInfo
 print("PASS: " .. passed .. " assertions; " .. movingCalls .. " gameplay actions")

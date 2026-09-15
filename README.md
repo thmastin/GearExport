@@ -1,10 +1,19 @@
 # GearExport
 
-GearExport is a small, dependency-free World of Warcraft addon for **Burning Crusade Classic Anniversary** and **Classic Era**. It creates clean Markdown reports that can be copied into a `.md` file or pasted into ChatGPT for character, equipment, and inventory analysis.
+GearExport includes WoWSync, a dependency-free World of Warcraft character exporter with one shared `WOWSYNC v1` format. Supported compatibility work covers **Burning Crusade Classic Anniversary**, **Classic Era**, and a **Retail validation build**. Retail live acceptance is pending; see [Retail limitations and audit](RETAIL_COMPATIBILITY.md) and [Retail install/test instructions](RETAIL_TEST_PLAN.md). Legacy Markdown reports remain available for character, equipment, and inventory analysis.
 
 TradeSkillMaster is optional. When it is installed, GearExport uses its public API to include market pricing and current-character inventory-location data.
 
 ## Installation
+
+For a single-client package, run `node scripts/package.cjs TBC`,
+`node scripts/package.cjs ClassicEra`, or `node scripts/package.cjs Retail` from
+the repository. Copy the resulting `dist/<target>/GearExport` folder into that
+client's `Interface/AddOns` directory. Each package has one selected
+`GearExport.toc`; Retail excludes BankCleanup. Retail targets `_retail_`, Era
+targets `_classic_era_`, and TBC Anniversary targets `_anniversary_`.
+
+The following source-tree installation example is for Anniversary/Classic:
 
 Copy the `GearExport` directory into:
 
@@ -178,17 +187,29 @@ it. Copy/paste needs no reload.
 
 ## Compatibility
 
-GearExport has two packaging targets over one shared source tree:
+GearExport has three packaging targets over one shared source tree:
 
 - Burning Crusade Classic Anniversary uses interface `20506` and `GearExport.toc`.
 - Classic Era uses interface `11509` and `GearExport-ClassicEra.toc`.
+- Retail validation uses interface `120100` (12.1.0) and `GearExport-Retail.toc`.
+  The package builder installs this as the sole `GearExport.toc`. Retail in-game
+  acceptance remains pending; it is not yet a supported public release.
 
-Both targets share the WoWSync database, collectors, renderer, UI, and canonical
+All targets share the WoWSync database model, collectors, renderer, UI, and canonical
 `WOWSYNC v1` export. `WoWSyncCompat.lua` only normalizes container, spellbook,
 trainer, location, and delayed item-data behavior where clients differ. Classic
 content naturally has different item IDs, spell IDs, trainer services, ranks, and
 costs; those values are observed from the active client and are not mixed with TBC
 data. Equipment and trainer sections may remain partial while client data is loading.
+
+Retail uses modern item/spellbook APIs, includes the carried reagent bag, and
+observes purchased character bank tabs. Warband/account storage is explicitly
+deferred and excluded from character totals. Profession output adds exposed tier
+identity without a recipe/knowledge catalogue; Retail spells have no invented
+ranks. See the [client-specific assessment](RETAIL_COMPATIBILITY.md) for coverage.
+BankCleanup remains byte-for-byte intact and included in TBC/Era packages; it is
+excluded from Retail. One CurseForge project with separate game-version files is
+the intended release arrangement after live validation. The icon is still pending.
 
 The Classic Era package has no required external libraries and does not change
 BankCleanup or any existing slash command. TSM compatibility remains a separate,
