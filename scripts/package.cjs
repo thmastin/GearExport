@@ -14,17 +14,18 @@ if (target === 'Retail' && luaFiles.includes('BankCleanup.lua')) throw new Error
 const output = path.join(root, 'dist', target, 'GearExport');
 const docs = ['README.md', 'LICENSE', 'WOWSYNC_SCHEMA.md', 'WOWSYNC_ACCEPTANCE.md',
     'RETAIL_COMPATIBILITY.md', 'RETAIL_TEST_PLAN.md', 'BANK_CLEANUP_TESTS.md', 'PLAYTIME_API_AUDIT.md'];
-const expected = [...luaFiles, ...docs, 'GearExport.toc', 'package-manifest.json'];
+const assets = ['WoWSyncIcon.tga'];
+const expected = [...luaFiles, ...docs, ...assets, 'GearExport.toc', 'package-manifest.json'];
 // Reject stale/foreign files rather than silently shipping an obsolete flavor TOC.
 if (fs.existsSync(output)) {
     const extra = fs.readdirSync(output).filter(file => !expected.includes(file));
     if (extra.length) throw new Error('Unexpected files in output: ' + extra.join(', '));
 }
 fs.mkdirSync(output, { recursive: true });
-for (const file of [...luaFiles, ...docs]) fs.copyFileSync(path.join(root, file), path.join(output, file));
+for (const file of [...luaFiles, ...docs, ...assets]) fs.copyFileSync(path.join(root, file), path.join(output, file));
 fs.writeFileSync(path.join(output, 'GearExport.toc'), toc);
 const hashes = {};
-for (const file of [...luaFiles, ...docs, 'GearExport.toc'].sort()) {
+for (const file of [...luaFiles, ...docs, ...assets, 'GearExport.toc'].sort()) {
     hashes[file] = crypto.createHash('sha256').update(fs.readFileSync(path.join(output, file))).digest('hex');
 }
 fs.writeFileSync(path.join(output, 'package-manifest.json'), JSON.stringify({

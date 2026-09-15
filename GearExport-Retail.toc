@@ -3,6 +3,7 @@
 ## Notes: Shared WOWSYNC v1 character export; Retail live validation pending
 ## Version: 2.2-retail-dev
 ## SavedVariables: GearExportDB, WoWSyncDB
+## IconTexture: Interface\AddOns\GearExport\WoWSyncIcon.tga
 
 WoWSyncCompat.lua
 GearExport.lua

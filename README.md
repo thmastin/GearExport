@@ -6,6 +6,12 @@ TradeSkillMaster is optional. When it is installed, GearExport uses its public A
 
 ## Installation
 
+All three client packages include the supplied WoWSync artwork as
+`WoWSyncIcon.tga`, referenced by TOC `IconTexture` metadata for the AddOns list.
+Keep the installation folder named `GearExport` so the texture path and existing
+addon identity remain valid. The unchanged source PNG and conversion notes are
+preserved in the repository's `assets` directory.
+
 For a single-client package, run `node scripts/package.cjs TBC`,
 `node scripts/package.cjs ClassicEra`, or `node scripts/package.cjs Retail` from
 the repository. Copy the resulting `dist/<target>/GearExport` folder into that
