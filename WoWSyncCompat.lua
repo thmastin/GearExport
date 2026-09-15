@@ -12,6 +12,20 @@ function C.IsRetail()
     return WOW_PROJECT_MAINLINE ~= nil and WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
 end
 
+-- Audited on Anniversary, Era and Retail: no arguments or direct return;
+-- TIME_PLAYED_MSG supplies total seconds, then seconds at this level.
+function C.RequestPlayed()
+    if type(RequestTimePlayed) ~= "function" then return false end
+    return pcall(RequestTimePlayed)
+end
+
+function C.PlayedSeconds(value)
+    if issecretvalue and issecretvalue(value) then return nil end
+    if type(value) ~= "number" or value ~= value or value < 0
+        or value == math.huge or value % 1 ~= 0 then return nil end
+    return value
+end
+
 function C.GetItemInfo(reference)
     if reference == nil then return nil end
     return Optional(C.IsRetail() and C_Item and C_Item.GetItemInfo or GetItemInfo, reference)

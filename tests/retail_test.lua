@@ -333,6 +333,7 @@ equal(S.Render(snapshot), S.Render(snapshot), "frozen rendering never reads cloc
 GetServerTime = renderClock
 check(oldRender:find("[PROFESSIONS]", 1, true), "schema sections retained")
 -- Reinitialize with the same SavedVariables as /reload would.
+assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
 local savedDB = WoWSyncDB
 local reloaded = {}
 for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncRender.lua" }) do

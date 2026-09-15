@@ -247,3 +247,25 @@ Genuinely unavailable item names/links or empty/failed equipped tooltips still y
 partial coverage, with bounded retries and later sync/item-info refreshes. Existing
 random-property tooltip interpretation is retained. No Retail API replacement,
 permanent polling, fabricated stats, or verbose per-item diagnostics were added.
+## Character playtime (additive WOWSYNC v1 fields)
+
+`[CHARACTER]` always renders `PlayedSeconds` and `LevelPlayedSeconds` after
+`MoneyCopper`. SavedVariables uses numeric `playedSeconds` and
+`levelPlayedSeconds` in `sections.character.data`. Values are raw nonnegative
+integer seconds from `TIME_PLAYED_MSG`: total character time and time at the
+current level, respectively. Zero is known; unavailable values are absent in
+SavedVariables and render as `?`, independently for each field. Existing field
+names, meanings and section ordering are unchanged.
+
+Login/world entry and explicit SYNC request fresh server observations. Export
+waits up to its existing three-second deadline; missing APIs, failed requests,
+missing responses and invalid/restricted values remain unknown. A response
+arriving later updates the stored snapshot without changing an already displayed
+export. Values are last received observations, never estimates advanced by a
+local clock. A new request clears the session observation, and a level change
+invalidates previous level time and requests another observation. Persisted
+values survive reload as part of the snapshot, but are not reused as fresh
+session observations. No duration formatting is stored.
+
+See [the cross-client API audit](PLAYTIME_API_AUDIT.md) for source evidence and
+live validation limitations.

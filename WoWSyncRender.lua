@@ -36,6 +36,8 @@ renderers.character = function(out, data)
     Field(out, "Name", data.name); Field(out, "Realm", data.realm)
     Field(out, "Class", data.class); Field(out, "Level", data.level)
     Field(out, "Faction", data.faction); Field(out, "MoneyCopper", data.moneyCopper)
+    Field(out, "PlayedSeconds", data.playedSeconds)
+    Field(out, "LevelPlayedSeconds", data.levelPlayedSeconds)
     if data.xp and data.xpMax and data.xpMax > 0 then Field(out, "XP", data.xp .. "/" .. data.xpMax) end
     Field(out, "Client", (data.clientVersion or "?") .. " build " .. (data.clientBuild or "?"))
     if data.clientFamily then Field(out, "ClientFamily", data.clientFamily); Field(out, "Interface", data.interface) end

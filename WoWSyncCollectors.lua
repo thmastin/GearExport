@@ -27,6 +27,11 @@ S.collectors.character = function()
         clientVersion = version, clientBuild = build, interface = interface,
         clientFamily = Compat.IsRetail() and "Retail" or nil }
     if not data.name or not class or data.level < 1 then return nil, { reason = "Character not ready", retry = true } end
+    local played = S.played
+    if played and played.guid == UnitGUID("player") then
+        data.playedSeconds = played.total
+        if played.level == data.level then data.levelPlayedSeconds = played.levelSeconds end
+    end
     return data
 end
 

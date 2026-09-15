@@ -110,8 +110,18 @@ function S.Mark(key, delay)
     S.Wake()
 end
 
+function S.RequestPlayed()
+    if S.playedPending and GetTime() < S.playedPending then return end
+    S.played = nil
+    S.playedPending = GetTime() + 3
+    if S.unsupportedEvents.TIME_PLAYED_MSG or not WoWSyncCompat.RequestPlayed() then
+        S.playedPending = nil
+    end
+end
+
 function S.RequestSync()
     if not S.Initialize() then return false, S.error or "Character is not ready yet." end
+    S.RequestPlayed()
     for _, key in ipairs(S.order) do S.Mark(key, 0.15) end
     return true
 end
@@ -166,7 +176,7 @@ S.Process = Process
 
 local function Tick()
     Process(false)
-    if S.exportRequest and (not next(S.dirty) or GetTime() >= S.exportRequest.deadline) then
+    if S.exportRequest and (not next(S.dirty) and not S.playedPending or GetTime() >= S.exportRequest.deadline) then
         local callback = S.exportRequest.callback
         S.exportRequest = nil
         local snapshot = S.GetSnapshot()
@@ -227,7 +237,7 @@ local events = {
     "PLAYER_EQUIPMENT_CHANGED", "UNIT_INVENTORY_CHANGED", "SKILL_LINES_CHANGED",
     "SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE", "PLAYER_MONEY", "PLAYER_LEVEL_UP",
     "PLAYER_XP_UPDATE", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
-    "GET_ITEM_INFO_RECEIVED",
+    "GET_ITEM_INFO_RECEIVED", "TIME_PLAYED_MSG",
 }
 S.unsupportedEvents = {}
 for _, event in ipairs(events) do
@@ -238,11 +248,22 @@ if WoWSyncCompat and WoWSyncCompat.RegisterOptionalEvents then
     for event in pairs(WoWSyncCompat.RegisterOptionalEvents(frame)) do S.optionalEvents = S.optionalEvents or {}; S.optionalEvents[event] = true end
 end
 
-frame:SetScript("OnEvent", function(_, event, arg)
+frame:SetScript("OnEvent", function(_, event, arg, arg2)
     if event == "ADDON_LOADED" then
         if arg == ADDON_NAME then S.Initialize(); if S.InitializeUI then S.InitializeUI() end end
     elseif event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         S.RequestSync(); if S.InitializeUI then S.InitializeUI() end
+    elseif event == "TIME_PLAYED_MSG" then
+        S.played = { total = WoWSyncCompat.PlayedSeconds(arg),
+            levelSeconds = WoWSyncCompat.PlayedSeconds(arg2),
+            level = S.playedLevel or UnitLevel("player"), guid = UnitGUID("player") }
+        S.playedPending = nil
+        S.Mark("character", 0)
+    elseif event == "PLAYER_LEVEL_UP" then
+        S.playedLevel = arg
+        S.playedPending = nil
+        S.RequestPlayed()
+        S.Mark("character")
     elseif event == "PLAYER_LOGOUT" then
         if S.record then Process(true) end
     elseif event == "BANKFRAME_OPENED" then
