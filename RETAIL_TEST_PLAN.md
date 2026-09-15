@@ -30,7 +30,15 @@ The installed Anniversary and Era addons are not changed by building this packag
 The same builder accepts `TBC` and `ClassicEra` for separate packages; those retain
 BankCleanup. No libraries or TSM are required for `/wowsync`.
 
-## Manual smoke matrix — all pending
+## Manual smoke matrix
+
+### Passed live playtime validation
+
+After updating the installed package, the user confirmed Retail 12.1.0 build
+69814: `/played` reported 12630 total and 686 current-level seconds; WoWSync
+reported 12638 and 694 eight seconds later. Both counters increased by exactly
+eight seconds. **Playtime comparison: passed.** Other smoke cases below retain
+their individual pending status.
 
 ### Initial live export evidence
 

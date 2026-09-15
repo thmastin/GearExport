@@ -36,7 +36,23 @@ coalescing, level changes, restricted values and deterministic frozen rendering.
 The headless fixtures cannot establish live server timing or UI taint behavior.
 Live acceptance: login, export, compare both values with `/played`, level up,
 export again, and reload on each client. A small elapsed-time difference between
-separate server requests is expected. No live acceptance is claimed here.
+separate server requests is expected. Retail comparison results are recorded below;
+level-up and other-client live checks remain separate.
+
+## Passed live Retail comparison
+
+The user confirmed the corrected Retail 12.1.0 build 69814 installation:
+
+| Observation | Total seconds | Current-level seconds |
+| --- | ---: | ---: |
+| `/played` | 12630 | 686 |
+| WoWSync, eight seconds later | 12638 | 694 |
+| Difference | 8 | 8 |
+
+Both differences exactly match the reported elapsed time. Live validation passes
+for both raw playtime counters and their canonical export fields. This is
+user-reported in-client evidence, separate from the synthetic fixtures. It does
+not establish completion of level-up, timeout, or TBC/Era live acceptance.
 
 ## Checkpoint validation
 
@@ -67,8 +83,8 @@ The checker rejected the stale installed capture/compat/core/renderer files.
 that returns nothing and schedules a delayed two-value event, plus timeout
 coverage proving both labels remain present. Durations and delay are synthetic;
 we have not measured server response timing or captured live payloads in-client.
-The original Retail assertions remain intact. In-game `/reload`, `/wowsync`
-and `/played` comparison is still required after installation.
+The original Retail assertions remain intact. The subsequent user-reported
+`/wowsync` and `/played` comparison passed as recorded above.
 
 Correction regression run: 207 TBC/Era assertions and 1,571 Retail assertions
 pass, including the original 1,495 Retail assertions, canonical baseline byte
