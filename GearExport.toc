@@ -1,5 +1,5 @@
 ## Interface: 20506
-## Title: Gear Export
+## Title: WoWSync
 ## Notes: Copyable Markdown character and item exporter
 ## Version: 2.2
 ## SavedVariables: GearExportDB, WoWSyncDB
