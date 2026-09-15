@@ -1,5 +1,20 @@
 # WoWSync v1 developer contract
 
+## Client compatibility
+
+The schema and canonical text export are shared by the TBC Anniversary and Classic
+Era packaging targets. TBC loads through `GearExport.toc` with interface `20506`;
+Classic Era loads through `GearExport-ClassicEra.toc` with interface `11509`.
+`WoWSyncCompat.lua` provides only narrow API normalization. Character/build/interface
+metadata in the `character` section identifies the active client.
+
+Client content is not interchangeable: item and spell IDs, item-link variants,
+trainer services, ranks, costs, and profession skills come from the active client.
+The schema keeps those values in the same fields. Delayed item information and
+partially populated trainer windows remain explicitly partial rather than being
+filled with inferred values. The renderer does not read client APIs and therefore
+produces the same deterministic format for either target.
+
 WoWSync is loaded by GearExport after the legacy exporter and BankCleanup. It has
 no required dependencies. BankCleanup does not consume WoWSync data or callbacks.
 
@@ -34,14 +49,21 @@ for persistence; session scheduling uses `GetTime()` only in memory.
   Visible legacy skill lines are used without expanding/collapsing the UI.
 - `spells`: player spellbook entries with spellID/name/rank/kind and scope text.
   This is not a crafting-recipe database or pet spellbook.
-- `trainer`: visit, name, trainerType, services, filters, collapsed, moneyAtVisit,
-  coverage. Service fields: name/rank/status/cost/requiredLevel, optional
-  skillRequirement and abilityRequirements. The current adapter cannot reliably
-  obtain trainer spell IDs; indices and names are never used to invent them.
+- `trainer`: `snapshots[category]`, where each observed category retains its visit,
+  name, trainerType, services, filters, collapsed, moneyAtVisit, coverage,
+  observedAt, completeness, and optional reason. Service fields: name/rank/status/
+  cost/requiredLevel, optional skillRequirement and abilityRequirements. Categories
+  are derived from trainer flags and observed skill requirements (`PROF_<SKILL>`,
+  `WEAPON`, `CLASS`, `TRADE`, or `UNKNOWN`); NPC names are display context only.
+  The current adapter cannot reliably obtain trainer spell IDs; indices and names
+  are never used to invent them.
 
-`visits.bank` and `visits.trainer` record only the most recent openedAt, closedAt,
+`visits.bank` records the most recent bank visit. `visits.trainers[category]` records
+the latest visit for each observed trainer category, including openedAt, closedAt,
 NPC name/GUID, location, session token, and optional unreconciled marker. A failed
-new visit does not destroy an older valid snapshot; export lists both visit times.
+new visit does not destroy an older valid category snapshot; the export lists each
+category independently. Legacy single-trainer data is normalized to `UNKNOWN` when
+its category cannot be recovered.
 
 Unavailable data is absent, never substituted with zero. A partial snapshot may
 contain reliable quantities with pending names. No historical event list is kept.

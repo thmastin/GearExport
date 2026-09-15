@@ -3,7 +3,7 @@
 local _, addon = ...
 local S = addon.Sync
 local labels = { character = "CHARACTER", location = "LOCATION", equipment = "EQUIPMENT",
-    bags = "BAGS", bank = "BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINER" }
+    bags = "BAGS", bank = "BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS" }
 
 local function Text(value)
     if value == nil then return "?" end
@@ -111,9 +111,18 @@ local function Requirements(service)
     end
     return #parts > 0 and table.concat(parts, "; ") or "-"
 end
-renderers.trainer = function(out, data)
+local function RenderTrainerSnapshot(out, category, data, visit, active)
+    out[#out + 1] = "[" .. Text(category) .. "]"
+    local state = active and "OBSERVED" or "LAST_SEEN"
+    Field(out, "State", state .. "; " .. Text(data.completeness) .. "; observed=" .. Text(data.observedAt))
+    if data.reason then Field(out, "CoverageNote", data.reason) end
+    if visit then
+        Field(out, "LastVisit", visit.openedAt)
+        if visit.name then Field(out, "VisitedNPC", visit.name) end
+        if visit.location and visit.location.zone then Field(out, "VisitedZone", visit.location.zone) end
+        if visit.unreconciled then Field(out, "VisitStatus", "Closed before capture settled") end
+    end
     Field(out, "Name", data.name); Field(out, "Type", data.trainerType)
-    if data.visit then Field(out, "SnapshotVisit", data.visit.openedAt) end
     Field(out, "Coverage", data.coverage)
     local filter = data.filters or {}
     Field(out, "Filters", "available=" .. Text(filter.available) .. "; unavailable=" .. Text(filter.unavailable) .. "; known=" .. Text(filter.used))
@@ -124,8 +133,39 @@ renderers.trainer = function(out, data)
     end
 end
 
+renderers.trainer = function(out, data, snapshot)
+    local snapshots = data.snapshots or {}
+    local visits = snapshot.visits and snapshot.visits.trainers or {}
+    for _, category in ipairs(SortedKeys(snapshots)) do
+        local current = snapshots[category]
+        local visit = visits[category] or current.visit
+        local active = snapshot.access and snapshot.access.trainer
+            and snapshot.access.trainerCategory == category
+            and visit and current.visit and visit.session == current.visit.session
+        RenderTrainerSnapshot(out, category, current, visit, active)
+    end
+end
+
+local function RenderTrainerSection(snapshot, section)
+    local out = { "[TRAINERS]" }
+    if not section or not section.data or type(section.data.snapshots) ~= "table"
+        or not next(section.data.snapshots) then
+        Field(out, "State", "UNKNOWN")
+        Field(out, "Reason", section and section.lastAttemptError or "Not observed")
+        return table.concat(out, "\n")
+    end
+    local categories = SortedKeys(section.data.snapshots)
+    Field(out, "State", "OBSERVED; categories=" .. #categories .. "; observed=" .. Text(section.observedAt))
+    if section.reason then Field(out, "CoverageNote", section.reason) end
+    renderers.trainer(out, section.data, snapshot)
+    return table.concat(out, "\n")
+end
+
 function S.RenderSection(key, snapshot)
     if not renderers[key] then return nil, "Unknown section: " .. tostring(key) end
+    if key == "trainer" then
+        return RenderTrainerSection(snapshot, snapshot.sections and snapshot.sections.trainer)
+    end
     local out = { "[" .. labels[key] .. "]" }
     local section = snapshot.sections and snapshot.sections[key]
     local visit = snapshot.visits and snapshot.visits[key]

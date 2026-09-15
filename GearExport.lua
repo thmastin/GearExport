@@ -155,17 +155,19 @@ end
 local function CollectProfessions()
     local entries, collapsed = {}, false
 
-    -- Burning Crusade Classic does not provide the modern profession index API.
     -- Primary professions are abandonable skill lines. Secondary professions are
-    -- identified by their ranked trade-skill spell in the General spellbook tab.
+    -- identified by ranked trade-skill spells across the spellbook, rather than
+    -- assuming that the General tab has a fixed index on every client.
     local tradeSkillSpells = {}
-    if GetSpellTabInfo and GetSpellBookItemName then
-        local _, _, offset, numSpells = GetSpellTabInfo(1)
-        if offset and numSpells then
-            for spellIndex = offset + 1, offset + numSpells do
-                local spellName, spellRank = GetSpellBookItemName(spellIndex, BOOKTYPE_SPELL)
-                if spellName and spellRank and spellRank ~= "" then
-                    tradeSkillSpells[spellName] = true
+    if WoWSyncCompat and WoWSyncCompat.GetProfessionSpellEvidence then
+        tradeSkillSpells = WoWSyncCompat.GetProfessionSpellEvidence() or tradeSkillSpells
+    elseif GetNumSpellTabs and GetSpellTabInfo and GetSpellBookItemName then
+        for tab = 1, GetNumSpellTabs() do
+            local _, _, offset, numSpells = GetSpellTabInfo(tab)
+            if offset and numSpells then
+                for spellIndex = offset + 1, offset + numSpells do
+                    local spellName, spellRank = GetSpellBookItemName(spellIndex, BOOKTYPE_SPELL)
+                    if spellName and spellRank and spellRank ~= "" then tradeSkillSpells[spellName] = true end
                 end
             end
         end

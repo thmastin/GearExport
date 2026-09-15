@@ -23,6 +23,22 @@ end
 
 function S.Now() return (GetServerTime and GetServerTime()) or time() end
 
+local function NormalizeTrainer(record)
+    record.visits = type(record.visits) == "table" and record.visits or {}
+    local section = record.sections and record.sections.trainer
+    if section and type(section.data) == "table" and type(section.data.snapshots) ~= "table" then
+        local legacy = section.data
+        legacy.category = legacy.category or "UNKNOWN"
+        section.data = { snapshots = { UNKNOWN = legacy } }
+        section.completeness = section.completeness or "partial"
+        section.reason = section.reason or "Migrated legacy single-trainer snapshot; category unknown"
+    end
+    if type(record.visits.trainers) ~= "table" then record.visits.trainers = {} end
+    if record.visits.trainer and not record.visits.trainers.UNKNOWN then
+        record.visits.trainers.UNKNOWN = record.visits.trainer
+    end
+end
+
 function S.Initialize()
     if S.record then return true end
     if WoWSyncDB ~= nil and (type(WoWSyncDB) ~= "table"
@@ -42,6 +58,7 @@ function S.Initialize()
     record.identity = { guid = guid, name = UnitName("player"), realm = GetRealmName() }
     record.sections = type(record.sections) == "table" and record.sections or {}
     record.visits = type(record.visits) == "table" and record.visits or {}
+    NormalizeTrainer(record)
     S.record = record
     S.settings = db.settings
     S.error = nil
@@ -57,6 +74,24 @@ function S.Commit(key, data, meta)
         revision = ((old and old.revision) or 0) + (changed and 1 or 0),
         completeness = meta.completeness or "complete", reason = meta.reason,
         source = meta.source or "client", capture = S.capture }
+end
+
+function S.CommitTrainer(category, data, meta)
+    local old = S.record.sections.trainer
+    local snapshots = old and old.data and old.data.snapshots and S.Copy(old.data.snapshots) or {}
+    local now = S.Now()
+    data.category = category
+    data.observedAt = now
+    data.completeness = meta.completeness or "complete"
+    data.reason = meta.reason
+    snapshots[category] = data
+    local merged = { snapshots = snapshots }
+    local changed = not old or not Equal(old.data, merged)
+    S.record.sections.trainer = { data = merged, observedAt = now,
+        changedAt = changed and now or old.changedAt,
+        revision = ((old and old.revision) or 0) + (changed and 1 or 0),
+        completeness = meta.completeness or "complete", reason = meta.reason,
+        source = meta.source or "client", capture = S.capture, lastCategory = category }
 end
 
 function S.Attempt(key, reason)
@@ -87,7 +122,8 @@ function S.GetSnapshot()
         visits = S.Copy(S.record.visits) }
     snapshot.schemaVersion = S.schemaVersion
     snapshot.generatedAt = S.Now()
-    snapshot.access = { bank = S.bankOpen, trainer = S.trainerOpen }
+    snapshot.access = { bank = S.bankOpen, trainer = S.trainerOpen,
+        trainerCategory = S.trainerCategory }
     snapshot.pending = {}
     for key in pairs(S.dirty) do snapshot.pending[key] = true end
     return snapshot
@@ -110,7 +146,12 @@ local function Process(force)
             S.dirty[key] = nil
             local ok, data, meta = pcall(S.collectors[key])
             meta = ok and (meta or {}) or { reason = "Collector error: " .. tostring(data), retry = true }
-            if ok and data then S.Commit(key, data, meta)
+            if ok and data then
+                if key == "trainer" and data.category and data.snapshot then
+                    S.CommitTrainer(data.category, data.snapshot, meta)
+                else
+                    S.Commit(key, data, meta)
+                end
             else S.Attempt(key, meta.reason or "Data unavailable") end
             if meta.retry and not force and pending.tries < 4
                 and (key ~= "bank" or S.bankOpen) and (key ~= "trainer" or S.trainerOpen) then
@@ -150,18 +191,28 @@ local function Visit(key)
     S.sessions[key] = S.sessions[key] + 1
     if not S.Initialize() then return end
     local ok, location = pcall(S.collectors.location)
-    S.record.visits[key] = { openedAt = S.Now(), location = ok and location or nil,
+    local visit = { openedAt = S.Now(), location = ok and location or nil,
         name = UnitName("npc"), guid = UnitGUID("npc"), session = S.sessions[key] }
+    if key == "trainer" then S.currentTrainerVisit = visit else S.record.visits[key] = visit end
 end
 
 local function Close(key)
     if not S.record then return end
-    local visit = S.record.visits[key]
+    local visit = key == "trainer" and S.currentTrainerVisit or S.record.visits[key]
+    if key == "trainer" and visit then
+        local category = S.trainerCategory or "UNKNOWN"
+        S.record.visits.trainers[category] = visit
+        S.currentTrainerVisit = nil
+    end
     local section = S.record.sections[key]
+    local observed = section
+    if key == "trainer" and section and section.data and section.data.snapshots then
+        observed = section.data.snapshots[S.trainerCategory or "UNKNOWN"]
+    end
     if visit then
         visit.closedAt = S.Now()
-        visit.unreconciled = S.dirty[key] ~= nil or not section or not section.data
-            or section.lastAttemptError ~= nil
+        visit.unreconciled = S.dirty[key] ~= nil or not observed
+            or not observed.data and key ~= "trainer" or section and section.lastAttemptError ~= nil
     end
     if S.dirty[key] then S.Attempt(key, "Closed before pending capture settled") end
     S.dirty[key] = nil
@@ -183,6 +234,9 @@ for _, event in ipairs(events) do
     local ok = pcall(frame.RegisterEvent, frame, event)
     if not ok then S.unsupportedEvents[event] = true end
 end
+if WoWSyncCompat and WoWSyncCompat.RegisterOptionalEvents then
+    for event in pairs(WoWSyncCompat.RegisterOptionalEvents(frame)) do S.optionalEvents = S.optionalEvents or {}; S.optionalEvents[event] = true end
+end
 
 frame:SetScript("OnEvent", function(_, event, arg)
     if event == "ADDON_LOADED" then
@@ -198,7 +252,7 @@ frame:SetScript("OnEvent", function(_, event, arg)
     elseif event == "TRAINER_SHOW" then
         S.trainerOpen = true; Visit("trainer"); S.Mark("trainer"); S.Mark("spells")
     elseif event == "TRAINER_CLOSED" then
-        S.trainerOpen = false; Close("trainer")
+        S.trainerOpen = false; Close("trainer"); S.trainerCategory = nil
     elseif event:match("^TRAINER_") then
         S.Mark("trainer")
     elseif event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED"
@@ -208,7 +262,7 @@ frame:SetScript("OnEvent", function(_, event, arg)
         S.Mark("equipment"); S.Mark("bags")
     elseif event == "SKILL_LINES_CHANGED" or event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE" then
         S.Mark("professions"); S.Mark("spells"); S.Mark("trainer")
-    elseif event == "GET_ITEM_INFO_RECEIVED" then
+    elseif event == "GET_ITEM_INFO_RECEIVED" or event == "ITEM_DATA_LOAD_RESULT" then
         if S.record then
             for _, key in ipairs({ "bags", "bank", "equipment" }) do
                 local section = S.record.sections[key]
