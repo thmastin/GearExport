@@ -23,6 +23,9 @@ The separate [Forever bags validation build](FOREVER_BAGS.md) adds carried-bag
 observation. Bags remain pending live validation; the equipment-only release
 is recorded separately in the commit history.
 
+The uncommitted [Forever professions validation build](FOREVER_PROFESSIONS.md)
+uses the build-69913 trade-skill API and awaits live validation.
+
 ## Installation
 
 All four client packages include the supplied WoWSync artwork as

@@ -11,5 +11,6 @@ WoWSyncForever.lua
 WoWSyncCore.lua
 WoWSyncForeverCollectors.lua
 WoWSyncForeverBags.lua
+WoWSyncForeverProfessions.lua
 WoWSyncRender.lua
 WoWSyncUI.lua

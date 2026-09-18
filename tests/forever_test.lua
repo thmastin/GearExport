@@ -47,7 +47,7 @@ local function action() actions = actions + 1; error("Unexpected gameplay call")
 BuyTrainerService, UseContainerItem, PickupContainerItem = action, action, action
 local addon = {}
 for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.lua",
-    "WoWSyncForeverCollectors.lua", "WoWSyncForeverBags.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
+    "WoWSyncForeverCollectors.lua", "WoWSyncForeverBags.lua", "WoWSyncForeverProfessions.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
 local S, C = addon.Sync, WoWSyncCompat
@@ -111,6 +111,7 @@ advance(1); equal(S.Render(frozen), frozenText, "deterministic without clock rea
 assert(loadfile("tests/forever_equipment_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_snapshot_test.lua"))()(S, equal)
 assert(loadfile("tests/forever_bags_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/forever_professions_test.lua"))()(S, check, equal, advance)
 for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitLevel", "UnitFactionGroup", "GetMoney", "UnitXP", "UnitXPMax" }) do
     _G[key] = function() error("API changed") end
 end
