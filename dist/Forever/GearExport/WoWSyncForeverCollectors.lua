@@ -107,6 +107,6 @@ S.collectors.equipment = function()
 end
 
 -- Preserve canonical section order, but never read deferred subsystems.
-for _, key in ipairs({ "bags", "professions", "spells" }) do
+for _, key in ipairs({ "professions", "spells" }) do
     S.collectors[key] = function() return nil, { reason = "Not implemented in Forever Phase 1" } end
 end

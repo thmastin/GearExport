@@ -25,6 +25,8 @@ for (const [target, version] of selected) {
     if (target === 'Forever') {
         assert(manifest.hashes['FOREVER_PHASE1.md']);
         assert(manifest.hashes['FOREVER_PHASE2.md']);
+        assert(manifest.hashes['FOREVER_BAGS.md']);
+        assert(manifest.hashes['WoWSyncForeverBags.lua']);
         for (const file of ['GearExport.lua', 'BankCleanup.lua', 'WoWSyncCollectors.lua']) {
             assert(!fs.existsSync(path.join(directory, file)), 'Forever excludes ' + file);
         }

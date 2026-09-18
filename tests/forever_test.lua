@@ -47,7 +47,7 @@ local function action() actions = actions + 1; error("Unexpected gameplay call")
 BuyTrainerService, UseContainerItem, PickupContainerItem = action, action, action
 local addon = {}
 for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.lua",
-    "WoWSyncForeverCollectors.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
+    "WoWSyncForeverCollectors.lua", "WoWSyncForeverBags.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
 local S, C = addon.Sync, WoWSyncCompat
@@ -94,7 +94,7 @@ equal(data.interface, interface, "interface comes from API, not version arithmet
 equal(S.record.sections.location.data.x, 12.5, "map X")
 equal(S.record.sections.location.data.y, 75, "map Y")
 equal(requests, 0, "unverified playtime request never sent")
-for _, event in ipairs({ "TIME_PLAYED_MSG", "BANKFRAME_OPENED", "TRAINER_SHOW", "BAG_UPDATE", "SPELLS_CHANGED" }) do
+for _, event in ipairs({ "TIME_PLAYED_MSG", "BANKFRAME_OPENED", "TRAINER_SHOW", "SPELLS_CHANGED" }) do
     check(not S.eventFrame.events[event], "deferred event not registered: " .. event)
 end
 local output
@@ -110,6 +110,7 @@ local frozenText = S.Render(frozen)
 advance(1); equal(S.Render(frozen), frozenText, "deterministic without clock reads")
 assert(loadfile("tests/forever_equipment_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_snapshot_test.lua"))()(S, equal)
+assert(loadfile("tests/forever_bags_test.lua"))()(S, check, equal, advance)
 for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitLevel", "UnitFactionGroup", "GetMoney", "UnitXP", "UnitXPMax" }) do
     _G[key] = function() error("API changed") end
 end

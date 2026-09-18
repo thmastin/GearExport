@@ -19,6 +19,10 @@ The current package guard accepts only Forever `1.60.1` build `69913`, with
 interface `16001` confirmed in-game. Earlier captures retain their original
 build `69893` metadata.
 
+The separate [Forever bags validation build](FOREVER_BAGS.md) adds carried-bag
+observation. Bags remain pending live validation; the equipment-only release
+is recorded separately in the commit history.
+
 ## Installation
 
 All four client packages include the supplied WoWSync artwork as
