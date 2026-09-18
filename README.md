@@ -11,6 +11,14 @@ and targets `_classic_beta_/Interface/AddOns`. It excludes BankCleanup and the
 legacy exporter. See [Forever scope and live validation](FOREVER_PHASE1.md)
 for deferred features and validation details.
 
+The current Forever build adds live-validated equipment observation; effective
+stats remain unknown pending runtime evidence. See [Phase 2 equipment checks](FOREVER_PHASE2.md).
+The character/location pipeline is live-validated at levels 1 and 4. Equipment
+slot presence, references, names and levels are live-validated on Hallo.
+The current package guard accepts only Forever `1.60.1` build `69913`, with
+interface `16001` confirmed in-game. Earlier captures retain their original
+build `69893` metadata.
+
 ## Installation
 
 All four client packages include the supplied WoWSync artwork as

@@ -21,7 +21,7 @@ function CreateFrame(_, name) return widget(name) end
 UIParent, UISpecialFrames, SlashCmdList = widget(), {}, {}
 function GetTime() return seconds end
 function GetServerTime() return 1789670000 + math.floor(seconds) end
-local version, build, interface = "1.60.1", "69893", 8675309 -- Synthetic interface, not client evidence.
+local version, build, interface = "1.60.1", "69913", 8675309 -- Synthetic interface, not client evidence.
 function GetBuildInfo() return version, build, "test", interface end
 local target = "Forever"
 C_AddOns = { GetAddOnMetadata = function(name, field)
@@ -64,10 +64,15 @@ target = "Retail"; check(not C.IsForever(), "wrong package rejected"); target = 
 for _, other in ipairs({ "1.15.9", "2.5.6", "12.1.0" }) do
     version = other; check(not C.IsForever(), "other clients rejected")
 end
-version, build = "1.60.1", "different"
-check(not S.Initialize(), "unaudited build fails closed")
-equal(WoWSyncDB, nil, "wrong client does not create database")
-build = "69893"
+version = "1.60.1"
+for _, other in ipairs({ "69893", "69914", "different" }) do
+    build = other
+    check(not S.Initialize(), "non-current build fails closed: " .. other)
+    equal(WoWSyncDB, nil, "wrong client does not create database")
+    equal(S.error, "The installed WoWSync build is not verified for the running Forever client.",
+        "rejection describes verification rather than a package phase")
+end
+build = "69913"
 local realGUID = UnitGUID
 UnitGUID = nil; check(not S.Initialize(), "missing GUID cannot fabricate character")
 UnitGUID = function() error("Unavailable") end; check(not S.Initialize(), "throwing GUID handled")
@@ -103,6 +108,8 @@ check(output:find("Not implemented in Forever Phase 1", 1, true), "deferred sect
 local frozen = S.GetSnapshot()
 local frozenText = S.Render(frozen)
 advance(1); equal(S.Render(frozen), frozenText, "deterministic without clock reads")
+assert(loadfile("tests/forever_equipment_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/forever_snapshot_test.lua"))()(S, equal)
 for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitLevel", "UnitFactionGroup", "GetMoney", "UnitXP", "UnitXPMax" }) do
     _G[key] = function() error("API changed") end
 end

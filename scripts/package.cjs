@@ -20,7 +20,7 @@ if (target === 'Forever' && (luaFiles.includes('BankCleanup.lua') || luaFiles.in
 const output = path.join(root, 'dist', target, 'GearExport');
 const docs = ['README.md', 'LICENSE', 'WOWSYNC_SCHEMA.md', 'WOWSYNC_ACCEPTANCE.md',
     'RETAIL_COMPATIBILITY.md', 'RETAIL_TEST_PLAN.md', 'BANK_CLEANUP_TESTS.md', 'PLAYTIME_API_AUDIT.md'];
-if (target === 'Forever') docs.push('FOREVER_PHASE1.md');
+if (target === 'Forever') docs.push('FOREVER_PHASE1.md', 'FOREVER_PHASE2.md');
 const assets = ['WoWSyncIcon.tga'];
 const expected = [...luaFiles, ...docs, ...assets, 'GearExport.toc', 'package-manifest.json'];
 // Reject stale/foreign files rather than silently shipping an obsolete flavor TOC.

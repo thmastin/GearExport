@@ -24,6 +24,7 @@ for (const [target, version] of selected) {
     assert.deepStrictEqual(fs.readdirSync(directory).sort(), [...Object.keys(manifest.hashes), 'package-manifest.json'].sort());
     if (target === 'Forever') {
         assert(manifest.hashes['FOREVER_PHASE1.md']);
+        assert(manifest.hashes['FOREVER_PHASE2.md']);
         for (const file of ['GearExport.lua', 'BankCleanup.lua', 'WoWSyncCollectors.lua']) {
             assert(!fs.existsSync(path.join(directory, file)), 'Forever excludes ' + file);
         }

@@ -1,7 +1,7 @@
 -- Loaded only by the Forever package. No legacy exporter or gameplay modules.
 local ADDON_NAME, addon = ...
 local C = WoWSyncCompat
-local F = { version = "1.60.1", build = "69893" }
+local F = { version = "1.60.1", build = "69913" }
 addon.Forever = F
 addon.Readers = { SlotNames = {} }
 -- This package selects its own adapters even if Blizzard reuses a project ID.
@@ -47,7 +47,7 @@ end
 
 function addon.ReadIdentity()
     if not C.IsForever() then
-        if addon.Sync then addon.Sync.error = "Forever Phase 1 package requires the verified Forever beta build." end
+        if addon.Sync then addon.Sync.error = "The installed WoWSync build is not verified for the running Forever client." end
         return nil
     end
     local issues = {}
@@ -66,4 +66,6 @@ addon.SyncEvents = {
     "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT",
     "PLAYER_MONEY", "PLAYER_LEVEL_UP", "PLAYER_XP_UPDATE",
     "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
+    "PLAYER_EQUIPMENT_CHANGED", "UNIT_INVENTORY_CHANGED",
+    "GET_ITEM_INFO_RECEIVED", "ITEM_DATA_LOAD_RESULT",
 }

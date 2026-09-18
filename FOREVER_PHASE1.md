@@ -1,5 +1,9 @@
 # Forever Phase 1
 
+This is the historical build-69893 acceptance record. The current package
+targets build `69913`; see [Phase 2](FOREVER_PHASE2.md). Historical exports and
+source audit references below retain their original build numbers.
+
 Target client: installed `D:\World of Warcraft\_classic_beta_\WowB.exe`,
 version 1.60.1 build 69893. The referenced build configuration identifies
 `WOW-69893patch1.60.1_ForeverBeta`, product `wow_classic_beta`.
