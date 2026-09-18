@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: WoWSync
+## Notes: Limited Forever Phase 1 character exporter with WoWSync
+## Version: 2.2
+## SavedVariables: GearExportDB, WoWSyncDB
+## IconTexture: Interface\AddOns\GearExport\WoWSyncIcon.tga
+## X-WoWSync-Target: Forever
+
+WoWSyncCompat.lua
+WoWSyncForever.lua
+WoWSyncCore.lua
+WoWSyncForeverCollectors.lua
+WoWSyncRender.lua
+WoWSyncUI.lua
