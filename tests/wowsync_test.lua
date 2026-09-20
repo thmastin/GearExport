@@ -211,6 +211,8 @@ equal(S.record.sections.bags.data.containers[1].slots[1].count, 7, "bag changes 
 equal(S.record.sections.bags.revision, revision + 1, "changed content increments revision")
 BankFrame:Show(); event("BANKFRAME_OPENED"); advance(1)
 equal(S.record.sections.bank.data.containers[1].slots[1].count, 5, "bank open captures bank")
+check(not WoWSyncDB.account, "Classic bank never creates Retail account storage")
+check(not S.Render(S.GetSnapshot()):find("[ACCOUNT BANK]", 1, true), "Classic export has no Retail account section")
 local bankObserved = S.record.sections.bank.observedAt
 local bankReads = itemReads
 BankFrame:Hide(); event("BANKFRAME_CLOSED"); bagItems[-1] = {}; advance(1)

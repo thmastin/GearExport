@@ -139,12 +139,20 @@ function C.GetContainerBagIdentity(bag)
         Optional(GetInventoryItemTexture, "player", inventoryID)
 end
 
-function C.GetBankRanges()
+-- Retail bank domains are not interchangeable containers.  The caller passes
+-- "ACCOUNT" only for the account/Warband observation; the v1 bank collector
+-- continues to omit the argument and therefore remains character-only.
+local function RetailBankType(scope)
+    if not Enum or not Enum.BankType then return nil end
+    return scope == "ACCOUNT" and Enum.BankType.Account or Enum.BankType.Character
+end
+
+function C.GetBankRanges(scope)
     if C.IsRetail() then
         if not Enum or not Enum.BagIndex then return nil, nil end
         local bags, bank = {}, nil
         for bag = Enum.BagIndex.Backpack, Enum.BagIndex.ReagentBag do bags[#bags + 1] = bag end
-        local kind = Enum.BankType and Enum.BankType.Character
+        local kind = RetailBankType(scope)
         if kind and C_Bank and Optional(C_Bank.CanViewBank, kind) then
             bank = Optional(C_Bank.FetchPurchasedBankTabIDs, kind)
         end
@@ -158,14 +166,16 @@ function C.GetBankRanges()
     return bags, bank
 end
 
-function C.IsBankViewable()
+function C.IsBankViewable(scope)
     if not C.IsRetail() then return true end
-    return C_Bank and Enum and Enum.BankType and Optional(C_Bank.CanViewBank, Enum.BankType.Character) == true or false
+    local kind = RetailBankType(scope)
+    return kind and C_Bank and Optional(C_Bank.CanViewBank, kind) == true or false
 end
 
-function C.GetContainerCategory(bag, bank)
+function C.GetContainerCategory(bag, bank, scope)
     if not C.IsRetail() then return nil end
-    return bank and "CHARACTER" or bag == Enum.BagIndex.ReagentBag and "REAGENT_BAG" or "CARRIED"
+    if bank then return scope == "ACCOUNT" and "ACCOUNT_WARBAND" or "CHARACTER" end
+    return bag == Enum.BagIndex.ReagentBag and "REAGENT_BAG" or "CARRIED"
 end
 
 function C.ContainerRequiresCapacity(bag, bank)
@@ -173,14 +183,17 @@ function C.ContainerRequiresCapacity(bag, bank)
     return bag == 0 or bag == (BANK_CONTAINER or -1)
 end
 
-function C.GetBankCoverage()
+function C.GetBankCoverage(scope)
     if not C.IsRetail() then return nil end
-    return "CHARACTER purchased tabs only; ACCOUNT/Warband API-supported but deferred; legacy main bank, bank bags and reagent bank not applicable"
+    if scope == "ACCOUNT" then
+        return "ACCOUNT/Warband purchased tabs only; observed independently from character bank; legacy main bank, bank bags and reagent bank not applicable"
+    end
+    return "CHARACTER purchased tabs only; ACCOUNT/Warband observed separately; legacy main bank, bank bags and reagent bank not applicable"
 end
 
-function C.GetPurchasedBankSlots()
+function C.GetPurchasedBankSlots(scope)
     if C.IsRetail() then
-        return Optional(C_Bank and C_Bank.FetchNumPurchasedBankTabs, Enum.BankType.Character), "tabs"
+        return Optional(C_Bank and C_Bank.FetchNumPurchasedBankTabs, RetailBankType(scope)), "tabs"
     end
     return Optional(GetNumBankSlots), "bags"
 end
@@ -357,7 +370,7 @@ function C.RegisterOptionalEvents(frame)
     local registered = {}
     local events = { "ITEM_DATA_LOAD_RESULT" }
     if C.IsRetail() then
-        for _, event in ipairs({ "BANK_TABS_CHANGED",
+        for _, event in ipairs({ "BANK_TABS_CHANGED", "BANK_TAB_SETTINGS_UPDATED", "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED",
             "PLAYER_SPECIALIZATION_CHANGED", "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE", "SPELL_TEXT_UPDATE" }) do
             events[#events + 1] = event
         end

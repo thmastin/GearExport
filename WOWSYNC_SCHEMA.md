@@ -48,6 +48,7 @@ for persistence; session scheduling uses `GetTime()` only in memory.
   retain itemID, full itemString, name/quality/levels/vendorCopper when available,
   stack count, and optional bound flag. No economic filtering. Bank also has
   purchasedBagSlots and a copy of the visit context associated with that snapshot.
+  `bank` is always character-owned; Retail Warband storage is not folded into it.
 - `professions`: entries with name/rank/maxRank and identification method.
   Visible legacy skill lines are used without expanding/collapsing the UI.
 - `spells`: player spellbook entries with spellID/name/rank/kind and scope text.
@@ -75,14 +76,15 @@ container scan instead of publishing a transient inventory state.
 
 ### Additive Retail fields and declared coverage
 
-The schema remains v1 and the same eight sections remain in the same order.
+The schema remains v1: its eight established sections retain their order. Retail
+may add `[ACCOUNT BANK]` immediately after `[BANK]` as a separately scoped,
+additive section.
 Older snapshots without these optional fields render as before:
 
 - `character.clientFamily`: `Retail`, rendered as ClientFamily alongside Interface.
 - `containers[].storage`: CARRIED, REAGENT_BAG or CHARACTER, rendered as
   `ContainerStorage <id>`. Bank only enumerates purchased character tabs; it adds
-  `purchasedTabs` and `coverage`. Account/Warband storage is API-supported but
-  deferred and never aggregated into character storage. Negative Classic bank IDs,
+  `purchasedTabs` and `coverage`. Negative Classic bank IDs,
   separate reagent bank and equipped bank bags do not apply to this Retail target.
 - Item identity remains the complete `itemString`; C_Item supplies modern metadata
   and instance item level. Missing links stay partial even if generic item data is
@@ -98,9 +100,13 @@ Older snapshots without these optional fields render as before:
   an assumption that any skill requirement means weapon training. Unknown remains
   a separate snapshot and never overwrites named profession/class categories.
 
-Future account state should own Warband bank and account currencies once with
-independent freshness, rather than duplicate them across GUID-keyed characters.
-No account/alt export mode is introduced by the Retail compatibility target.
+Retail also emits an additive `[ACCOUNT BANK]` section when the Account bank is
+viewable. It is stored once at `WoWSyncDB.account.sections.bank`, not under any
+GUID, and rendered with `Scope: ACCOUNT_WARBAND`. It uses only the returned
+`C_Bank.FetchPurchasedBankTabIDs(Enum.BankType.Account)` IDs and has independent
+freshness/UNKNOWN/LAST_SEEN behavior. It is never aggregated into a character's
+bank. Guild Bank remains UNKNOWN: its legacy per-tab data has not been
+live-validated for passive complete observation.
 
 ## Consumer API
 

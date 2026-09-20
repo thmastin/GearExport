@@ -3,7 +3,7 @@
 local _, addon = ...
 local S = addon.Sync
 local labels = { character = "CHARACTER", location = "LOCATION", equipment = "EQUIPMENT",
-    bags = "BAGS", bank = "BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS" }
+    bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS" }
 
 local function Text(value)
     if value == nil then return "?" end
@@ -99,6 +99,13 @@ renderers.bank = function(out, data)
     if data.purchasedTabs then Field(out, "PurchasedBankTabs", data.purchasedTabs) end
     Inventory(out, data)
 end
+renderers.accountBank = function(out, data)
+    Field(out, "Scope", data.ownerScope or "ACCOUNT_WARBAND")
+    if data.coverage then Field(out, "Coverage", data.coverage) end
+    if data.visit then Field(out, "SnapshotVisit", data.visit.openedAt) end
+    if data.purchasedTabs then Field(out, "PurchasedBankTabs", data.purchasedTabs) end
+    Inventory(out, data)
+end
 renderers.professions = function(out, data)
     if data.coverage then Field(out, "Coverage", data.coverage) end
     if data.retail then
@@ -184,8 +191,10 @@ function S.RenderSection(key, snapshot)
         return RenderTrainerSection(snapshot, snapshot.sections and snapshot.sections.trainer)
     end
     local out = { "[" .. labels[key] .. "]" }
-    local section = snapshot.sections and snapshot.sections[key]
-    local visit = snapshot.visits and snapshot.visits[key]
+    local section = key == "accountBank" and snapshot.accountSections and snapshot.accountSections.bank
+        or snapshot.sections and snapshot.sections[key]
+    local visit = key == "accountBank" and section and section.data and section.data.visit
+        or snapshot.visits and snapshot.visits[key]
     if visit then
         Field(out, "LastVisit", visit.openedAt)
         if visit.name then Field(out, "VisitedNPC", visit.name) end
@@ -194,10 +203,11 @@ function S.RenderSection(key, snapshot)
     end
     if not section or not section.data then
         Field(out, "State", "UNKNOWN")
+        if key == "accountBank" then Field(out, "Scope", "ACCOUNT_WARBAND") end
         Field(out, "Reason", section and section.lastAttemptError or "Not observed")
         return table.concat(out, "\n")
     end
-    local access = key == "bank" or key == "trainer"
+    local access = key == "bank" or key == "accountBank" or key == "trainer"
     local sameVisit = not access or visit and section.data.visit and visit.openedAt == section.data.visit.openedAt
         and visit.session == section.data.visit.session
     local state = access and not (snapshot.access and snapshot.access[key] and sameVisit) and "LAST_SEEN" or "OBSERVED"

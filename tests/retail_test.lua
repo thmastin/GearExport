@@ -8,7 +8,7 @@ Enum = { BagIndex = { Backpack = 0, ReagentBag = 5 }, BankType = { Character = 0
     SpellBookSpellBank = { Player = 0, Pet = 1 }, SpellBookItemType = { Spell = 1, FutureSpell = 2, Flyout = 4, PetAction = 3 } }
 local itemRef = "item:240001:7440:213743:0:0:0:0:0:90:0:0:16:4:10354:10299:6652:12030:2:28:2462:38:8"
 local link = "|cffa335ee|H" .. itemRef .. "|h[Crafted Sample]|h|r"
-local pending, bankView, requests = false, true, 0
+local pending, bankView, accountBankView, requests = false, true, true, 0
 C_Item = {
     GetItemInfo = function(ref)
         check(ref ~= nil, "item reference supplied")
@@ -22,15 +22,26 @@ C_Item = {
 }
 C_TooltipInfo = { GetInventoryItem = function() if not pending then return { lines = { { leftText = "Crafted Sample" } } } end end }
 C_Bank = {
-    CanViewBank = function(kind) equal(kind, Enum.BankType.Character, "only character bank read"); return bankView end,
-    FetchPurchasedBankTabIDs = function(kind) equal(kind, Enum.BankType.Character, "purchased character IDs"); return { 6, 8 } end,
-    FetchNumPurchasedBankTabs = function() return 2 end,
+    CanViewBank = function(kind)
+        if kind == Enum.BankType.Character then return bankView end
+        if kind == Enum.BankType.Account then return accountBankView end
+        error("unexpected bank type")
+    end,
+    FetchPurchasedBankTabIDs = function(kind)
+        if kind == Enum.BankType.Character then return { 6, 8 } end
+        if kind == Enum.BankType.Account then return { 12, 15 } end
+        error("unexpected bank type")
+    end,
+    FetchNumPurchasedBankTabs = function(kind)
+        if kind == Enum.BankType.Character then return 2 end
+        if kind == Enum.BankType.Account then return 2 end
+    end,
     AutoDepositItemsIntoBank = action, PurchaseBankTab = action, DepositMoney = action,
 }
 C_Container = {
-    GetContainerNumSlots = function(bag) check(bag >= 0 and bag <= 8, "no Classic/account bank IDs"); return bag == 0 and 16 or bag == 5 and 36 or bag == 6 and 98 or bag == 8 and 98 or 0 end,
+    GetContainerNumSlots = function(bag) check(bag >= 0 and bag <= 16, "no Classic negative bank IDs"); return bag == 0 and 16 or bag == 5 and 36 or bag == 6 and 98 or bag == 8 and 98 or bag == 12 and 98 or bag == 15 and 98 or 0 end,
     GetContainerItemInfo = function(bag, slot)
-        if (bag == 0 or bag == 5 or bag == 6) and slot == 1 then
+        if (bag == 0 or bag == 5 or bag == 6 or bag == 12) and slot == 1 then
             return { itemID = 240001, hyperlink = link, stackCount = 2, isLocked = false, isBound = true }
         end
     end,
@@ -38,7 +49,7 @@ C_Container = {
     PickupContainerItem = action, UseContainerItem = action, SplitContainerItem = action,
 }
 function C_Container.GetContainerNumFreeSlots(bag)
-    return C_Container.GetContainerNumSlots(bag) - ((bag == 0 or bag == 5 or bag == 6) and 1 or 0), bag == 5 and 2048 or 0
+    return C_Container.GetContainerNumSlots(bag) - ((bag == 0 or bag == 5 or bag == 6 or bag == 12) and 1 or 0), bag == 5 and 2048 or 0
 end
 function GetInventoryItemLink(_, slot) if slot == 1 then return link end end
 function GetInventoryItemID(_, slot) if slot == 1 then return 240001 end end
@@ -80,10 +91,14 @@ equal(#bags, 6, "Retail bag range includes reagent bag")
 equal(bags[6], 5, "reagent ID")
 equal(bank[2], 8, "use actual purchased IDs, not guessed contiguous range")
 bankView = false; _, bank = C.GetBankRanges(); equal(bank, nil, "unviewable bank unknown"); bankView = true
+local _, accountBank = C.GetBankRanges("ACCOUNT")
+equal(accountBank[2], 15, "account bank uses returned IDs, not character tabs")
+accountBankView = false; _, accountBank = C.GetBankRanges("ACCOUNT"); equal(accountBank, nil, "unviewable account bank unknown"); accountBankView = true
 equal(C.GetContainerBagIdentity(6), nil, "bank tab is not an equipped bag")
 equal(C.GetContainerInfo(5, 1).stackCount, 2, "modern container table")
-check(C.GetBankCoverage():find("ACCOUNT/Warband", 1, true), "account coverage explicit")
+check(C.GetBankCoverage("ACCOUNT"):find("ACCOUNT/Warband", 1, true), "account coverage explicit")
 equal(C.GetPurchasedBankSlots(), 2, "purchased tabs")
+equal(C.GetPurchasedBankSlots("ACCOUNT"), 2, "account purchased tabs")
 equal(C.GetItemLevel(link, 200), 289, "instance item level")
 check(C.IsItemDataReady(240001), "modern item readiness")
 pending = true; check(not C.IsItemDataReady(240001), "async item not ready")
@@ -190,6 +205,7 @@ equal(S.record.sections.bank, nil, "closed bank not fabricated")
 local frozen = S.GetSnapshot()
 local rendered = S.Render(frozen)
 check(rendered:find("WOWSYNC v1", 1, true) == 1 and rendered:find("[END]", 1, true), "same canonical envelope")
+check(rendered:find("[ACCOUNT BANK]\nState: UNKNOWN\nScope: ACCOUNT_WARBAND", 1, true), "unobserved account bank retains explicit scope")
 equal(S.Render(frozen), rendered, "deterministic rendering")
 for _, key in ipairs(S.order) do check(rendered:find(S.RenderSection(key, frozen), 1, true), "shared section renderer " .. key) end
 check(rendered:find("ClientFamily: Retail", 1, true), "Retail metadata rendered")
@@ -197,7 +213,31 @@ check(rendered:find(itemRef, 1, true), "full itemRef rendered")
 check(not rendered:find("Not a rank", 1, true), "no manufactured rank")
 BankFrame:Show(); event("BANKFRAME_OPENED"); advance(1)
 equal(#S.record.sections.bank.data.containers, 2, "character purchased tabs only")
-check(S.Render(S.GetSnapshot()):find("ACCOUNT/Warband API-supported but deferred", 1, true), "explicit account limitation")
+equal(#WoWSyncDB.account.sections.bank.data.containers, 2, "account bank is stored outside character record")
+equal(WoWSyncDB.account.sections.bank.data.ownerScope, "ACCOUNT_WARBAND", "account bank scope explicit")
+local accountText = S.RenderSection("accountBank", S.GetSnapshot())
+check(accountText:find("[ACCOUNT BANK]", 1, true) and accountText:find("Scope: ACCOUNT_WARBAND", 1, true), "separate account bank rendering")
+local accountObserved = WoWSyncDB.account.sections.bank.observedAt
+event("BANK_TABS_CHANGED", Enum.BankType.Character); advance(1)
+equal(WoWSyncDB.account.sections.bank.observedAt, accountObserved, "character tab event does not refresh account bank")
+accountBankView = false; event("BANK_TABS_CHANGED", Enum.BankType.Account); advance(3)
+equal(WoWSyncDB.account.sections.bank.observedAt, accountObserved, "unviewable account bank preserves last seen")
+check(S.RenderSection("accountBank", S.GetSnapshot()):find("LAST_SEEN", 1, true), "unviewable account bank is never empty")
+accountBankView = true
+local originalAccountIDs, originalAccountCount = C_Bank.FetchPurchasedBankTabIDs, C_Bank.FetchNumPurchasedBankTabs
+C_Bank.FetchPurchasedBankTabIDs = function(kind) if kind == Enum.BankType.Account then return {} end; return originalAccountIDs(kind) end
+C_Bank.FetchNumPurchasedBankTabs = function(kind) if kind == Enum.BankType.Account then return 0 end; return originalAccountCount(kind) end
+event("BANK_TABS_CHANGED", Enum.BankType.Account); advance(1)
+equal(#WoWSyncDB.account.sections.bank.data.containers, 0, "returned empty account tab set is observed empty")
+check(S.RenderSection("accountBank", S.GetSnapshot()):find("Items: EMPTY", 1, true), "observed account empty renders empty")
+C_Bank.FetchPurchasedBankTabIDs = function(kind) if kind == Enum.BankType.Account then return { 12, 12 } end; return originalAccountIDs(kind) end
+C_Bank.FetchNumPurchasedBankTabs = function(kind) if kind == Enum.BankType.Account then return 2 end; return originalAccountCount(kind) end
+local emptyAccountObserved = WoWSyncDB.account.sections.bank.observedAt
+event("BANK_TABS_CHANGED", Enum.BankType.Account); advance(3)
+equal(WoWSyncDB.account.sections.bank.observedAt, emptyAccountObserved, "duplicate account tab IDs preserve last observation")
+C_Bank.FetchPurchasedBankTabIDs, C_Bank.FetchNumPurchasedBankTabs = originalAccountIDs, originalAccountCount
+event("BANK_TABS_CHANGED", Enum.BankType.Account); advance(1)
+equal(#WoWSyncDB.account.sections.bank.data.containers, 2, "settled account bank replaces prior empty observation")
 local bankObserved = S.record.sections.bank.observedAt
 bankView = false; event("BANK_TABS_CHANGED"); advance(3)
 equal(S.record.sections.bank.observedAt, bankObserved, "unviewable bank preserves last seen data")

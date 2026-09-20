@@ -40,7 +40,7 @@ S.collectors.location = function()
     return { zone = Optional(GetRealZoneText), subzone = Optional(GetSubZoneText) }
 end
 
-local function Containers(bank)
+local function Containers(bank, scope)
     if bank and not S.bankOpen then return nil, { reason = "Bank closed" } end
     local slots = Compat.GetContainerSlotCount
     local freeSlots = Compat.GetContainerFreeSlots
@@ -48,13 +48,16 @@ local function Containers(bank)
     if not slots or not getInfo then
         return nil, { reason = "Container APIs unavailable" }
     end
-    local bagRanges, bankRanges = Compat.GetBankRanges()
+    local bagRanges, bankRanges = Compat.GetBankRanges(scope)
     local bags = bagRanges
     if bank then bags = bankRanges end
     if not bags then return nil, { reason = "Container view unavailable", retry = true } end
-    local data = { containers = {}, coverage = bank and Compat.GetBankCoverage() or nil }
-    local incomplete, locked = false, false
+    local data = { containers = {}, coverage = bank and Compat.GetBankCoverage(scope) or nil }
+    if bank then data.ownerScope = scope == "ACCOUNT" and "ACCOUNT_WARBAND" or "CHARACTER" end
+    local incomplete, locked, seenContainers = false, false, {}
     for _, bag in ipairs(bags) do
+        if seenContainers[bag] then return nil, { reason = "Duplicate bank tab ID", retry = true } end
+        seenContainers[bag] = true
         local count = slots(bag)
         if count == nil or (Compat.ContainerRequiresCapacity(bag, bank) and count == 0) then
             return nil, { reason = "Container capacity not ready", retry = true }
@@ -62,7 +65,7 @@ local function Containers(bank)
         local free, family
         if freeSlots then free, family = freeSlots(bag) end
         local container = { id = bag, capacity = count, free = free, family = family, slots = {} }
-        container.storage = Compat.GetContainerCategory(bag, bank)
+        container.storage = Compat.GetContainerCategory(bag, bank, scope)
         local link, equippedID, equippedTexture
         if Compat.GetContainerBagIdentity then
             link, equippedID, equippedTexture = Compat.GetContainerBagIdentity(bag)
@@ -98,8 +101,8 @@ local function Containers(bank)
     end
     if locked or GetCursorInfo() then return nil, { reason = "Inventory movement in progress", retry = true } end
     if bank then
-        data.visit = S.Copy(S.record.visits.bank)
-        local count, kind = Compat.GetPurchasedBankSlots()
+        data.visit = S.Copy((scope == "ACCOUNT" and S.account and S.account.visits or S.record.visits).bank)
+        local count, kind = Compat.GetPurchasedBankSlots(scope)
         if kind == "tabs" then
             data.purchasedTabs = count
             if count == nil or count ~= #bags then return nil, { reason = "Purchased bank tabs pending", retry = true } end
@@ -110,6 +113,9 @@ local function Containers(bank)
 end
 S.collectors.bags = function() return Containers(false) end
 S.collectors.bank = function() return Containers(true) end
+if Compat.IsRetail and Compat.IsRetail() then
+    S.collectors.accountBank = function() return Containers(true, "ACCOUNT") end
+end
 
 S.collectors.equipment = function()
     local data, incomplete = { slots = {} }, false
