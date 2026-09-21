@@ -18,9 +18,9 @@
     "RETAIL_COMPATIBILITY.md": "f51dbb1e87a41d3ec7247fa7d7460a689141f97a66304ce04401eb42a6c1c462",
     "RETAIL_TEST_PLAN.md": "ed0323daafbccc24af1071db79d6be1be90690e0b79fb51af8198af395dc3f6f",
     "WOWSYNC_ACCEPTANCE.md": "9f43241b572e5c66a31c743e33bcc7f21884c5d7680ffd2fd244a26f2a51b22d",
-    "WOWSYNC_SCHEMA.md": "0dd9c50eaf7b12bd1a46a39285c2f2415e8bc1eaadb7142ef2d6ac1de17e1046",
-    "WoWSyncCompat.lua": "f0ca4e5528b3a1b22020b3fdfcf14f32c395ee2bdcbf1bc37756a8513b6cd53e",
-    "WoWSyncCore.lua": "d4d896d9ed49fd61cb505938f7d6b0fa1d601565a41a7d16d87de2fc4f64671e",
+    "WOWSYNC_SCHEMA.md": "09bef01d3bb0d1b880d5c19ec26edb22d33ca3e530723ac298b97ad42f459650",
+    "WoWSyncCompat.lua": "0c88b0e1c64da263b69ac12402b88d2aa93bd1ef4040d96048c5340cb1803408",
+    "WoWSyncCore.lua": "55179bf87362ec7a567cb7a1d0e2b393387cf0b896f3d53ac9415c20e8a31a00",
     "WoWSyncForever.lua": "bceb1f15e7afe5b67e22551b6c5f624548ed7be5b9064c2d192e89c624da8c52",
     "WoWSyncForeverBags.lua": "f447775a63506797b3539a25d30819292a59b2dca4c9f845d92492765f93051f",
     "WoWSyncForeverBank.lua": "a7e0a1f4fcbe4f516a6d08f7872a2027401af59ec73599647a2539d4e97388d6",
@@ -29,7 +29,7 @@
     "WoWSyncForeverSpells.lua": "249d96cafdbf5682d0e52db88e8d082b7b82770ed6879dd85239cbe195487599",
     "WoWSyncForeverTrainers.lua": "0505139001c744d609e6f3d57ad4d1daf56b9510b8723db46f0a8daeb1af49e6",
     "WoWSyncIcon.tga": "c1a29652ad570c09653e98f8150ebfd99301c9980f6b3f60cd4df5e5bc7a2c23",
-    "WoWSyncRender.lua": "fa3364005bf37f03b89a58952051578ba404bd792a2d6c421e82956e6c083978",
+    "WoWSyncRender.lua": "e75cfc0c52eabf6abe0a607df1d11a09fe08d7ba1eae09bc23316d0b2094e648",
     "WoWSyncUI.lua": "292e84652c17614c53b6965185df6680c8394fc71b0b7825d520eabea1d7b505"
   }
 }

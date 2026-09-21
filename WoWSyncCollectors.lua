@@ -10,9 +10,14 @@ end
 function S.Item(link, itemID)
     itemID = itemID or (link and tonumber(link:match("item:(%d+)")))
     local item = { itemID = itemID, itemString = link and link:match("(item:[^|]+)") }
-    local name, _, quality, level, requiredLevel, _, _, _, _, _, vendor = Compat.GetItemInfo(link or itemID)
+    local name, _, quality, level, requiredLevel, _, _, _, _, _, vendor,
+        classID, subclassID, bindType, expansionID, _, isCraftingReagent = Compat.GetItemInfo(link or itemID)
     if Compat.GetItemLevel and link then level = Compat.GetItemLevel(link, level) end
     if not name then Compat.RequestItemData(itemID) end
+    if Compat.GetItemMetadata then
+        S.RememberItemMetadata(itemID, Compat.GetItemMetadata(itemID, classID, subclassID,
+            bindType, expansionID, isCraftingReagent))
+    end
     item.name, item.quality, item.itemLevel, item.requiredLevel = name, quality, level, requiredLevel
     item.vendorCopper = vendor
     return item

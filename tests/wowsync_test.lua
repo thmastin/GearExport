@@ -442,6 +442,7 @@ local function serializable(value, seen)
 end
 check(serializable(WoWSyncDB, {}), "SavedVariables contain only acyclic serializable values")
 check(not S.record.history and not S.record.events, "no event-history log retained")
+assert(loadfile("tests/item_metadata_test.lua"))()(S, WoWSyncCompat, check, equal)
 equal(movingCalls, 0, "all edge cases remain observation only")
 local db = WoWSyncDB
 WoWSyncDB = { schemaVersion = 999, characters = { sentinel = true } }; S.record = nil

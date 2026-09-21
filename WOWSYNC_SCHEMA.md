@@ -30,7 +30,8 @@ per-event disk writing. A copied export needs no reload.
 
 Root: `schemaVersion=1`, `settings`, `characters[UnitGUID("player")]`.
 Settings: `showButton` (defaults false), `buttonPosition` (optional).
-Character: `identity`, `sections`, `visits`, `latestExport` (at most one text block).
+Character: `identity`, `sections`, `visits`, `itemMetadata`, `latestExport` (at
+most one text block).
 
 Each section has `data`, `observedAt`, `changedAt`, `revision`, `completeness`,
 `source`, `capture`, and optional `reason`. An unsuccessful read adds
@@ -61,6 +62,9 @@ for persistence; session scheduling uses `GetTime()` only in memory.
   `WEAPON`, `CLASS`, `TRADE`, or `UNKNOWN`); NPC names are display context only.
   The current adapter cannot reliably obtain trainer spell IDs; indices and names
   are never used to invent them.
+- `itemMetadata`: a separate cache of static base-item facets encountered while
+  collecting the current character's equipment or storage. It is not nested into
+  an item observation and never affects a section's observation/revision/hash.
 
 `visits.bank` records the most recent bank visit. `visits.trainers[category]` records
 the latest visit for each observed trainer category, including openedAt, closedAt,
@@ -118,6 +122,34 @@ empty. A Guild Bank snapshot is complete only for all tabs currently permitted t
 the observing character; inaccessible guild-owned tabs remain outside its observed
 contents. Failed/closed/timed-out captures are partial and do not replace a prior
 complete guild observation.
+
+### Additive item metadata block
+
+`[ITEM METADATA]` is appended after the established observation sections without
+changing `schemaVersion` or the meaning of any item row. It has exactly one
+tab-separated row per base item ID referenced by equipment, bags, Character Bank,
+Warband Bank, or Guild Bank in the exported snapshot:
+
+```text
+baseItemID  classID  subclassID  bindType  expansionID  isCraftingReagent
+```
+
+Rows sort by numeric `baseItemID`. `?` means that facet was not supplied by the
+client; an observed `isCraftingReagent=false` renders `no`, while true renders
+`yes`. `classID` and `subclassID` may be supplied by `GetItemInfoInstant` while
+full item data is unavailable. `bindType`, `expansionID`, and
+`isCraftingReagent` require the full item-info tuple and remain `?` until it is
+available. The client-returned `expansionID` is a raw numeric fact only: WoWSync
+does not map it to an expansion name, reinterpret sentinel-like values, or infer
+it from an item ID/name/class.
+
+The export envelope's character client version/build/family establishes the
+game-version context for the base ID. Consumers combining exports from different
+products must key metadata by that context plus `baseItemID`; WoWSync does not
+claim that Retail metadata applies to Classic Era, TBC Anniversary, or Forever.
+Readers that do not recognize this additive section can skip it. Existing item
+rows, ownership scopes, quantities, binding observations, and storage hashes are
+unchanged.
 On validated Retail clients, capture is started/stopped from `GuildBankFrame`
 OnShow/OnHide; `GUILDBANKFRAME_OPENED/CLOSED` are supplementary signals and cannot
 be the sole lifecycle source. Closed or unavailable banks preserve a previous
@@ -139,8 +171,9 @@ complete observation as LAST_SEEN rather than claiming current empty storage.
 
 Consumers should use these functions, not mutate `WoWSyncDB` or scheduler internals.
 Section keys in default order: character, location, equipment, bags, bank,
-professions, spells, trainer. Future schema versions must be explicitly migrated;
-an unknown version is preserved and synchronization refuses to overwrite it.
+professions, spells, trainer, itemMetadata. Retail additionally inserts
+accountBank and guildBank after bank. Future schema versions must be explicitly
+migrated; an unknown version is preserved and synchronization refuses to overwrite it.
 
 ## Text format
 

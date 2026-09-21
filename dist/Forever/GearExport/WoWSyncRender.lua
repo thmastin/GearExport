@@ -3,7 +3,7 @@
 local _, addon = ...
 local S = addon.Sync
 local labels = { character = "CHARACTER", location = "LOCATION", equipment = "EQUIPMENT",
-    bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", guildBank = "GUILD BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS" }
+    bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", guildBank = "GUILD BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS", itemMetadata = "ITEM METADATA" }
 
 local function Text(value)
     if value == nil then return "?" end
@@ -181,6 +181,43 @@ renderers.trainer = function(out, data, snapshot)
     end
 end
 
+local function MetadataID(item)
+    if type(item) ~= "table" then return nil end
+    if type(item.itemID) == "number" and item.itemID > 0 and item.itemID % 1 == 0 then return item.itemID end
+    return type(item.itemString) == "string" and tonumber(item.itemString:match("^item:(%d+)")) or nil
+end
+
+local function CollectMetadataIDs(snapshot)
+    local ids = {}
+    local function Remember(item)
+        local id = MetadataID(item)
+        if id then ids[id] = true end
+    end
+    local function InventoryData(data)
+        for _, container in ipairs(data and data.containers or {}) do
+            Remember(container.bag)
+            for _, item in pairs(container.slots or {}) do Remember(item) end
+        end
+    end
+    local sections = snapshot.sections or {}
+    for _, item in pairs(sections.equipment and sections.equipment.data and sections.equipment.data.slots or {}) do Remember(item) end
+    InventoryData(sections.bags and sections.bags.data)
+    InventoryData(sections.bank and sections.bank.data)
+    InventoryData(snapshot.accountSections and snapshot.accountSections.bank and snapshot.accountSections.bank.data)
+    InventoryData(snapshot.guildSections and snapshot.guildSections.bank and snapshot.guildSections.bank.data)
+    return SortedKeys(ids)
+end
+
+local function RenderItemMetadata(snapshot)
+    local out, metadata = { "[ITEM METADATA]" }, snapshot.itemMetadata or {}
+    Row(out, "baseItemID", "classID", "subclassID", "bindType", "expansionID", "isCraftingReagent")
+    for _, itemID in ipairs(CollectMetadataIDs(snapshot)) do
+        local entry = metadata[itemID] or {}
+        Row(out, itemID, entry.classID, entry.subclassID, entry.bindType, entry.expansionID, entry.isCraftingReagent)
+    end
+    return table.concat(out, "\n")
+end
+
 local function RenderTrainerSection(snapshot, section)
     local out = { "[TRAINERS]" }
     if not section or not section.data or type(section.data.snapshots) ~= "table"
@@ -197,6 +234,7 @@ local function RenderTrainerSection(snapshot, section)
 end
 
 function S.RenderSection(key, snapshot)
+    if key == "itemMetadata" then return RenderItemMetadata(snapshot) end
     if not renderers[key] then return nil, "Unknown section: " .. tostring(key) end
     if key == "trainer" then
         return RenderTrainerSection(snapshot, snapshot.sections and snapshot.sections.trainer)

@@ -1,7 +1,7 @@
 -- Observation only. No inventory/trainer action APIs belong in WoWSync.
 local ADDON_NAME, addon = ...
 local S = { apiVersion = 1, schemaVersion = 1, collectors = {}, dirty = {},
-    order = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer" },
+    order = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer", "itemMetadata" },
     bankOpen = false, guildBankOpen = false, trainerOpen = false, sessions = { bank = 0, accountBank = 0, guildBank = 0, trainer = 0 } }
 if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
     table.insert(S.order, 6, "accountBank")
@@ -77,11 +77,26 @@ function S.Initialize()
     record.identity = { guid = guid, name = name, realm = realm }
     record.sections = type(record.sections) == "table" and record.sections or {}
     record.visits = type(record.visits) == "table" and record.visits or {}
+    record.itemMetadata = type(record.itemMetadata) == "table" and record.itemMetadata or {}
     NormalizeTrainer(record)
     S.record = record
     S.settings = db.settings
     S.error = nil
     return true
+end
+
+function S.RememberItemMetadata(itemID, metadata)
+    if type(itemID) ~= "number" or itemID <= 0 or itemID % 1 ~= 0 or type(metadata) ~= "table" then return end
+    local present = false
+    for _, key in ipairs({ "classID", "subclassID", "bindType", "expansionID", "isCraftingReagent" }) do
+        if metadata[key] ~= nil then present = true; break end
+    end
+    if not present then return end
+    local known = S.record.itemMetadata[itemID]
+    if type(known) ~= "table" then known = {}; S.record.itemMetadata[itemID] = known end
+    for _, key in ipairs({ "classID", "subclassID", "bindType", "expansionID", "isCraftingReagent" }) do
+        if metadata[key] ~= nil then known[key] = metadata[key] end
+    end
 end
 
 local function OwnerFor(key)
@@ -164,7 +179,7 @@ function S.GetSnapshot()
     if not S.Initialize() then return nil end
     if not S.guild and S.ResolveGuildBankOwner then S.ResolveGuildBankOwner() end
     local snapshot = { identity = S.Copy(S.record.identity), sections = S.Copy(S.record.sections),
-        visits = S.Copy(S.record.visits) }
+        visits = S.Copy(S.record.visits), itemMetadata = S.Copy(S.record.itemMetadata) }
     snapshot.schemaVersion = S.schemaVersion
     snapshot.generatedAt = S.Now()
     snapshot.access = { bank = S.bankOpen and (not WoWSyncCompat or WoWSyncCompat.IsBankViewable()), trainer = S.trainerOpen,

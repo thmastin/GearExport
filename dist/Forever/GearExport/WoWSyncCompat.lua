@@ -31,6 +31,34 @@ function C.GetItemInfo(reference)
     return Optional(C.IsRetail() and C_Item and C_Item.GetItemInfo or GetItemInfo, reference)
 end
 
+local function MetadataNumber(value)
+    if issecretvalue and issecretvalue(value) then return nil end
+    if type(value) ~= "number" or value ~= value or value < 0
+        or value == math.huge or value % 1 ~= 0 then return nil end
+    return value
+end
+
+-- Static base-item facts are separate from an observed item instance. Full
+-- item info is authoritative for all approved facets; the instant tuple may
+-- fill only class/subclass while item data is still loading.
+function C.GetItemMetadata(itemID, classID, subclassID, bindType, expansionID, isCraftingReagent)
+    local instantClass, instantSubclass
+    if C.IsRetail() and itemID and type(GetItemInfoInstant) == "function" then
+        local _, _, _, _, _, classValue, subclassValue = Optional(GetItemInfoInstant, itemID)
+        instantClass, instantSubclass = MetadataNumber(classValue), MetadataNumber(subclassValue)
+    end
+    local metadata = {
+        classID = MetadataNumber(classID) or instantClass,
+        subclassID = MetadataNumber(subclassID) or instantSubclass,
+        bindType = MetadataNumber(bindType),
+        expansionID = MetadataNumber(expansionID),
+    }
+    if not (issecretvalue and issecretvalue(isCraftingReagent)) and type(isCraftingReagent) == "boolean" then
+        metadata.isCraftingReagent = isCraftingReagent
+    end
+    return metadata
+end
+
 function C.GetItemCount(reference, includeBank)
     return Optional(C.IsRetail() and C_Item and C_Item.GetItemCount or GetItemCount, reference, includeBank)
 end

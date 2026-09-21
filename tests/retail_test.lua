@@ -46,13 +46,15 @@ C_Item = {
     GetItemInfo = function(ref)
         check(ref ~= nil, "item reference supplied")
         if pending then return nil end
-        return "Crafted Sample", link, 4, 200, 80, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 4321
+        return "Crafted Sample", link, 4, 200, 80, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 4321,
+            7, 11, 0, 11, nil, true
     end,
     GetDetailedItemLevelInfo = function(ref) equal(ref, link, "instance link for level"); if not pending then return 289 end end,
     GetItemStats = function() if not pending then return { ITEM_MOD_HASTE_RATING_SHORT = 42, ITEM_MOD_MASTERY_RATING_SHORT = 31 } end end,
     RequestLoadItemDataByID = function(id) equal(id, 240001, "metadata request ID"); requests = requests + 1 end,
     GetItemCount = function() return 2 end,
 }
+function GetItemInfoInstant(ref) return 240001, "Armor", "Plate", "INVTYPE_HEAD", 1, 7, 11 end
 C_TooltipInfo = { GetInventoryItem = function() if not pending then return { lines = { { leftText = "Crafted Sample" } } } end end }
 C_Bank = {
     CanViewBank = function(kind)
@@ -250,6 +252,11 @@ equal(#S.record.sections.bags.data.containers, 6, "canonical bags include reagen
 equal(S.record.sections.bags.data.containers[6].storage, "REAGENT_BAG", "reagent category")
 equal(S.record.sections.equipment.data.slots[1].itemString, itemRef, "all modern item modifiers preserved")
 equal(S.record.sections.equipment.data.slots[1].itemLevel, 289, "instance level in snapshot")
+equal(S.record.itemMetadata[240001].classID, 7, "Retail item metadata stores full-info class ID")
+equal(S.record.itemMetadata[240001].subclassID, 11, "Retail item metadata stores full-info subclass ID")
+equal(S.record.itemMetadata[240001].bindType, 0, "Retail item metadata stores raw bind type")
+equal(S.record.itemMetadata[240001].expansionID, 11, "Retail item metadata stores raw expansion ID")
+equal(S.record.itemMetadata[240001].isCraftingReagent, true, "Retail item metadata stores explicit reagent truth")
 equal(#S.record.sections.spells.data.entries, 5, "deduplicated learned spells including profession abilities")
 equal(S.record.sections.spells.data.entries[5].spellID, 1005, "profession spell outside class tab ranges")
 equal(#S.record.sections.professions.data.entries, 3, "canonical professions")
