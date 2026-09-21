@@ -1,36 +1,51 @@
-# Forever professions: live-validated
+# Forever professions: live findings and readiness guard
 
-This build adds professions only. It was live-validated on Hallo, level 7,
-Forever build `69913`.
+Hallo Emberstone, Forever `1.60.1` build `69913`, has Engineering `20/75`
+and Mining `23/75`.
 
-The build-69913 source tag (`70ef1b2fd78061a73f886c4a1e79dc5b5cff6d5e`)
-documents `C_TradeSkillUI.GetAllProfessionTradeSkillLines()` and
-`GetProfessionInfoBySkillLineID(skillLineID)`. `ProfessionInfo` supplies the
-runtime `professionName`, `skillLevel`, and `maxSkillLevel`, along with its
-own `professionID` and nullable player `profession` enum. Forever returns
-distinct skill-line IDs for the same player profession; equivalent records
-collapse by that enum, not by display name. A line without the player enum is
-excluded as unrecognized non-player data. This handles the live `Test
-Profession [DNT]` record by API identity; its name is never an exclusion rule.
-Conflicting duplicate records remain UNKNOWN rather than selecting one. The
-adapter records only these observed fields in the
-existing WOWSYNC v1 `profession, skill, maxSkill` schema. It does not infer
-tiers, expansions, categories, names, or skills from IDs.
+## Hydration finding
 
-An empty enumerated list is OBSERVED empty. Missing, throwing, restricted,
-duplicate, malformed, mismatched, or range-inconsistent results leave the
-section UNKNOWN or partial as appropriate. The test fixture uses synthetic
-records and covers those cases; no real profession data is invented.
+Immediately after login/reload, `C_TradeSkillUI` enumerated every profession
+enum as `0/0`, including Mining and Engineering, while the Skills UI displayed
+Mining `23/75`. Opening the general Skills/Professions UI did not change those
+values. Opening Smelting did hydrate the C_TradeSkillUI values; a later export
+then showed Engineering `20/75` and Mining `23/75`.
 
-## Live acceptance
+Consequently, C_TradeSkillUI all-profession rows are not used as current skill
+evidence. Its pre-hydration `0/0` records cannot prove a profession is learned
+at zero skill.
 
-Hallo's live export reports Engineering `20/75`, Mining `22/75`, and the other
-player profession enums as `0/0`. No duplicate rows remain. Two unrecognized,
-non-player skill lines are excluded and reported in the OBSERVED/partial
-coverage note. This validates the enum-based normalization and DNT handling;
-it does not authorize inferred tiers, expansions, categories, names, or skills.
+## Collector contract
 
-After manual installation, validate a fresh `/wowsync` on Hallo. Capture the
-exact results of `/dump C_TradeSkillUI.GetAllProfessionTradeSkillLines()` and,
-for every returned ID, `/dump C_TradeSkillUI.GetProfessionInfoBySkillLineID(ID)`
-before extending behavior to any absent profession classes.
+The Forever Skills UI uses `GetProfessions()` to return learned profession
+indices and `GetProfessionInfo(index)` to return the learned profession name,
+current skill, maximum skill, and optional skill-line identity. The collector
+uses that independent tuple as its authoritative observation source:
+
+- Nil index: an unlearned profession; no learned entry is fabricated.
+- Learned entry with a non-empty name and valid `current/max`, where `max > 0`:
+  OBSERVED.
+- Learned `0/75`: valid observed data.
+- Learned `0/0`, unavailable/restricted/malformed data, or a changed tuple:
+  UNKNOWN, with retry; it is never rendered as current observed `0/0`.
+- If a prior complete learned-profession observation exists when a later tuple is
+  unavailable, that prior data remains explicitly `LAST_SEEN` at its original
+  observation timestamp with a refresh issue. It is not relabeled as current
+  `OBSERVED` data; the next authoritative tuple replaces it.
+
+This preserves the existing WOWSYNC v1 `profession, skill, maxSkill` schema.
+It does not infer profession identity, tiers, expansions, categories, or skill
+values from C_TradeSkillUI IDs or cached prior observations.
+
+## Regression coverage and live acceptance
+
+Synthetic regression coverage includes pre-hydration C_TradeSkillUI `0/0`,
+hydrated Engineering `20/75` and Mining `23/75`, retained `LAST_SEEN` data
+after a later unavailable tuple, a valid learned `0/75`, unlearned nil slots,
+unavailable values, and malformed tuples.
+
+The fresh-login live regression passed after `/reload`, before opening Smelting
+or any actual trade-skill window: `/wowsync` reported Cooking `5/75`,
+Engineering `20/75`, and Mining `23/75` as current OBSERVED complete data. No
+unlearned `0/0` rows were fabricated. The defensive UNKNOWN/LAST_SEEN paths
+remain covered for malformed or unavailable learned tuples.

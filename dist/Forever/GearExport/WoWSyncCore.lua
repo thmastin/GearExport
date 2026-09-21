@@ -2,7 +2,11 @@
 local ADDON_NAME, addon = ...
 local S = { apiVersion = 1, schemaVersion = 1, collectors = {}, dirty = {},
     order = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer" },
-    bankOpen = false, trainerOpen = false, sessions = { bank = 0, trainer = 0 } }
+    bankOpen = false, guildBankOpen = false, trainerOpen = false, sessions = { bank = 0, accountBank = 0, guildBank = 0, trainer = 0 } }
+if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
+    table.insert(S.order, 6, "accountBank")
+    table.insert(S.order, 7, "guildBank")
+end
 addon.Sync = S
 WoWSync = S
 
@@ -58,6 +62,15 @@ function S.Initialize()
     db.schemaVersion = 1
     db.settings = type(db.settings) == "table" and db.settings or {}
     db.characters = type(db.characters) == "table" and db.characters or {}
+    if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
+        -- Account/Warband storage belongs to this SavedVariables account scope,
+        -- not to whichever character happened to make the observation.
+        db.account = type(db.account) == "table" and db.account or {}
+        db.account.sections = type(db.account.sections) == "table" and db.account.sections or {}
+        db.account.visits = type(db.account.visits) == "table" and db.account.visits or {}
+        db.guilds = type(db.guilds) == "table" and db.guilds or {}
+        S.account, S.guilds = db.account, db.guilds
+    else S.account, S.guilds, S.guild = nil, nil, nil end
     local record = db.characters[guid]
     if type(record) ~= "table" then record = {}; db.characters[guid] = record end
     if not addon.ReadIdentity then name, realm = UnitName("player"), GetRealmName() end
@@ -71,11 +84,22 @@ function S.Initialize()
     return true
 end
 
+local function OwnerFor(key)
+    if key == "accountBank" then return S.account end
+    if key == "guildBank" then return S.guild end
+    return S.record
+end
+
+local function StoredKey(key)
+    return (key == "accountBank" or key == "guildBank") and "bank" or key
+end
+
 function S.Commit(key, data, meta)
-    local old = S.record.sections[key]
+    local owner, storedKey = OwnerFor(key), StoredKey(key)
+    local old = owner.sections[storedKey]
     local now = S.Now()
     local changed = not old or not Equal(old.data, data)
-    S.record.sections[key] = { data = data, observedAt = now,
+    owner.sections[storedKey] = { data = data, observedAt = now,
         changedAt = changed and now or old.changedAt,
         revision = ((old and old.revision) or 0) + (changed and 1 or 0),
         completeness = meta.completeness or "complete", reason = meta.reason,
@@ -100,15 +124,19 @@ function S.CommitTrainer(category, data, meta)
         source = meta.source or "client", capture = S.capture, lastCategory = category }
 end
 
-function S.Attempt(key, reason)
-    local old = S.record.sections[key]
-    if not old then old = { completeness = "unknown", revision = 0 }; S.record.sections[key] = old end
+function S.Attempt(key, reason, stale)
+    local owner, storedKey = OwnerFor(key), StoredKey(key)
+    if not owner then return end
+    local old = owner.sections[storedKey]
+    if not old then old = { completeness = "unknown", revision = 0 }; owner.sections[storedKey] = old end
     old.lastAttemptAt, old.lastAttemptError = S.Now(), reason
+    if stale and old.data then old.lastAttemptStale = true end
 end
 
 function S.Mark(key, delay)
     if not S.collectors[key] then return end
-    if key == "bank" and not S.bankOpen or key == "trainer" and not S.trainerOpen then return end
+    if (key == "bank" or key == "accountBank") and not S.bankOpen
+        or key == "guildBank" and not S.guildBankOpen or key == "trainer" and not S.trainerOpen then return end
     local now = GetTime()
     local pending = S.dirty[key]
     if not pending then pending = { first = now, tries = 0 }; S.dirty[key] = pending end
@@ -134,12 +162,23 @@ end
 
 function S.GetSnapshot()
     if not S.Initialize() then return nil end
+    if not S.guild and S.ResolveGuildBankOwner then S.ResolveGuildBankOwner() end
     local snapshot = { identity = S.Copy(S.record.identity), sections = S.Copy(S.record.sections),
         visits = S.Copy(S.record.visits) }
     snapshot.schemaVersion = S.schemaVersion
     snapshot.generatedAt = S.Now()
     snapshot.access = { bank = S.bankOpen and (not WoWSyncCompat or WoWSyncCompat.IsBankViewable()), trainer = S.trainerOpen,
         trainerCategory = S.trainerCategory }
+    if S.account then
+        snapshot.accountSections = S.Copy(S.account.sections)
+        snapshot.access.accountBank = S.bankOpen and WoWSyncCompat.IsBankViewable("ACCOUNT")
+    end
+    if S.guild then
+        snapshot.guildSections = S.Copy(S.guild.sections)
+        snapshot.guildIdentity = S.Copy(S.guild.identity)
+        snapshot.access.guildBank = S.guildBankOpen
+    end
+    snapshot.guildError = S.guildError
     snapshot.pending = {}
     for key in pairs(S.dirty) do snapshot.pending[key] = true end
     return snapshot
@@ -147,7 +186,8 @@ end
 
 function S.GetSection(key)
     if not S.Initialize() then return nil end
-    return S.Copy(S.record.sections[key])
+    local owner = OwnerFor(key)
+    return owner and S.Copy(owner.sections[StoredKey(key)]) or nil
 end
 
 local frame = CreateFrame("Frame")
@@ -168,9 +208,9 @@ local function Process(force)
                 else
                     S.Commit(key, data, meta)
                 end
-            else S.Attempt(key, meta.reason or "Data unavailable") end
+            else S.Attempt(key, meta.reason or "Data unavailable", meta.stale) end
             if meta.retry and not force and pending.tries < 4
-                and (key ~= "bank" or S.bankOpen) and (key ~= "trainer" or S.trainerOpen) then
+                and ((key ~= "bank" and key ~= "accountBank") or S.bankOpen) and (key ~= "trainer" or S.trainerOpen) then
                 pending.tries = pending.tries + 1
                 pending.due = now + 0.5
                 S.dirty[key] = pending
@@ -181,6 +221,7 @@ end
 S.Process = Process
 
 local function Tick()
+    if S.GuildBankTick then S.GuildBankTick(GetTime()) end
     Process(false)
     if S.exportRequest and (not next(S.dirty) and not S.playedPending or GetTime() >= S.exportRequest.deadline) then
         local callback = S.exportRequest.callback
@@ -192,7 +233,7 @@ local function Tick()
             callback(text)
         end
     end
-    if not next(S.dirty) and not S.exportRequest then frame:SetScript("OnUpdate", nil) end
+    if not next(S.dirty) and not S.exportRequest and not (S.GuildBankActive and S.GuildBankActive()) then frame:SetScript("OnUpdate", nil) end
 end
 function S.Wake() frame:SetScript("OnUpdate", Tick) end
 
@@ -209,18 +250,22 @@ local function Visit(key)
     local ok, location = pcall(S.collectors.location)
     local visit = { openedAt = S.Now(), location = ok and location or nil,
         name = UnitName("npc"), guid = UnitGUID("npc"), session = S.sessions[key] }
-    if key == "trainer" then S.currentTrainerVisit = visit else S.record.visits[key] = visit end
+    if key == "trainer" then S.currentTrainerVisit = visit
+    elseif key == "accountBank" then S.account.visits.bank = visit
+    elseif key == "guildBank" then S.guild.visits.bank = visit
+    else S.record.visits[key] = visit end
 end
 
 local function Close(key)
     if not S.record then return end
-    local visit = key == "trainer" and S.currentTrainerVisit or S.record.visits[key]
+    local owner, storedKey = OwnerFor(key), StoredKey(key)
+    local visit = key == "trainer" and S.currentTrainerVisit or owner.visits[storedKey]
     if key == "trainer" and visit then
         local category = S.trainerCategory or "UNKNOWN"
         S.record.visits.trainers[category] = visit
         S.currentTrainerVisit = nil
     end
-    local section = S.record.sections[key]
+    local section = owner.sections[storedKey]
     local observed = section
     if key == "trainer" and section and section.data and section.data.snapshots then
         observed = section.data.snapshots[S.trainerCategory or "UNKNOWN"]
@@ -233,6 +278,7 @@ local function Close(key)
     if S.dirty[key] then S.Attempt(key, "Closed before pending capture settled") end
     S.dirty[key] = nil
 end
+S.BeginVisit, S.EndVisit = Visit, Close
 
 local events = addon.SyncEvents or {
     "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT",
@@ -255,8 +301,16 @@ if not addon.SyncEvents and WoWSyncCompat and WoWSyncCompat.RegisterOptionalEven
 end
 
 frame:SetScript("OnEvent", function(_, event, arg, arg2)
+    if event:match("^GUILDBANK") then
+        S.guildEventCounts = S.guildEventCounts or {}
+        S.guildEventCounts[event] = (S.guildEventCounts[event] or 0) + 1
+        S.lastGuildEvent = event
+    end
     if event == "ADDON_LOADED" then
         if arg == ADDON_NAME then S.Initialize(); if S.InitializeUI then S.InitializeUI() end end
+        -- Blizzard_GuildBankUI is LoadOnDemand.  Its ADDON_LOADED signal is the
+        -- earliest clean point to hook GuildBankFrame before it is shown.
+        if arg == "Blizzard_GuildBankUI" and S.InstallGuildBankHooks then S.InstallGuildBankHooks() end
     elseif event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         S.RequestSync(); if S.InitializeUI then S.InitializeUI() end
     elseif event == "TIME_PLAYED_MSG" then
@@ -273,9 +327,14 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
     elseif event == "PLAYER_LOGOUT" then
         if S.record then Process(true) end
     elseif event == "BANKFRAME_OPENED" then
-        S.bankOpen = true; Visit("bank"); S.Mark("bank"); S.Mark("bags")
+        S.bankOpen = true; Visit("bank"); if S.collectors.accountBank then Visit("accountBank") end; S.Mark("bank"); S.Mark("accountBank"); S.Mark("bags")
     elseif event == "BANKFRAME_CLOSED" then
-        S.bankOpen = false; Close("bank"); S.Mark("bags")
+        S.bankOpen = false; Close("bank"); if S.collectors.accountBank then Close("accountBank") end; S.Mark("bags")
+    elseif event == "GUILDBANKFRAME_OPENED" then
+        if S.InstallGuildBankHooks then S.InstallGuildBankHooks() end
+        if S.GuildBankOpened then S.GuildBankOpened("event-open") end
+    elseif event == "GUILDBANKFRAME_CLOSED" then
+        if S.GuildBankClosed then S.GuildBankClosed("event-close") end
     elseif event == "TRAINER_SHOW" then
         S.trainerOpen = true; Visit("trainer"); S.Mark("trainer"); S.Mark("spells")
     elseif event == "TRAINER_CLOSED" then
@@ -283,8 +342,15 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
     elseif event:match("^TRAINER_") then
         S.Mark("trainer")
     elseif event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED"
-        or event == "PLAYERBANKSLOTS_CHANGED" or event == "PLAYERBANKBAGSLOTS_CHANGED" or event == "BANK_TABS_CHANGED" then
+        or event == "PLAYERBANKSLOTS_CHANGED" or event == "PLAYERBANKBAGSLOTS_CHANGED" then
         S.Mark("bags"); S.Mark("bank")
+    elseif event == "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED" then
+        S.Mark("accountBank")
+    elseif event == "GUILDBANKBAGSLOTS_CHANGED" or event == "GUILDBANK_UPDATE_TABS" or event == "GUILDBANK_ITEM_LOCK_CHANGED" then
+        if S.GuildBankEvent then S.GuildBankEvent(event, arg, arg2) end
+    elseif event == "BANK_TABS_CHANGED" or event == "BANK_TAB_SETTINGS_UPDATED" then
+        if arg == nil or arg == (Enum and Enum.BankType and Enum.BankType.Character) then S.Mark("bank") end
+        if arg == nil or arg == (Enum and Enum.BankType and Enum.BankType.Account) then S.Mark("accountBank") end
     elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "UNIT_INVENTORY_CHANGED" and arg == "player" then
         S.Mark("equipment"); S.Mark("bags")
     elseif event == "SKILL_LINES_CHANGED" or event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE"
@@ -293,8 +359,10 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.Mark("professions"); S.Mark("spells"); S.Mark("trainer")
     elseif event == "GET_ITEM_INFO_RECEIVED" or event == "ITEM_DATA_LOAD_RESULT" then
         if S.record then
-            for _, key in ipairs({ "bags", "bank", "equipment" }) do
-                local section = S.record.sections[key]
+            local keys = { "bags", "bank", "equipment" }
+            if S.account then keys[#keys + 1] = "accountBank" end
+            for _, key in ipairs(keys) do
+                local section = OwnerFor(key).sections[StoredKey(key)]
                 if section and section.completeness == "partial" then S.Mark(key) end
             end
         end

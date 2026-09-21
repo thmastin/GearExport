@@ -124,12 +124,13 @@ function S.CommitTrainer(category, data, meta)
         source = meta.source or "client", capture = S.capture, lastCategory = category }
 end
 
-function S.Attempt(key, reason)
+function S.Attempt(key, reason, stale)
     local owner, storedKey = OwnerFor(key), StoredKey(key)
     if not owner then return end
     local old = owner.sections[storedKey]
     if not old then old = { completeness = "unknown", revision = 0 }; owner.sections[storedKey] = old end
     old.lastAttemptAt, old.lastAttemptError = S.Now(), reason
+    if stale and old.data then old.lastAttemptStale = true end
 end
 
 function S.Mark(key, delay)
@@ -207,7 +208,7 @@ local function Process(force)
                 else
                     S.Commit(key, data, meta)
                 end
-            else S.Attempt(key, meta.reason or "Data unavailable") end
+            else S.Attempt(key, meta.reason or "Data unavailable", meta.stale) end
             if meta.retry and not force and pending.tries < 4
                 and ((key ~= "bank" and key ~= "accountBank") or S.bankOpen) and (key ~= "trainer" or S.trainerOpen) then
                 pending.tries = pending.tries + 1

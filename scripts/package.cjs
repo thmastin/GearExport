@@ -16,11 +16,11 @@ const luaFiles = toc.split(/\r?\n/).filter(line => line.endsWith('.lua'));
 if (luaFiles.some(file => path.basename(file) !== file)) throw new Error('Unexpected source path in TOC');
 if (target === 'Retail' && luaFiles.includes('BankCleanup.lua')) throw new Error('Retail must exclude BankCleanup');
 if (target === 'Forever' && (luaFiles.includes('BankCleanup.lua') || luaFiles.includes('GearExport.lua')
-    || luaFiles.includes('WoWSyncCollectors.lua'))) throw new Error('Forever Phase 1 must exclude legacy/deferred modules');
+    || luaFiles.includes('WoWSyncCollectors.lua'))) throw new Error('Forever must exclude legacy/action modules');
 const output = path.join(root, 'dist', target, 'GearExport');
 const docs = ['README.md', 'LICENSE', 'WOWSYNC_SCHEMA.md', 'WOWSYNC_ACCEPTANCE.md',
     'RETAIL_COMPATIBILITY.md', 'RETAIL_TEST_PLAN.md', 'BANK_CLEANUP_TESTS.md', 'PLAYTIME_API_AUDIT.md'];
-if (target === 'Forever') docs.push('FOREVER_PHASE1.md', 'FOREVER_PHASE2.md', 'FOREVER_BAGS.md', 'FOREVER_PROFESSIONS.md');
+if (target === 'Forever') docs.push('FOREVER_PHASE1.md', 'FOREVER_PHASE2.md', 'FOREVER_BAGS.md', 'FOREVER_PROFESSIONS.md', 'FOREVER_SPELLS.md', 'FOREVER_REMAINING.md');
 const assets = ['WoWSyncIcon.tga'];
 const expected = [...luaFiles, ...docs, ...assets, 'GearExport.toc', 'package-manifest.json'];
 // Reject stale/foreign files rather than silently shipping an obsolete flavor TOC.

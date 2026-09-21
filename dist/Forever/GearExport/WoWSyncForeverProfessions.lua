@@ -1,61 +1,73 @@
--- Forever build 69913 C_TradeSkillUI profession contracts.
+-- Forever build 69913 profession readiness adapter.
+--
+-- C_TradeSkillUI exposes an all-profession enumeration before its skill values
+-- hydrate. Its pre-hydration 0/0 records cannot establish that a profession is
+-- learned at zero skill. The Forever skills UI itself uses the legacy
+-- GetProfessions/GetProfessionInfo tuple, which identifies learned indices and
+-- reports their current/max skill independently of that trade-skill cache.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 
-local function Field(object, key)
-    return function() return object[key] end
+local function Public(value)
+    return not (type(issecretvalue) == "function" and issecretvalue(value))
+end
+
+local function ValidNumber(value)
+    return Public(value) and type(value) == "number" and value == value
+        and value ~= math.huge and value ~= -math.huge and value >= 0 and value % 1 == 0
+end
+
+local function ProfessionIndices()
+    if type(GetProfessions) ~= "function" or type(GetProfessionInfo) ~= "function" then
+        return nil, "Forever learned-profession APIs unavailable"
+    end
+    local result = { pcall(GetProfessions) }
+    if not result[1] then return nil, "Forever learned-profession indices unavailable" end
+    local indices, seen = {}, {}
+    for position = 1, 5 do
+        local index = result[position + 1]
+        if index ~= nil then
+            if not ValidNumber(index) or index <= 0 or seen[index] then
+                return nil, "Forever learned-profession indices changed"
+            end
+            seen[index] = true
+            indices[#indices + 1] = index
+        end
+    end
+    return indices
+end
+
+local function ReadProfession(index)
+    local result = { pcall(GetProfessionInfo, index) }
+    if not result[1] then return nil, "Forever learned profession details unavailable" end
+    -- name, texture, rank, maxRank, numSpells, spellOffset, skillLine, ...
+    local name, rank, maxRank, skillLine = result[2], result[4], result[5], result[8]
+    if not Public(name) or type(name) ~= "string" or name == "" then
+        return nil, "Forever learned profession name unavailable"
+    end
+    if not ValidNumber(rank) or not ValidNumber(maxRank) or maxRank <= 0 or rank > maxRank then
+        return nil, "Forever learned profession skill values unavailable"
+    end
+    if skillLine ~= nil and (not ValidNumber(skillLine) or skillLine <= 0) then
+        return nil, "Forever learned profession identity changed"
+    end
+    return { name = name, rank = rank, maxRank = maxRank, skillLineID = skillLine }
 end
 
 S.collectors.professions = function()
-    local api = type(C_TradeSkillUI) == "table" and C_TradeSkillUI or {}
-    if type(api.GetAllProfessionTradeSkillLines) ~= "function"
-        or type(api.GetProfessionInfoBySkillLineID) ~= "function" then
-        return nil, { reason = "Forever profession APIs unavailable" }
+    local indices, reason = ProfessionIndices()
+    if not indices then return nil, { reason = reason, retry = true, stale = true } end
+    local entries = {}
+    for _, index in ipairs(indices) do
+        local entry, detail = ReadProfession(index)
+        if not entry then return nil, { reason = detail, retry = true, stale = true } end
+        entries[#entries + 1] = entry
     end
-    local issues = {}
-    local ids = F.Read("Profession skill lines", api.GetAllProfessionTradeSkillLines,
-        1, "table", issues)
-    if not ids then return nil, { reason = "Forever profession skill lines unavailable", retry = true } end
-    local entries, seenIDs, seenProfessions, excluded = {}, {}, {}, 0
-    for _, id in ipairs(ids) do
-        if type(id) ~= "number" or id <= 0 or id % 1 ~= 0 or seenIDs[id] then
-            return nil, { reason = "Forever profession skill-line list changed", retry = true }
-        end
-        seenIDs[id] = true
-        local info = F.Read("Profession " .. id, api.GetProfessionInfoBySkillLineID, 1, "table", issues, id)
-        if not info then return nil, { reason = "Forever profession details pending", retry = true } end
-        local name = F.Read("Profession " .. id .. " name", Field(info, "professionName"), 1, "string", issues)
-        local rank = F.Number("Profession " .. id .. " skill", Field(info, "skillLevel"), issues)
-        local maxRank = F.Number("Profession " .. id .. " maximum", Field(info, "maxSkillLevel"), issues)
-        -- Nullable player Profession enum identifies a profession across the
-        -- distinct skill-line IDs exposed by the Forever runtime.
-        local profession = info.profession
-        if profession ~= nil and (not F.Number("Profession " .. id .. " enum", Field(info, "profession"), issues)
-            or profession <= 0) then return nil, { reason = "Forever profession enum changed", retry = true } end
-        local reportedID = F.Number("Profession " .. id .. " ID", Field(info, "professionID"), issues)
-        if reportedID and reportedID ~= id then return nil, { reason = "Forever profession identity changed", retry = true } end
-        if rank and maxRank and rank > maxRank then return nil, { reason = "Forever profession skill range inconsistent", retry = true } end
-        if profession == nil then
-            -- A missing player enum makes the line unrecognized non-player
-            -- data. This handles DNT without filtering by display text.
-            excluded = excluded + 1
-        else
-            local previous = seenProfessions[profession]
-            if previous then
-                if previous.name ~= name or previous.rank ~= rank or previous.maxRank ~= maxRank then
-                    return nil, { reason = "Forever duplicate profession records disagree", retry = true }
-                end
-            else
-                local entry = { name = name, rank = rank, maxRank = maxRank }
-                seenProfessions[profession] = entry
-                entries[#entries + 1] = entry
-            end
-        end
-    end
-    table.sort(entries, function(a, b) return (a.name or "") < (b.name or "") end)
-    table.sort(issues)
-    if excluded > 0 then issues[#issues + 1] = "Excluded " .. excluded .. " unrecognized non-player profession skill line(s)" end
-    return { entries = entries, coverage = "Forever player profession enums; current and maximum skill from C_TradeSkillUI" },
-        { completeness = #issues > 0 and "partial" or "complete",
-            reason = #issues > 0 and table.concat(issues, "; ") or nil, retry = #issues > 0 }
+    table.sort(entries, function(a, b)
+        if a.name ~= b.name then return a.name < b.name end
+        return (a.skillLineID or 0) < (b.skillLineID or 0)
+    end)
+    return { entries = entries,
+        coverage = "Forever learned profession indices and current/max skill from GetProfessions/GetProfessionInfo; C_TradeSkillUI pre-hydration values are not used" },
+        { completeness = "complete" }
 end

@@ -47,7 +47,7 @@ local function action() actions = actions + 1; error("Unexpected gameplay call")
 BuyTrainerService, UseContainerItem, PickupContainerItem = action, action, action
 local addon = {}
 for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.lua",
-    "WoWSyncForeverCollectors.lua", "WoWSyncForeverBags.lua", "WoWSyncForeverProfessions.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
+    "WoWSyncForeverCollectors.lua", "WoWSyncForeverBags.lua", "WoWSyncForeverProfessions.lua", "WoWSyncForeverSpells.lua", "WoWSyncForeverBank.lua", "WoWSyncForeverTrainers.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
 local S, C = addon.Sync, WoWSyncCompat
@@ -93,18 +93,16 @@ equal(data.clientFamily, "Forever", "Forever never mislabeled Retail")
 equal(data.interface, interface, "interface comes from API, not version arithmetic")
 equal(S.record.sections.location.data.x, 12.5, "map X")
 equal(S.record.sections.location.data.y, 75, "map Y")
-equal(requests, 0, "unverified playtime request never sent")
-for _, event in ipairs({ "TIME_PLAYED_MSG", "BANKFRAME_OPENED", "TRAINER_SHOW", "SPELLS_CHANGED" }) do
-    check(not S.eventFrame.events[event], "deferred event not registered: " .. event)
-end
+equal(requests, 1, "Forever playtime request sent")
+for _, event in ipairs({ "TIME_PLAYED_MSG", "BANKFRAME_OPENED", "TRAINER_SHOW" }) do check(S.eventFrame.events[event], "Forever event registered: " .. event) end
 local output
 check(S.Export(function(text) output = text end), "export accepted")
-advance(1)
+advance(3.1) -- unanswered asynchronous playtime reaches the bounded export deadline
 check(output and output:find("WOWSYNC v1", 1, true), "shared canonical export")
 check(output:find("PlayedSeconds: ?\nLevelPlayedSeconds: ?", 1, true), "deferred playtime unknown")
 check(output:find("XP: 413/72820", 1, true), "XP ratio")
 check(output:find("[BANK]\nState: UNKNOWN", 1, true), "bank not observed")
-check(output:find("Not implemented in Forever Phase 1", 1, true), "deferred sections explained")
+check(output:find("Playtime response not observed", 1, true), "unanswered playtime remains unknown")
 local frozen = S.GetSnapshot()
 local frozenText = S.Render(frozen)
 advance(1); equal(S.Render(frozen), frozenText, "deterministic without clock reads")
@@ -112,6 +110,8 @@ assert(loadfile("tests/forever_equipment_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_snapshot_test.lua"))()(S, equal)
 assert(loadfile("tests/forever_bags_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_professions_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/forever_spells_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/forever_remaining_test.lua"))()(S, check, equal, advance)
 for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitLevel", "UnitFactionGroup", "GetMoney", "UnitXP", "UnitXPMax" }) do
     _G[key] = function() error("API changed") end
 end
@@ -143,5 +143,5 @@ equal(S.record.sections.location.completeness, "partial", "location diagnostics"
 equal(SLASH_WOWSYNC1, "/wowsync", "command preserved")
 check(not SlashCmdList.GEAREXPORT and not SlashCmdList.BANKCLEANUP, "no legacy/action commands loaded")
 equal(actions, 0, "no gameplay actions")
-equal(requests, 0, "no unvalidated requests")
+check(requests >= 1, "only observational playtime requests")
 print("PASS: " .. passed .. " Forever assertions; 0 gameplay actions")

@@ -4,27 +4,31 @@ GearExport includes WoWSync, a dependency-free World of Warcraft character expor
 
 TradeSkillMaster is optional. When it is installed, GearExport uses its public API to include market pricing and current-character inventory-location data.
 
-**Forever Phase 1** provides a limited character/location export, live-validated
-on Hallo in beta `1.60.1` build `69893`, interface `16001`. Build with
+**Forever compatibility** provides a dedicated observational export. Identity,
+location, equipment, bags, playtime and known spells have live validation on
+Hallo; profession readiness has a final fresh-login regression pending. Build with
 `node scripts/package.cjs Forever`; the package is `dist/Forever/GearExport`
 and targets `_classic_beta_/Interface/AddOns`. It excludes BankCleanup and the
-legacy exporter. See [Forever scope and live validation](FOREVER_PHASE1.md)
-for deferred features and validation details.
+legacy exporter. See [Forever current limits and validation](FOREVER_REMAINING.md)
+for the remaining live validation details.
 
-The current Forever build adds live-validated equipment observation; effective
-stats remain unknown pending runtime evidence. See [Phase 2 equipment checks](FOREVER_PHASE2.md).
+The current Forever build includes live-validated equipment, conservative
+effective-stat mappings, bags, playtime, known spells, Character Bank, and
+trainers. See [Forever current limits and validation](FOREVER_REMAINING.md).
 The character/location pipeline is live-validated at levels 1 and 4. Equipment
 slot presence, references, names and levels are live-validated on Hallo.
 The current package guard accepts only Forever `1.60.1` build `69913`, with
 interface `16001` confirmed in-game. Earlier captures retain their original
 build `69893` metadata.
 
-The separate [Forever bags validation build](FOREVER_BAGS.md) adds carried-bag
-observation. Bags remain pending live validation; the equipment-only release
-is recorded separately in the commit history.
+The separate [Forever bags validation build](FOREVER_BAGS.md) records the
+carried-bag implementation and live validation evidence.
 
-The uncommitted [Forever professions validation build](FOREVER_PROFESSIONS.md)
-uses the build-69913 trade-skill API and awaits live validation.
+The [Forever professions validation record](FOREVER_PROFESSIONS.md) documents
+the build-69913 trade-skill hydration finding and its live-validated guard.
+
+The [Forever Known Spells validation record](FOREVER_SPELLS.md) documents the
+build-69913 player spellbook APIs and live validation.
 
 ## Installation
 

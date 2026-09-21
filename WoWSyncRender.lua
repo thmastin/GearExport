@@ -223,7 +223,8 @@ function S.RenderSection(key, snapshot)
     local access = key == "bank" or key == "accountBank" or key == "guildBank" or key == "trainer"
     local sameVisit = not access or visit and section.data.visit and visit.openedAt == section.data.visit.openedAt
         and visit.session == section.data.visit.session
-    local state = access and not (snapshot.access and snapshot.access[key] and sameVisit) and "LAST_SEEN" or "OBSERVED"
+    local stale = section.lastAttemptStale or access and not (snapshot.access and snapshot.access[key] and sameVisit)
+    local state = stale and "LAST_SEEN" or "OBSERVED"
     Field(out, "State", state .. "; " .. section.completeness .. "; observed=" .. Text(section.observedAt))
     if snapshot.pending and snapshot.pending[key] then Field(out, "Pending", "Refresh pending; showing last observation") end
     if section.reason then Field(out, "CoverageNote", section.reason) end

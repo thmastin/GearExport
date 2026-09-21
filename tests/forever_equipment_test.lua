@@ -15,7 +15,7 @@ return function(S, check, equal, advance)
             equal(link, "|Hitem:900001:7:0:0|h[Synthetic tunic]|h", "metadata uses equipped variant")
             return "Synthetic tunic", link, 1, 99, 0
         end,
-        GetItemStats = function() error("Unverified effective stats must not be read") end,
+        GetItemStats = function() return { RESISTANCE0_NAME = 31 } end,
     }
     local data, meta = S.collectors.equipment()
     equal(data.slots[5].itemID, 900001, "equipped identity")
@@ -23,14 +23,34 @@ return function(S, check, equal, advance)
     equal(data.slots[5].name, "Synthetic tunic", "equipped name")
     equal(data.slots[5].itemLevel, 12, "location level, not generic level 99")
     equal(data.slots[5].requiredLevel, 0, "known zero required level")
-    equal(data.slots[5].stats, nil, "effective stats unknown pending runtime evidence")
+    equal(data.slots[5].stats[1].name, "Armor", "live-validated armor key normalized")
+    equal(data.slots[5].stats[1].value, 31, "live-validated armor value retained")
     equal(data.slots[1], nil, "explicit false presence is empty")
-    equal(meta.completeness, "partial", "unverified stats keep coverage partial")
-    check(not meta.retry, "unverified stats do not cause pointless retries")
+    equal(meta.completeness, "complete", "recognized effective stat completes synthetic item")
+    check(not meta.retry, "ready stat table does not require tooltip readiness")
+    C_Item.GetItemStats = function() return { malformed = "99" } end
+    data, meta = S.collectors.equipment()
+    equal(data.slots[5].stats, nil, "unknown stat key remains unrepresented")
+    equal(meta.completeness, "partial", "unknown stat key is partial")
+    C_Item.GetItemStats = function() return { RESISTANCE0_NAME = "31" } end
+    data, meta = S.collectors.equipment()
+    equal(data.slots[5].stats, nil, "non-numeric recognized stat remains unknown")
+    C_Item.GetItemStats = function() return {} end
+    data, meta = S.collectors.equipment()
+    equal(data.slots[5].stats, nil, "empty stat table remains unsupported")
+    C_Item.GetItemStats = function() return nil end
+    data, meta = S.collectors.equipment()
+    equal(data.slots[5].stats, nil, "pending stat variant remains unknown")
+    check(meta.retry, "nil stat table requests bounded cache retry")
+    C_Item.GetItemStats = function() return { RESISTANCE0_NAME = 31, ITEM_MOD_DAMAGE_PER_SECOND_SHORT = 1.875 } end
+    data, meta = S.collectors.equipment()
+    equal(#data.slots[5].stats, 2, "multiple demonstrated effective stats retained")
+    equal(data.slots[5].stats[1].name, "Armor", "multiple stats deterministic order")
+    equal(data.slots[5].stats[2].name, "Damage Per Second", "DPS mapping retained")
     S.RequestSync(); advance(1)
     local text = S.RenderSection("equipment", S.GetSnapshot())
     check(text:find("slot\titemRef\tname\tilvl\trequiredLevel\teffectiveStats", 1, true), "shared contract header")
-    check(text:find("5:\titem:900001:7:0:0\tSynthetic tunic\t12\t0\t?", 1, true), "canonical equipment row")
+    check(text:find("5:\titem:900001:7:0:0\tSynthetic tunic\t12\t0\tArmor=31; Damage Per Second=1.875", 1, true), "canonical effective-stat row")
     check(S.eventFrame.events.PLAYER_EQUIPMENT_CHANGED, "equipment event registered")
     check(S.eventFrame.events.ITEM_DATA_LOAD_RESULT, "item cache event registered")
     pending = true
@@ -89,7 +109,7 @@ return function(S, check, equal, advance)
                 if row[1] == link then return row[2], link, nil, nil, row[4] end
             end
             error("Unexpected reference")
-        end,
+        end, GetItemStats = function() return nil end,
     }
     data, meta = S.collectors.equipment()
     local actual = S.RenderSection("equipment", { sections = { equipment = {

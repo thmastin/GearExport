@@ -29,6 +29,11 @@ for (const [target, version] of selected) {
         assert(manifest.hashes['WoWSyncForeverBags.lua']);
         assert(manifest.hashes['FOREVER_PROFESSIONS.md']);
         assert(manifest.hashes['WoWSyncForeverProfessions.lua']);
+        assert(manifest.hashes['FOREVER_SPELLS.md']);
+        assert(manifest.hashes['WoWSyncForeverSpells.lua']);
+        assert(manifest.hashes['FOREVER_REMAINING.md']);
+        assert(manifest.hashes['WoWSyncForeverBank.lua']);
+        assert(manifest.hashes['WoWSyncForeverTrainers.lua']);
         for (const file of ['GearExport.lua', 'BankCleanup.lua', 'WoWSyncCollectors.lua']) {
             assert(!fs.existsSync(path.join(directory, file)), 'Forever excludes ' + file);
         }

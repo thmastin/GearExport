@@ -58,9 +58,20 @@ function addon.ReadIdentity()
     return guid, name, realm
 end
 
--- Executable symbols alone do not validate the server event payload. Phase 1
--- does not request playtime until a live Forever event trace has been checked.
-function C.RequestPlayed() return false end
+-- Forever retains the documented asynchronous request/event contract.  Nothing
+-- is estimated while a response is outstanding or if either value is absent.
+function C.RequestPlayed()
+    if type(RequestTimePlayed) ~= "function" then return false end
+    return pcall(RequestTimePlayed)
+end
+
+function C.IsBankViewable()
+    local api = type(C_Bank) == "table" and C_Bank or {}
+    local bankType = type(Enum) == "table" and Enum.BankType and Enum.BankType.Character
+    if type(api.CanViewBank) ~= "function" or type(bankType) ~= "number" then return false end
+    local ok, viewable = pcall(api.CanViewBank, bankType)
+    return ok and Public(viewable) and type(viewable) == "boolean" and viewable
+end
 
 addon.SyncEvents = {
     "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT",
@@ -70,4 +81,8 @@ addon.SyncEvents = {
     "GET_ITEM_INFO_RECEIVED", "ITEM_DATA_LOAD_RESULT",
     "BAG_UPDATE", "BAG_UPDATE_DELAYED", "ITEM_LOCK_CHANGED",
     "SKILL_LINES_CHANGED", "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE",
+    "SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE", "SPELL_TEXT_UPDATE",
+    "TIME_PLAYED_MSG",
+    "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYERBANKSLOTS_CHANGED", "BANK_TABS_CHANGED",
+    "TRAINER_SHOW", "TRAINER_UPDATE", "TRAINER_DESCRIPTION_UPDATE", "TRAINER_SERVICE_INFO_NAME_UPDATE", "TRAINER_CLOSED",
 }

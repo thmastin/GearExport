@@ -18,7 +18,8 @@ referring to Phase 1.
 
 The user confirmed a successful real `/wowsync` export on Hallo on build
 `69913`: slot presence, itemRef, name, item level and required level are correct.
-Effective stats remain intentionally UNKNOWN pending separate runtime validation.
+This historical equipment milestone preceded later live effective-stat, bank,
+trainer, playtime, and spell observations; see current Forever documents.
 The equipment regression fixture checks each accepted field, confirmed empty
 slots, delayed refreshes and unavailable/restricted data. Its item values remain
 explicitly synthetic. A second fixture preserves the user-provided live level-6
@@ -56,12 +57,41 @@ target. Forever retains its explicit TOC marker and version/build guard.
 These source contracts support guarded implementation, not a claim of live
 equipment acceptance by themselves. Unexpected runtime behavior stays unknown.
 
-## Effective stats: awaiting runtime evidence
+## Effective stats: live-validated conservative mappings
 
-`C_Item.GetItemStats` is documented as a `LuaValueVariant`, without a defined
-equipped-effective stat contract. Its output is not copied into effectiveStats.
-That column stays `?` and the coverage note explains why. Generic/base stats
-and tooltip text are not guessed to mean effective stats.
+Retail's `WoWSyncCompat.GetEquipmentStats` reads a structured
+`C_Item.GetItemStats(itemLink)` table, filters numeric exposed values, and
+requires `C_TooltipInfo.GetInventoryItem("player", slot)` with populated lines
+before the shared collector calls the result ready. Its renderer emits the
+normalized `{name,value}` values in the existing `effectiveStats` column.
+
+The Forever build-69913 generated item contract is materially weaker:
+`C_Item.GetItemStats(itemLink)` accepts only an item link and returns an
+untyped `LuaValueVariant`; it has no `ItemLocation` argument and no stated
+equipped/effective semantics. `C_Item.GetItemInfo(itemInfo)` supplies identity
+and static metadata (including name, level and required level), while
+`C_Container` supplies physical item/container state; neither supplies stat
+values. The equipment item location does provide the observed current item
+level, but no equivalent resolved-stat payload. No validated Forever tooltip
+data path has been captured that establishes a replacement semantic.
+
+Hallo live evidence establishes two equipped-item mappings: Ragged Leather Vest
+returned `RESISTANCE0_NAME=31`, matching its `31 Armor` tooltip line, and
+Anvilmar Knife returned `ITEM_MOD_DAMAGE_PER_SECOND_SHORT=1.875`, matching its
+rounded `1.9 damage per second` tooltip line. The Forever-only collector emits
+these as `Armor=31` and `Damage Per Second=1.875` in the unchanged `{name,value}`
+WOWSYNC v1 effective-stats schema. A tooltip is not a runtime requirement: the
+live comparison established the mappings, so a numeric table from an already
+observed equipped item is sufficient. Nil stats are cache-pending and use the
+existing bounded item-data retry. Empty/malformed/secret values and unknown
+keys remain unrepresented with partial coverage; min/max damage and weapon
+speed are never derived from tooltip text.
+
+Before the live comparisons, even a table-shaped Forever `GetItemStats` result was not copied
+into `effectiveStats`: it could be static/base link data rather than the
+equipped item’s effective values. The column stays `?`; generic/base stats and
+tooltip text are not guessed to mean effective stats. Regression tests cover
+populated, malformed and nil variants to prevent accidental normalization.
 
 After installing this build manually, capture a `/wowsync` export and compare
 the equipped slots with Hallo's character panel. Confirm a known empty slot
@@ -99,6 +129,5 @@ restricted, inconsistent and changed API responses.
 
 No changes are made to shared core, renderers, other client adapters,
 BankCleanup or SavedVariables. The equipment package was installed with user
-authorization and verified against its manifest. All later subsystems remain
-deferred. Trainer runtime tuples and the playtime request/event payload must
-be validated live when their turn is reached.
+authorization and verified against its manifest. This document preserves Phase
+2 evidence; later Forever work is recorded separately.
