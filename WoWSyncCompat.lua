@@ -198,6 +198,84 @@ function C.GetPurchasedBankSlots(scope)
     return Optional(GetNumBankSlots), "bags"
 end
 
+-- Guild Banks use a separate legacy API from C_Bank/C_Container.  A Guild Club
+-- ID is the only identifier we persist; a guild display name is not unique.
+function C.GetGuildBankIdentity()
+    if not C.IsRetail() then return nil, "Guild Bank is Retail-only" end
+    local clubID = C_Club and Optional(C_Club.GetGuildClubId)
+    if clubID == nil then return nil, "Guild Club ID unavailable" end
+    local name = Optional(GetGuildInfo, "player")
+    if type(name) ~= "string" or name == "" then return nil, "Guild name unavailable" end
+    return { key = "club:" .. tostring(clubID), clubID = clubID, name = name }
+end
+
+function C.GetGuildBankTabs()
+    if not C.IsRetail() or type(GetNumGuildBankTabs) ~= "function" or type(GetGuildBankTabInfo) ~= "function" then
+        return nil, "Guild Bank APIs unavailable"
+    end
+    local count = GetNumGuildBankTabs()
+    if type(count) ~= "number" or count < 0 or count > 8 then return nil, "Guild Bank tab metadata unavailable" end
+    local tabs = {}
+    for tab = 1, count do
+        local name, icon, canView, canDeposit, withdrawals, remaining, filtered = GetGuildBankTabInfo(tab)
+        if type(canView) ~= "boolean" then return nil, "Guild Bank permission metadata pending" end
+        tabs[#tabs + 1] = { id = tab, name = name, icon = icon, canView = canView,
+            canDeposit = canDeposit, withdrawals = withdrawals, remainingWithdrawals = remaining, filtered = filtered }
+    end
+    return tabs
+end
+
+function C.QueryGuildBankTab(tab)
+    if type(QueryGuildBankTab) ~= "function" then return false, "Guild Bank query API unavailable" end
+    local ok, result = pcall(QueryGuildBankTab, tab)
+    if not ok then return false, tostring(result) end
+    -- Legacy QueryGuildBankTab has no documented success return.  The caller must
+    -- wait for GUILDBANKBAGSLOTS_CHANGED before treating any slot scan as observed.
+    return true
+end
+
+function C.ReadGuildBankTab(tab)
+    if type(GetGuildBankItemInfo) ~= "function" or type(GetGuildBankItemLink) ~= "function" then
+        return nil, "Guild Bank slot APIs unavailable"
+    end
+    local container, incomplete, firstFailure = { id = tab, capacity = 98, slots = {}, storage = "GUILD" }, false, nil
+    local occupied = 0
+    local function Failure(reason, slot, texture, count, locked, filtered, quality, link)
+        if firstFailure then return end
+        firstFailure = { reason = reason, slot = slot, texture = texture, count = count,
+            locked = locked, filtered = filtered, quality = quality, link = link }
+    end
+    for slot = 1, 98 do
+        local texture, count, locked, filtered, quality = GetGuildBankItemInfo(tab, slot)
+        local link = GetGuildBankItemLink(tab, slot)
+        -- Retail returns presentation defaults (notably locked=false and
+        -- filtered=false) for empty slots.  Those booleans are not item
+        -- evidence.  A link identifies an item; without one, only a texture,
+        -- positive count, or affirmative lock/filter flag makes the slot
+        -- incomplete rather than observed empty.
+        local evidence = link ~= nil or texture ~= nil or type(count) == "number" and count > 0
+            or locked == true or filtered == true
+        if link ~= nil then
+            if type(count) ~= "number" or count < 1 then
+                incomplete = true
+                Failure("item-count-missing", slot, texture, count, locked, filtered, quality, link)
+            else
+                occupied = occupied + 1
+                container.slots[slot] = { link = link, count = count, locked = locked, quality = quality }
+            end
+            if locked == true then
+                incomplete = true
+                Failure("item-locked", slot, texture, count, locked, filtered, quality, link)
+            end
+        elseif evidence then
+            incomplete = true
+            Failure(locked == true and "item-locked" or "item-link-missing", slot, texture, count, locked, filtered, quality, link)
+        end
+    end
+    container.free = 98 - occupied
+    return container, incomplete, firstFailure
+end
+
 function C.EnumerateSpellbook()
     if C.IsRetail() then
         local api, enum = C_SpellBook, Enum
@@ -371,6 +449,8 @@ function C.RegisterOptionalEvents(frame)
     local events = { "ITEM_DATA_LOAD_RESULT" }
     if C.IsRetail() then
         for _, event in ipairs({ "BANK_TABS_CHANGED", "BANK_TAB_SETTINGS_UPDATED", "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED",
+            "GUILDBANKFRAME_OPENED", "GUILDBANKFRAME_CLOSED", "GUILDBANKBAGSLOTS_CHANGED", "GUILDBANK_UPDATE_TABS",
+            "GUILDBANK_ITEM_LOCK_CHANGED",
             "PLAYER_SPECIALIZATION_CHANGED", "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE", "SPELL_TEXT_UPDATE" }) do
             events[#events + 1] = event
         end

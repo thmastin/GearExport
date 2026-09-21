@@ -86,7 +86,9 @@ SlashCmdList.WOWSYNC = function(argument)
         local snapshot = S.GetSnapshot()
         if not snapshot then Message(S.error or "Not ready"); return end
         for _, key in ipairs(S.order) do
-            local section = snapshot.sections[key]
+            local section = key == "accountBank" and snapshot.accountSections and snapshot.accountSections.bank
+                or key == "guildBank" and snapshot.guildSections and snapshot.guildSections.bank
+                or snapshot.sections[key]
             Message(key .. ": " .. (section and section.completeness or "unknown")
                 .. ", observed=" .. tostring(section and section.observedAt or "never")
                 .. (snapshot.pending[key] and ", pending" or "")

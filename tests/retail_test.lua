@@ -9,6 +9,39 @@ Enum = { BagIndex = { Backpack = 0, ReagentBag = 5 }, BankType = { Character = 0
 local itemRef = "item:240001:7440:213743:0:0:0:0:0:90:0:0:16:4:10354:10299:6652:12030:2:28:2462:38:8"
 local link = "|cffa335ee|H" .. itemRef .. "|h[Crafted Sample]|h|r"
 local pending, bankView, accountBankView, requests = false, true, true, 0
+local guildClubID, guildClubReady, guildRespond, guildQueryFails, guildPending, guildQueryCount = 777, true, true, false, nil, 0
+local guildLoaded = {}
+local guildTabs = {
+    { name = "Materials", canView = true, items = { [1] = link, [2] = link } },
+    { name = "Empty", canView = true, items = {} },
+    { name = "Officers", canView = false, items = { [1] = link } },
+}
+C_Club = { GetGuildClubId = function() return guildClubReady and guildClubID or nil end }
+function GetGuildInfo() return "Test Guild", "Guild Master", 0 end
+function GetNumGuildBankTabs() return #guildTabs end
+function GetCurrentGuildBankTab() return 1 end
+function GetGuildBankTabInfo(tab)
+    local entry = guildTabs[tab]
+    if not entry then return end
+    return entry.name, "icon" .. tab, entry.canView, true, -1, -1, false
+end
+function GetGuildBankItemInfo(tab, slot)
+    local entry = guildTabs[tab]
+    if not (entry and guildLoaded[tab]) then return end
+    if entry.missingLink and entry.missingLink[slot] then return 1, 2, false, false, 1 end
+    if not entry.items[slot] then return nil, 0, false, false, 0 end
+    return 1, 2, false, false, 1
+end
+function GetGuildBankItemLink(tab, slot)
+    local entry = guildTabs[tab]
+    return entry and guildLoaded[tab] and entry.items[slot] or nil
+end
+function QueryGuildBankTab(tab)
+    guildQueryCount = guildQueryCount + 1
+    if guildPending then error("concurrent Guild Bank query") end
+    if guildQueryFails then error("query unavailable") end
+    guildPending = tab
+end
 C_Item = {
     GetItemInfo = function(ref)
         check(ref ~= nil, "item reference supplied")
@@ -121,19 +154,32 @@ equal(C.TrainerCategory({ trainer = {}, services = {} }), "UNKNOWN", "empty trai
 -- Load the complete selected package, with a UI fixture and no Classic API shims.
 local frames, seconds, playerGUID = {}, 0, "Player-Retail-A"
 local function widget(name)
-    local w = { shown = true, scripts = {}, events = {}, text = "", name = name }
+    local w = { shown = true, scripts = {}, hooks = {}, events = {}, text = "", name = name }
     setmetatable(w, { __index = function(_, key)
         if key == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
         if key == "GetNumLines" or key == "NumLines" then return function() return 1 end end
         if key == "GetText" then return function(self) return self.text end end
         if key == "SetText" then return function(self, text) self.text = text; if self.scripts.OnTextChanged then self.scripts.OnTextChanged(self) end end end
         if key == "SetScript" then return function(self, event, fn) self.scripts[event] = fn end end
+        if key == "HookScript" then return function(self, event, fn)
+            self.hooks[event] = self.hooks[event] or {}; self.hooks[event][#self.hooks[event] + 1] = fn
+        end end
         if key == "RegisterEvent" then return function(self, event)
             if event == "PLAYERBANKBAGSLOTS_CHANGED" then error("removed event") end
             self.events[event] = true
         end end
-        if key == "Show" then return function(self) self.shown = true end end
-        if key == "Hide" then return function(self) self.shown = false end end
+        if key == "Show" then return function(self)
+            if self.shown then return end
+            self.shown = true
+            if self.scripts.OnShow then self.scripts.OnShow(self) end
+            for _, fn in ipairs(self.hooks.OnShow or {}) do fn(self) end
+        end end
+        if key == "Hide" then return function(self)
+            if not self.shown then return end
+            self.shown = false
+            if self.scripts.OnHide then self.scripts.OnHide(self) end
+            for _, fn in ipairs(self.hooks.OnHide or {}) do fn(self) end
+        end end
         if key == "IsShown" or key == "IsVisible" then return function(self) return self.shown end end
         if key == "CreateTexture" or key == "CreateFontString" then return function() return widget() end end
         return function() end
@@ -145,6 +191,7 @@ end
 function CreateFrame(_, name) return widget(name) end
 UIParent = widget("UIParent")
 BankFrame = widget("BankFrame"); BankFrame:Hide()
+GuildBankFrame = nil
 ClassTrainerFrame = widget("ClassTrainerFrame")
 UISpecialFrames, SlashCmdList = {}, {}
 ChatFontNormal, GameFontNormal = {}, {}
@@ -184,12 +231,17 @@ local function event(name, arg) S.eventFrame.scripts.OnEvent(S.eventFrame, name,
 local function advance(duration)
     for _ = 1, math.ceil(duration / 0.1) do
         seconds = seconds + 0.1
+        if guildPending and guildRespond then
+            local tab = guildPending; guildPending = nil; guildLoaded[tab] = true
+            event("GUILDBANKBAGSLOTS_CHANGED")
+        end
         if S.eventFrame.scripts.OnUpdate then S.eventFrame.scripts.OnUpdate() end
     end
 end
 event("ADDON_LOADED", "GearExport"); event("PLAYER_LOGIN"); advance(1)
 check(S.unsupportedEvents.PLAYERBANKBAGSLOTS_CHANGED, "removed event tolerated")
 check(S.optionalEvents.BANK_TABS_CHANGED, "Retail bank tab event registered")
+check(S.optionalEvents.GUILDBANKBAGSLOTS_CHANGED, "Retail Guild Bank response event registered")
 equal(S.record.sections.character.data.clientFamily, "Retail", "Retail identity")
 equal(S.record.sections.character.data.interface, 120100, "Retail interface")
 equal(S.record.sections.character.data.moneyCopper, 123456789, "gold remains copper")
@@ -211,6 +263,85 @@ for _, key in ipairs(S.order) do check(rendered:find(S.RenderSection(key, frozen
 check(rendered:find("ClientFamily: Retail", 1, true), "Retail metadata rendered")
 check(rendered:find(itemRef, 1, true), "full itemRef rendered")
 check(not rendered:find("Not a rank", 1, true), "no manufactured rank")
+check(not S.guildHooksInstalled, "Guild Bank frame absent from initial Retail addon lifecycle does not fail")
+GuildBankFrame = widget("GuildBankFrame"); GuildBankFrame:Hide()
+-- The LoadOnDemand UI can become visible before GearExport discovers its frame.
+-- Installing hooks must start exactly one capture for that already-shown interaction.
+GuildBankFrame:Show()
+event("ADDON_LOADED", "Blizzard_GuildBankUI")
+check(S.guildHooksInstalled, "Guild Bank frame hooks install when Blizzard UI loads")
+check(S.guildBankOpen and S.guildCapture, "already-shown Guild Bank frame starts production capture")
+GuildBankFrame:Hide()
+check(not S.guildBankOpen, "Guild Bank frame OnHide closes an already-shown capture")
+equal(#GuildBankFrame.hooks.OnShow, 1, "Guild Bank OnShow hook is installed once")
+equal(#GuildBankFrame.hooks.OnHide, 1, "Guild Bank OnHide hook is installed once")
+event("ADDON_LOADED", "Blizzard_GuildBankUI")
+equal(#GuildBankFrame.hooks.OnShow, 1, "Guild Bank hook installation is idempotent")
+guildClubReady = false
+GuildBankFrame:Show(); event("GUILDBANKBAGSLOTS_CHANGED"); advance(0.5)
+check(S.guildLifecycle.shows >= 1, "Guild Bank frame OnShow reaches production collector")
+equal(guildQueryCount, 0, "natural slot event without explicit request cannot query or observe")
+equal(guildQueryCount, 0, "Guild Bank waits for delayed Club identity")
+check(S.guildCapture and not S.guildCapture.started, "Guild Bank initialization remains pending while Club identity is unavailable")
+guildClubReady = true; advance(2)
+local guild = WoWSyncDB.guilds["club:777"].sections.bank
+check(guild and guild.completeness == "complete", "all viewable Guild Bank tabs confirmed")
+equal(guild.data.ownerScope, "GUILD", "Guild Bank ownership is explicit")
+equal(#guild.data.containers, 2, "only viewable Guild Bank tabs become containers")
+equal(guild.data.tabs[2].state, "OBSERVED", "queried all-nil tab is observed empty")
+equal(guild.data.tabs[3].state, "INACCESSIBLE", "unviewable Guild Bank tab is never empty")
+equal(guildQueryCount, 2, "Guild Bank queries serialize viewable tabs only")
+local guildText = S.RenderSection("guildBank", S.GetSnapshot())
+check(guildText:find("[GUILD BANK]", 1, true) and guildText:find("Scope: GUILD", 1, true), "Guild Bank renders separately")
+check(guildText:find("INACCESSIBLE", 1, true), "Guild Bank export preserves inaccessible tab")
+local guildObserved = guild.observedAt
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildClubID, guildRespond, guildQueryFails, guildLoaded, guildQueryCount = 780, true, true, {}, 0
+GuildBankFrame:Show(); event("GUILDBANKFRAME_OPENED"); advance(1)
+local queryFailed = WoWSyncDB.guilds["club:780"].sections.bank
+check(queryFailed and queryFailed.completeness == "partial", "Guild Bank query failure is partial")
+check(not S.RenderSection("guildBank", S.GetSnapshot()):find("Items: EMPTY", 1, true), "failed Guild Bank query is not empty")
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildQueryFails = false
+guildClubID, guildRespond, guildLoaded, guildQueryCount = 781, false, {}, 0
+GuildBankFrame:Show(); event("GUILDBANKFRAME_OPENED"); advance(0.5); event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+local closed = WoWSyncDB.guilds["club:781"].sections.bank
+check(closed and closed.completeness == "partial", "Guild Bank close during capture is partial")
+check(not S.RenderSection("guildBank", S.GetSnapshot()):find("Items: EMPTY", 1, true), "closed Guild Bank capture is not empty")
+guildClubID, guildRespond, guildLoaded, guildQueryCount = 778, false, {}, 0
+GuildBankFrame:Show(); event("GUILDBANKFRAME_OPENED"); advance(6)
+local timedOut = WoWSyncDB.guilds["club:778"].sections.bank
+check(timedOut and timedOut.completeness == "partial", "Guild Bank query timeout is partial, not empty")
+check(not S.RenderSection("guildBank", S.GetSnapshot()):find("Items: EMPTY", 1, true), "unconfirmed all-nil Guild Bank is not empty")
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildClubID, guildRespond, guildLoaded, guildQueryCount = 777, false, {}, 0
+GuildBankFrame:Show(); event("GUILDBANKFRAME_OPENED"); advance(6)
+equal(WoWSyncDB.guilds["club:777"].sections.bank.observedAt, guildObserved, "incomplete refresh retains prior complete Guild Bank")
+check(WoWSyncDB.guilds["club:777"].sections.bank.lastAttemptError, "incomplete Guild Bank refresh recorded")
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildTabs = { { name = "No Access", canView = false, items = {} } }
+guildClubID, guildRespond, guildLoaded, guildQueryCount = 779, true, {}, 0
+GuildBankFrame:Show(); event("GUILDBANKFRAME_OPENED"); advance(1)
+local inaccessible = WoWSyncDB.guilds["club:779"].sections.bank
+check(inaccessible and inaccessible.completeness == "complete", "zero permitted tabs completes permission observation")
+equal(guildQueryCount, 0, "inaccessible Guild Bank tabs are never queried")
+check(not S.RenderSection("guildBank", S.GetSnapshot()):find("Items: EMPTY", 1, true), "no permitted tabs is not an empty Guild Bank")
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildTabs = { { name = "Identity Pending", canView = true, items = {}, missingLink = { [7] = true } } }
+guildClubID, guildRespond, guildLoaded, guildQueryCount = 782, true, {}, 0
+GuildBankFrame:Show(); advance(1)
+local identityPending = WoWSyncDB.guilds["club:782"].sections.bank
+check(identityPending and identityPending.completeness == "partial", "populated Guild Bank slot without link remains partial")
+equal(S.guildLastValidation[1].detail.reason, "item-link-missing", "first Guild Bank validation failure is retained")
+equal(S.guildLastValidation[1].detail.slot, 7, "first Guild Bank validation failure retains slot")
+check(identityPending.reason:find("item%-link%-missing"), "partial Guild Bank reason is never silently nil")
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildTabs = {
+    { name = "Materials", canView = true, items = { [1] = link, [2] = link } },
+    { name = "Empty", canView = true, items = {} },
+    { name = "Officers", canView = false, items = { [1] = link } },
+}
+guildClubID, guildRespond, guildLoaded = 777, true, {}
 BankFrame:Show(); event("BANKFRAME_OPENED"); advance(1)
 equal(#S.record.sections.bank.data.containers, 2, "character purchased tabs only")
 equal(#WoWSyncDB.account.sections.bank.data.containers, 2, "account bank is stored outside character record")

@@ -115,6 +115,242 @@ S.collectors.bags = function() return Containers(false) end
 S.collectors.bank = function() return Containers(true) end
 if Compat.IsRetail and Compat.IsRetail() then
     S.collectors.accountBank = function() return Containers(true, "ACCOUNT") end
+
+    local function GuildTrace(text)
+        local trace = S.guildTrace or {}
+        trace[#trace + 1] = text
+        while #trace > 16 do table.remove(trace, 1) end
+        S.guildTrace = trace
+    end
+
+    local function GuildIdentity()
+        local identity, reason = Compat.GetGuildBankIdentity()
+        if not identity then return nil, reason end
+        local record = S.guilds[identity.key]
+        if type(record) ~= "table" then record = {}; S.guilds[identity.key] = record end
+        record.identity = identity
+        record.sections = type(record.sections) == "table" and record.sections or {}
+        record.visits = type(record.visits) == "table" and record.visits or {}
+        S.guild, S.guildError = record, nil
+        return record
+    end
+
+    local function GuildItem(slot)
+        local item = S.Item(slot.link)
+        item.count = slot.count
+        return item
+    end
+
+    local function GuildData(capture)
+        local data = { ownerScope = "GUILD", guild = S.Copy(capture.identity), tabs = {}, containers = {},
+            coverage = "All tabs currently reported viewable were serialized through QueryGuildBankTab; inaccessible tabs were not scanned.",
+            visit = S.Copy(S.guild.visits.bank) }
+        local allObserved, viewable = true, 0
+        for _, tab in ipairs(capture.tabs or {}) do
+            local result = capture.results[tab.id]
+            local entry = { id = tab.id, name = tab.name, icon = tab.icon, canView = tab.canView,
+                canDeposit = tab.canDeposit, withdrawals = tab.withdrawals, remainingWithdrawals = tab.remainingWithdrawals }
+            if not tab.canView then entry.state = "INACCESSIBLE"
+            elseif result and result.container and not result.incomplete then
+                viewable = viewable + 1
+                entry.state = "OBSERVED"
+                local container = result.container
+                for slot, raw in pairs(container.slots) do container.slots[slot] = GuildItem(raw) end
+                data.containers[#data.containers + 1] = container
+            else
+                if tab.canView then viewable = viewable + 1 end
+                entry.state = "UNKNOWN"; entry.reason = result and result.reason or "Not queried"
+                allObserved = false
+            end
+            data.tabs[#data.tabs + 1] = entry
+        end
+        -- No viewable tabs means no item contents were observed; do not let the
+        -- generic inventory renderer call that an empty Guild Bank.
+        data.emptyKnown = allObserved and viewable > 0
+        return data, allObserved
+    end
+
+    local function FinalizeGuildCapture(reason)
+        local capture = S.guildCapture
+        if not capture or capture.finalized then return end
+        capture.finalized = true
+        if not S.guild then
+            S.guildError = reason or capture.lastReason or "Guild Bank identity was not ready"
+            GuildTrace("init-failed=" .. S.guildError)
+            S.guildCapture = nil
+            return
+        end
+        local data, complete = GuildData(capture)
+        if complete then
+            S.Commit("guildBank", data, { completeness = "complete" })
+            GuildTrace("complete")
+        else
+            if not reason then
+                for _, tab in ipairs(capture.tabs or {}) do
+                    local result = capture.results[tab.id]
+                    if tab.canView and result and result.reason then reason = result.reason; break end
+                end
+            end
+            reason = reason or "One or more viewable Guild Bank tabs were not confirmed"
+            local old = S.guild.sections.bank
+            if not old or old.completeness ~= "complete" then
+                S.Commit("guildBank", data, { completeness = "partial", reason = reason })
+                GuildTrace("partial=" .. tostring(reason))
+            else
+                S.Attempt("guildBank", reason)
+                GuildTrace("retained=" .. tostring(reason))
+            end
+        end
+        S.guildCapture = nil
+    end
+
+    local function RequestNextGuildTab()
+        local capture = S.guildCapture
+        if not capture or capture.pending then return end
+        local tab = capture.queue[capture.next]
+        if not tab then FinalizeGuildCapture(); return end
+        capture.next = capture.next + 1
+        capture.pending = tab
+        GuildTrace("query=" .. tab)
+        local ok, reason = Compat.QueryGuildBankTab(tab)
+        if not ok then
+            GuildTrace("query-failed=" .. tab)
+            capture.results[tab] = { reason = "Query failed: " .. tostring(reason) }
+            capture.pending = nil
+            capture.nextQueryAt = GetTime() + 0.15
+            return
+        end
+        capture.deadline = GetTime() + 2.5
+    end
+
+    -- Both the documented events and Blizzard_GuildBankUI's actual frame lifecycle
+    -- can signal one interaction.  Starting twice would create competing tab
+    -- queries, so the lifecycle entry point deliberately coalesces duplicates.
+    function S.GuildBankOpened(source)
+        S.guildLifecycle = S.guildLifecycle or { starts = 0, closes = 0, shows = 0, hides = 0 }
+        S.guildLifecycle.starts = S.guildLifecycle.starts + 1
+        if S.guildBankOpen then
+            GuildTrace("start-ignored=" .. tostring(source or "event"))
+            return
+        end
+        S.guildBankOpen = true
+        S.guildError = nil
+        S.guildLastValidation = {}
+        S.guildTrace = { "opened=" .. tostring(source or "event") }
+        local now = GetTime()
+        -- A Guild Bank lifecycle signal can precede Club initialization or complete
+        -- tab permissions. Keep the bank open and retry setup briefly; no tab query
+        -- is issued until identity and every tab's canView metadata are present.
+        S.guildCapture = { startAt = now + 0.25, initDeadline = now + 3, queue = {}, next = 1, results = {} }
+        S.Wake()
+    end
+
+    -- Blizzard_GuildBankUI is LoadOnDemand.  The frame may be absent when this
+    -- addon loads, or already visible by the time it becomes discoverable from a
+    -- bank update event.  HookScript preserves Blizzard's handlers and the shown
+    -- check covers that latter case without requiring the player to reopen it.
+    function S.InstallGuildBankHooks()
+        if S.guildHooksInstalled then return true end
+        local bankFrame = GuildBankFrame
+        if not bankFrame or type(bankFrame.HookScript) ~= "function" then return false end
+        local ok = pcall(function()
+            bankFrame:HookScript("OnShow", function()
+                S.guildLifecycle = S.guildLifecycle or { starts = 0, closes = 0, shows = 0, hides = 0 }
+                S.guildLifecycle.shows = S.guildLifecycle.shows + 1
+                S.GuildBankOpened("frame-show")
+            end)
+            bankFrame:HookScript("OnHide", function()
+                S.guildLifecycle = S.guildLifecycle or { starts = 0, closes = 0, shows = 0, hides = 0 }
+                S.guildLifecycle.hides = S.guildLifecycle.hides + 1
+                S.GuildBankClosed("frame-hide")
+            end)
+        end)
+        if not ok then return false end
+        S.guildHooksInstalled, S.guildHooksFrame = true, bankFrame
+        if type(bankFrame.IsShown) == "function" and bankFrame:IsShown() then S.GuildBankOpened("frame-already-shown") end
+        return true
+    end
+
+    function S.ResolveGuildBankOwner()
+        if S.guild then return S.guild end
+        return GuildIdentity()
+    end
+
+    function S.GuildBankEvent(event)
+        -- A Guild Bank UI update is a safe discovery opportunity only.  It never
+        -- acts as a query response unless a serialized explicit request exists.
+        if not S.guildHooksInstalled then S.InstallGuildBankHooks() end
+        local capture = S.guildCapture
+        if not capture then return end
+        if event == "GUILDBANKBAGSLOTS_CHANGED" and capture.pending then
+            local tab = capture.pending
+            GuildTrace("response=" .. tab)
+            local container, incomplete, validation = Compat.ReadGuildBankTab(tab)
+            S.guildLastValidation = S.guildLastValidation or {}
+            S.guildLastValidation[tab] = { state = incomplete and "partial" or "observed", detail = validation }
+            local detailReason = validation and ("Guild Bank " .. validation.reason .. " at slot " .. validation.slot) or nil
+            capture.results[tab] = container and { container = container, incomplete = incomplete,
+                reason = incomplete and (detailReason or "Guild Bank slot identity/quantity pending") or nil }
+                or { reason = tostring(incomplete) }
+            capture.pending, capture.deadline = nil, nil
+            GuildTrace("read=" .. tab .. (incomplete and ":partial:" .. tostring(validation and validation.reason or "unknown") or ":observed"))
+            capture.nextQueryAt = GetTime() + 0.15
+        elseif event == "GUILDBANK_UPDATE_TABS" and not capture.started then
+            capture.startAt = GetTime()
+        end
+    end
+
+    function S.GuildBankTick(now)
+        local capture = S.guildCapture
+        if not capture then return end
+        if not capture.started and now >= capture.startAt then
+            local record, identityReason = GuildIdentity()
+            if not record then
+                capture.lastReason = identityReason or "Guild identity unavailable"
+                GuildTrace("identity-wait")
+                if now >= capture.initDeadline then FinalizeGuildCapture(capture.lastReason)
+                else capture.startAt = now + 0.25 end
+                return
+            end
+            if not capture.visitStarted then S.BeginVisit("guildBank"); capture.visitStarted = true end
+            local tabs, reason = Compat.GetGuildBankTabs()
+            if not tabs then
+                capture.lastReason = reason or "Guild Bank tab metadata unavailable"
+                GuildTrace("tabs-wait")
+                if now >= capture.initDeadline then FinalizeGuildCapture(capture.lastReason)
+                else capture.startAt = now + 0.25 end
+                return
+            end
+            capture.identity = S.Copy(record.identity)
+            capture.tabs, capture.started = tabs, true
+            for _, tab in ipairs(tabs) do if tab.canView then capture.queue[#capture.queue + 1] = tab.id end end
+            GuildTrace("queue=" .. table.concat(capture.queue, ","))
+            capture.nextQueryAt = now
+        elseif capture.started and not capture.pending and capture.nextQueryAt and now >= capture.nextQueryAt then
+            capture.nextQueryAt = nil
+            RequestNextGuildTab()
+        elseif capture.pending and now >= capture.deadline then
+            GuildTrace("timeout=" .. capture.pending)
+            capture.results[capture.pending] = { reason = "Guild Bank query response timed out" }
+            capture.pending, capture.deadline = nil, nil
+            capture.nextQueryAt = now + 0.15
+        end
+    end
+
+    function S.GuildBankClosed(source)
+        S.guildLifecycle = S.guildLifecycle or { starts = 0, closes = 0, shows = 0, hides = 0 }
+        S.guildLifecycle.closes = S.guildLifecycle.closes + 1
+        if not S.guildBankOpen then return end
+        local capture = S.guildCapture
+        if capture then
+            if capture.pending then capture.results[capture.pending] = { reason = "Guild Bank closed before query response" }; capture.pending = nil end
+            FinalizeGuildCapture("Guild Bank closed before every viewable tab was confirmed")
+        end
+        S.guildBankOpen = false
+        if S.guild then S.EndVisit("guildBank") end
+    end
+
+    function S.GuildBankActive() return S.guildCapture ~= nil end
 end
 
 S.collectors.equipment = function()

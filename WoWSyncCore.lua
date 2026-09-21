@@ -2,9 +2,10 @@
 local ADDON_NAME, addon = ...
 local S = { apiVersion = 1, schemaVersion = 1, collectors = {}, dirty = {},
     order = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer" },
-    bankOpen = false, trainerOpen = false, sessions = { bank = 0, accountBank = 0, trainer = 0 } }
+    bankOpen = false, guildBankOpen = false, trainerOpen = false, sessions = { bank = 0, accountBank = 0, guildBank = 0, trainer = 0 } }
 if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
     table.insert(S.order, 6, "accountBank")
+    table.insert(S.order, 7, "guildBank")
 end
 addon.Sync = S
 WoWSync = S
@@ -67,8 +68,9 @@ function S.Initialize()
         db.account = type(db.account) == "table" and db.account or {}
         db.account.sections = type(db.account.sections) == "table" and db.account.sections or {}
         db.account.visits = type(db.account.visits) == "table" and db.account.visits or {}
-        S.account = db.account
-    else S.account = nil end
+        db.guilds = type(db.guilds) == "table" and db.guilds or {}
+        S.account, S.guilds = db.account, db.guilds
+    else S.account, S.guilds, S.guild = nil, nil, nil end
     local record = db.characters[guid]
     if type(record) ~= "table" then record = {}; db.characters[guid] = record end
     if not addon.ReadIdentity then name, realm = UnitName("player"), GetRealmName() end
@@ -83,11 +85,13 @@ function S.Initialize()
 end
 
 local function OwnerFor(key)
-    return key == "accountBank" and S.account or S.record
+    if key == "accountBank" then return S.account end
+    if key == "guildBank" then return S.guild end
+    return S.record
 end
 
 local function StoredKey(key)
-    return key == "accountBank" and "bank" or key
+    return (key == "accountBank" or key == "guildBank") and "bank" or key
 end
 
 function S.Commit(key, data, meta)
@@ -122,6 +126,7 @@ end
 
 function S.Attempt(key, reason)
     local owner, storedKey = OwnerFor(key), StoredKey(key)
+    if not owner then return end
     local old = owner.sections[storedKey]
     if not old then old = { completeness = "unknown", revision = 0 }; owner.sections[storedKey] = old end
     old.lastAttemptAt, old.lastAttemptError = S.Now(), reason
@@ -129,7 +134,8 @@ end
 
 function S.Mark(key, delay)
     if not S.collectors[key] then return end
-    if (key == "bank" or key == "accountBank") and not S.bankOpen or key == "trainer" and not S.trainerOpen then return end
+    if (key == "bank" or key == "accountBank") and not S.bankOpen
+        or key == "guildBank" and not S.guildBankOpen or key == "trainer" and not S.trainerOpen then return end
     local now = GetTime()
     local pending = S.dirty[key]
     if not pending then pending = { first = now, tries = 0 }; S.dirty[key] = pending end
@@ -155,6 +161,7 @@ end
 
 function S.GetSnapshot()
     if not S.Initialize() then return nil end
+    if not S.guild and S.ResolveGuildBankOwner then S.ResolveGuildBankOwner() end
     local snapshot = { identity = S.Copy(S.record.identity), sections = S.Copy(S.record.sections),
         visits = S.Copy(S.record.visits) }
     snapshot.schemaVersion = S.schemaVersion
@@ -165,6 +172,12 @@ function S.GetSnapshot()
         snapshot.accountSections = S.Copy(S.account.sections)
         snapshot.access.accountBank = S.bankOpen and WoWSyncCompat.IsBankViewable("ACCOUNT")
     end
+    if S.guild then
+        snapshot.guildSections = S.Copy(S.guild.sections)
+        snapshot.guildIdentity = S.Copy(S.guild.identity)
+        snapshot.access.guildBank = S.guildBankOpen
+    end
+    snapshot.guildError = S.guildError
     snapshot.pending = {}
     for key in pairs(S.dirty) do snapshot.pending[key] = true end
     return snapshot
@@ -207,6 +220,7 @@ end
 S.Process = Process
 
 local function Tick()
+    if S.GuildBankTick then S.GuildBankTick(GetTime()) end
     Process(false)
     if S.exportRequest and (not next(S.dirty) and not S.playedPending or GetTime() >= S.exportRequest.deadline) then
         local callback = S.exportRequest.callback
@@ -218,7 +232,7 @@ local function Tick()
             callback(text)
         end
     end
-    if not next(S.dirty) and not S.exportRequest then frame:SetScript("OnUpdate", nil) end
+    if not next(S.dirty) and not S.exportRequest and not (S.GuildBankActive and S.GuildBankActive()) then frame:SetScript("OnUpdate", nil) end
 end
 function S.Wake() frame:SetScript("OnUpdate", Tick) end
 
@@ -237,6 +251,7 @@ local function Visit(key)
         name = UnitName("npc"), guid = UnitGUID("npc"), session = S.sessions[key] }
     if key == "trainer" then S.currentTrainerVisit = visit
     elseif key == "accountBank" then S.account.visits.bank = visit
+    elseif key == "guildBank" then S.guild.visits.bank = visit
     else S.record.visits[key] = visit end
 end
 
@@ -262,6 +277,7 @@ local function Close(key)
     if S.dirty[key] then S.Attempt(key, "Closed before pending capture settled") end
     S.dirty[key] = nil
 end
+S.BeginVisit, S.EndVisit = Visit, Close
 
 local events = addon.SyncEvents or {
     "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT",
@@ -284,8 +300,16 @@ if not addon.SyncEvents and WoWSyncCompat and WoWSyncCompat.RegisterOptionalEven
 end
 
 frame:SetScript("OnEvent", function(_, event, arg, arg2)
+    if event:match("^GUILDBANK") then
+        S.guildEventCounts = S.guildEventCounts or {}
+        S.guildEventCounts[event] = (S.guildEventCounts[event] or 0) + 1
+        S.lastGuildEvent = event
+    end
     if event == "ADDON_LOADED" then
         if arg == ADDON_NAME then S.Initialize(); if S.InitializeUI then S.InitializeUI() end end
+        -- Blizzard_GuildBankUI is LoadOnDemand.  Its ADDON_LOADED signal is the
+        -- earliest clean point to hook GuildBankFrame before it is shown.
+        if arg == "Blizzard_GuildBankUI" and S.InstallGuildBankHooks then S.InstallGuildBankHooks() end
     elseif event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         S.RequestSync(); if S.InitializeUI then S.InitializeUI() end
     elseif event == "TIME_PLAYED_MSG" then
@@ -305,6 +329,11 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.bankOpen = true; Visit("bank"); if S.collectors.accountBank then Visit("accountBank") end; S.Mark("bank"); S.Mark("accountBank"); S.Mark("bags")
     elseif event == "BANKFRAME_CLOSED" then
         S.bankOpen = false; Close("bank"); if S.collectors.accountBank then Close("accountBank") end; S.Mark("bags")
+    elseif event == "GUILDBANKFRAME_OPENED" then
+        if S.InstallGuildBankHooks then S.InstallGuildBankHooks() end
+        if S.GuildBankOpened then S.GuildBankOpened("event-open") end
+    elseif event == "GUILDBANKFRAME_CLOSED" then
+        if S.GuildBankClosed then S.GuildBankClosed("event-close") end
     elseif event == "TRAINER_SHOW" then
         S.trainerOpen = true; Visit("trainer"); S.Mark("trainer"); S.Mark("spells")
     elseif event == "TRAINER_CLOSED" then
@@ -316,6 +345,8 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.Mark("bags"); S.Mark("bank")
     elseif event == "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED" then
         S.Mark("accountBank")
+    elseif event == "GUILDBANKBAGSLOTS_CHANGED" or event == "GUILDBANK_UPDATE_TABS" or event == "GUILDBANK_ITEM_LOCK_CHANGED" then
+        if S.GuildBankEvent then S.GuildBankEvent(event, arg, arg2) end
     elseif event == "BANK_TABS_CHANGED" or event == "BANK_TAB_SETTINGS_UPDATED" then
         if arg == nil or arg == (Enum and Enum.BankType and Enum.BankType.Character) then S.Mark("bank") end
         if arg == nil or arg == (Enum and Enum.BankType and Enum.BankType.Account) then S.Mark("accountBank") end

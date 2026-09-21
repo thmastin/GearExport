@@ -105,8 +105,23 @@ viewable. It is stored once at `WoWSyncDB.account.sections.bank`, not under any
 GUID, and rendered with `Scope: ACCOUNT_WARBAND`. It uses only the returned
 `C_Bank.FetchPurchasedBankTabIDs(Enum.BankType.Account)` IDs and has independent
 freshness/UNKNOWN/LAST_SEEN behavior. It is never aggregated into a character's
-bank. Guild Bank remains UNKNOWN: its legacy per-tab data has not been
-live-validated for passive complete observation.
+bank.
+
+Retail may also emit `[GUILD BANK]`, separately scoped as `GUILD`. It is keyed
+in SavedVariables by the observed `C_Club.GetGuildClubId()` value, with guild name
+as display metadata only; it is never character- or account-owned storage. A tab
+is OBSERVED only after it was reported `canView=true`, was the sole outstanding
+`QueryGuildBankTab` request, and then received `GUILDBANKBAGSLOTS_CHANGED`.
+An all-nil scan before that response is UNKNOWN; an all-nil scan after it is an
+observed empty permitted tab. `canView=false` is rendered `INACCESSIBLE`, never
+empty. A Guild Bank snapshot is complete only for all tabs currently permitted to
+the observing character; inaccessible guild-owned tabs remain outside its observed
+contents. Failed/closed/timed-out captures are partial and do not replace a prior
+complete guild observation.
+On validated Retail clients, capture is started/stopped from `GuildBankFrame`
+OnShow/OnHide; `GUILDBANKFRAME_OPENED/CLOSED` are supplementary signals and cannot
+be the sole lifecycle source. Closed or unavailable banks preserve a previous
+complete observation as LAST_SEEN rather than claiming current empty storage.
 
 ## Consumer API
 

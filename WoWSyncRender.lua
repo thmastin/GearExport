@@ -3,7 +3,7 @@
 local _, addon = ...
 local S = addon.Sync
 local labels = { character = "CHARACTER", location = "LOCATION", equipment = "EQUIPMENT",
-    bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS" }
+    bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", guildBank = "GUILD BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS" }
 
 local function Text(value)
     if value == nil then return "?" end
@@ -89,7 +89,7 @@ local function Inventory(out, data)
     end)
     Row(out, "itemRef", "name", "qty", "bound", "vendorEachCopper")
     for _, entry in ipairs(rows) do Row(out, Ref(entry.item), entry.item.name, entry.count, entry.item.bound, entry.item.vendorCopper) end
-    if #rows == 0 then Field(out, "Items", "EMPTY") end
+    if #rows == 0 and data.emptyKnown ~= false then Field(out, "Items", "EMPTY") end
 end
 renderers.bags = Inventory
 renderers.bank = function(out, data)
@@ -104,6 +104,17 @@ renderers.accountBank = function(out, data)
     if data.coverage then Field(out, "Coverage", data.coverage) end
     if data.visit then Field(out, "SnapshotVisit", data.visit.openedAt) end
     if data.purchasedTabs then Field(out, "PurchasedBankTabs", data.purchasedTabs) end
+    Inventory(out, data)
+end
+renderers.guildBank = function(out, data)
+    Field(out, "Scope", data.ownerScope or "GUILD")
+    local guild = data.guild or {}
+    Field(out, "GuildClubID", guild.clubID)
+    Field(out, "GuildName", guild.name)
+    if data.coverage then Field(out, "Coverage", data.coverage) end
+    if data.visit then Field(out, "SnapshotVisit", data.visit.openedAt) end
+    Row(out, "tab", "name", "viewable", "state", "note")
+    for _, tab in ipairs(data.tabs or {}) do Row(out, tab.id, tab.name, tab.canView, tab.state, tab.reason) end
     Inventory(out, data)
 end
 renderers.professions = function(out, data)
@@ -192,8 +203,9 @@ function S.RenderSection(key, snapshot)
     end
     local out = { "[" .. labels[key] .. "]" }
     local section = key == "accountBank" and snapshot.accountSections and snapshot.accountSections.bank
+        or key == "guildBank" and snapshot.guildSections and snapshot.guildSections.bank
         or snapshot.sections and snapshot.sections[key]
-    local visit = key == "accountBank" and section and section.data and section.data.visit
+    local visit = (key == "accountBank" or key == "guildBank") and section and section.data and section.data.visit
         or snapshot.visits and snapshot.visits[key]
     if visit then
         Field(out, "LastVisit", visit.openedAt)
@@ -204,10 +216,11 @@ function S.RenderSection(key, snapshot)
     if not section or not section.data then
         Field(out, "State", "UNKNOWN")
         if key == "accountBank" then Field(out, "Scope", "ACCOUNT_WARBAND") end
-        Field(out, "Reason", section and section.lastAttemptError or "Not observed")
+        if key == "guildBank" then Field(out, "Scope", "GUILD") end
+        Field(out, "Reason", section and section.lastAttemptError or key == "guildBank" and snapshot.guildError or "Not observed")
         return table.concat(out, "\n")
     end
-    local access = key == "bank" or key == "accountBank" or key == "trainer"
+    local access = key == "bank" or key == "accountBank" or key == "guildBank" or key == "trainer"
     local sameVisit = not access or visit and section.data.visit and visit.openedAt == section.data.visit.openedAt
         and visit.session == section.data.visit.session
     local state = access and not (snapshot.access and snapshot.access[key] and sameVisit) and "LAST_SEEN" or "OBSERVED"

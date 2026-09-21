@@ -11,3 +11,4 @@ WoWSyncCore.lua
 WoWSyncCollectors.lua
 WoWSyncRender.lua
 WoWSyncUI.lua
+WoWSyncGuildBankDiagnostic.lua
