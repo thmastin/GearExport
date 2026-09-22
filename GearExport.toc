@@ -1,14 +1,14 @@
-## Interface: 20506
+## Interface: 120100
 ## Title: WoWSync
-## Notes: Copyable Markdown character and item exporter
+## Notes: Shared WOWSYNC v1 character export for Retail
 ## Version: 2.2
 ## SavedVariables: GearExportDB, WoWSyncDB
 ## IconTexture: Interface\AddOns\GearExport\WoWSyncIcon.tga
 
 WoWSyncCompat.lua
 GearExport.lua
-BankCleanup.lua
 WoWSyncCore.lua
 WoWSyncCollectors.lua
 WoWSyncRender.lua
 WoWSyncUI.lua
+WoWSyncGuildBankDiagnostic.lua

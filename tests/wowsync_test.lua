@@ -309,8 +309,16 @@ check(callbackText and callbackText:find("[END]", 1, true), "sync generates cons
 equal(GearExportDB.latestExport, oldLatest, "sync does not overwrite legacy latestExport")
 equal(S.record.latestExport.text, callbackText, "single latest consolidated export saved")
 local frozen = callbackText
+local frozenAt = S.record.latestExport.generatedAt
 money = 999; event("PLAYER_MONEY"); advance(1)
-equal(S.record.latestExport.text, frozen, "background events do not rewrite displayed export")
+check(S.record.latestExport.text ~= frozen, "background observations refresh the SavedVariables handoff")
+check(S.record.latestExport.generatedAt > frozenAt, "background handoff advances generatedAt")
+check(S.record.latestExport.text:find("999", 1, true), "auto export contains changed money")
+local logoutBefore = S.record.latestExport.text
+bagItems[0][1].count = 8; event("BAG_UPDATE"); event("PLAYER_LOGOUT")
+check(S.record.latestExport.text ~= logoutBefore, "logout refreshes pending observations before WoW flushes")
+check(S.record.latestExport.text:find("Sample\t10\t", 1, true), "logout handoff contains pending bag change")
+bagItems[0][1].count = 1 -- restore the shared fixture for later compatibility cases
 local oldRecord = S.record
 guid = "Player-1-B"; S.record = nil; event("PLAYER_LOGIN"); advance(1)
 check(S.record ~= oldRecord, "characters isolated by GUID")

@@ -409,7 +409,7 @@ SlashCmdList.WOWSYNC(""); advance(4)
 check(S.record.latestExport.text:find("WOWSYNC v1", 1, true) == 1, "UI copyable canonical export")
 local stable = S.record.latestExport.text
 event("PLAYER_MONEY"); advance(1)
-equal(S.record.latestExport.text, stable, "copy text stable after background refresh")
+check(S.record.latestExport.text ~= stable, "background observations refresh latest export")
 for _, command in ipairs({ "GEAREXPORT", "GEARITEMEXPORT", "GEARINVENTORYEXPORT", "GEARTRAINEREXPORT" }) do
     SlashCmdList[command](command == "GEARITEMEXPORT" and "240001" or "")
     check(GearExportDB.latestExport, "Retail legacy command " .. command)

@@ -263,7 +263,7 @@ function S.RenderSection(key, snapshot)
         and visit.session == section.data.visit.session
     local stale = section.lastAttemptStale or access and not (snapshot.access and snapshot.access[key] and sameVisit)
     local state = stale and "LAST_SEEN" or "OBSERVED"
-    Field(out, "State", state .. "; " .. section.completeness .. "; observed=" .. Text(section.observedAt))
+    Field(out, "State", state .. "; " .. Text(section.completeness) .. "; observed=" .. Text(section.observedAt))
     if snapshot.pending and snapshot.pending[key] then Field(out, "Pending", "Refresh pending; showing last observation") end
     if section.reason then Field(out, "CoverageNote", section.reason) end
     if section.lastAttemptError then Field(out, "RefreshIssue", section.lastAttemptError) end

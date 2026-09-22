@@ -111,6 +111,7 @@ end
 
 function S.Commit(key, data, meta)
     local owner, storedKey = OwnerFor(key), StoredKey(key)
+    if not owner then return end
     local old = owner.sections[storedKey]
     local now = S.Now()
     local changed = not old or not Equal(old.data, data)
@@ -156,6 +157,7 @@ function S.Mark(key, delay)
     local pending = S.dirty[key]
     if not pending then pending = { first = now, tries = 0 }; S.dirty[key] = pending end
     pending.due = math.min(now + (delay or 0.35), pending.first + 1.5)
+    S.autoExportPending = true
     S.Wake()
 end
 
@@ -207,6 +209,26 @@ end
 
 local frame = CreateFrame("Frame")
 S.eventFrame = frame
+local function RefreshLatestExport()
+    if not S.record then return nil end
+    local snapshot = S.GetSnapshot()
+    if not snapshot then return nil end
+    if type(S.Render) ~= "function" then return nil end
+    local ok, text = pcall(S.Render, snapshot)
+    if not ok then
+        S.lastRenderError = tostring(text)
+        if not S.renderErrorPrinted then
+            print("WoWSync: latestExport render failed: " .. S.lastRenderError)
+            S.renderErrorPrinted = true
+        end
+        return nil
+    end
+    S.lastRenderError = nil
+    S.record.latestExport = { text = text, generatedAt = snapshot.generatedAt }
+    S.autoExportPending = next(S.dirty) and true or nil
+    return text
+end
+
 local function Process(force)
     if not S.Initialize() then return end
     S.capture = (S.capture or 0) + 1
@@ -241,12 +263,10 @@ local function Tick()
     if S.exportRequest and (not next(S.dirty) and not S.playedPending or GetTime() >= S.exportRequest.deadline) then
         local callback = S.exportRequest.callback
         S.exportRequest = nil
-        local snapshot = S.GetSnapshot()
-        if snapshot then
-            local text = S.Render(snapshot)
-            S.record.latestExport = { text = text, generatedAt = snapshot.generatedAt }
-            callback(text)
-        end
+        local text = RefreshLatestExport()
+        if text then callback(text) end
+    elseif S.autoExportPending and not next(S.dirty) then
+        RefreshLatestExport()
     end
     if not next(S.dirty) and not S.exportRequest and not (S.GuildBankActive and S.GuildBankActive()) then frame:SetScript("OnUpdate", nil) end
 end
@@ -340,7 +360,10 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.RequestPlayed()
         S.Mark("character")
     elseif event == "PLAYER_LOGOUT" then
-        if S.record then Process(true) end
+        if S.record then
+            pcall(Process, true)
+            RefreshLatestExport()
+        end
     elseif event == "BANKFRAME_OPENED" then
         S.bankOpen = true; Visit("bank"); if S.collectors.accountBank then Visit("accountBank") end; S.Mark("bank"); S.Mark("accountBank"); S.Mark("bags")
     elseif event == "BANKFRAME_CLOSED" then
@@ -387,3 +410,38 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.Mark("character")
     end
 end)
+
+SLASH_WOWSYNC1 = "/wowsync"
+SlashCmdList["WOWSYNC"] = function(argument)
+    local raw = tostring(argument or "")
+    local command = (raw:match("^%s*(%S*)") or ""):lower()
+    if command == "/wowsync" or command == "wowsync" then
+        command = (raw:match("^%s*%S+%s+(%S*)") or ""):lower()
+    end
+    local function say(text) print("WoWSync: " .. text) end
+    if command == "status" or command == "stat" then
+        local snapshot = S.GetSnapshot and S.GetSnapshot()
+        if not snapshot then say(S.error or "Not ready"); return end
+        for _, key in ipairs(S.order) do
+            local section = key == "accountBank" and snapshot.accountSections and snapshot.accountSections.bank
+                or key == "guildBank" and snapshot.guildSections and snapshot.guildSections.bank
+                or snapshot.sections[key]
+            say(key .. ": " .. (section and section.completeness or "unknown")
+                .. ", observed=" .. tostring(section and section.observedAt or "never")
+                .. (snapshot.pending[key] and ", pending" or "")
+                .. (section and section.lastAttemptError and (", " .. section.lastAttemptError) or ""))
+        end
+        local latest = S.record and S.record.latestExport
+        say("latestExport: generatedAt=" .. tostring(latest and latest.generatedAt or "none")
+            .. (S.autoExportPending and ", autoRefreshPending" or "")
+            .. (S.lastRenderError and (", renderError=" .. S.lastRenderError) or ""))
+        return
+    end
+    if command == "" or command == "export" or command == "button" then
+        if type(S.SlashExport) == "function" and command ~= "button" then S.SlashExport(); return end
+        if type(S.SlashButton) == "function" and command == "button" then S.SlashButton(); return end
+        say("Core loaded. Export UI missing - use /wowsync status. Try /gearx as a load check.")
+        return
+    end
+    say("Unknown [" .. raw .. "]. Try /wowsync status")
+end

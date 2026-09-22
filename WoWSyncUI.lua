@@ -31,7 +31,7 @@ function S.InitializeUI()
     local bg = window:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(); bg:SetColorTexture(0, 0, 0, 0.94)
     local title = window:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", 0, -14); title:SetText("WoWSync — Character handoff")
+    title:SetPoint("TOP", 0, -14); title:SetText("WoWSync - Character handoff")
     scroll = CreateFrame("ScrollFrame", "WoWSyncExportScroll", window, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 18, -44); scroll:SetPoint("BOTTOMRIGHT", -40, 68)
     edit = CreateFrame("EditBox", nil, scroll)
@@ -73,6 +73,14 @@ function S.InitializeUI()
     if not S.settings.showButton then launcher:Hide() end
 end
 
+function S.SlashExport() Sync() end
+function S.SlashButton()
+    S.InitializeUI()
+    if not launcher then Message(S.error or "Not ready"); return end
+    S.settings.showButton = not S.settings.showButton
+    if S.settings.showButton then launcher:Show() else launcher:Hide() end
+end
+
 SLASH_WOWSYNC1 = "/wowsync"
 SlashCmdList.WOWSYNC = function(argument)
     local command = (argument or ""):match("^%s*(.-)%s*$"):lower()
@@ -94,7 +102,11 @@ SlashCmdList.WOWSYNC = function(argument)
                 .. (snapshot.pending[key] and ", pending" or "")
                 .. (section and section.lastAttemptError and ", " .. section.lastAttemptError or ""))
         end
+        local latest = S.record and S.record.latestExport
+        Message("latestExport: generatedAt=" .. tostring(latest and latest.generatedAt or "none")
+            .. (S.autoExportPending and ", autoRefreshPending" or "")
+            .. (S.lastRenderError and (", renderError=" .. S.lastRenderError) or ""))
     else
-        Message("/wowsync [export] — refresh and copy one handoff. /wowsync status — freshness. /wowsync button — toggle movable SYNC button. No reload needed for copying; /reload flushes SavedVariables for disk readers.")
+        Message("/wowsync [export] - refresh and copy one handoff. /wowsync status - freshness. /wowsync button - toggle movable SYNC button. No reload needed for copying; /reload flushes SavedVariables for disk readers.")
     end
 end
