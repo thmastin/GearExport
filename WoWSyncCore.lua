@@ -437,11 +437,18 @@ SlashCmdList["WOWSYNC"] = function(argument)
             .. (S.lastRenderError and (", renderError=" .. S.lastRenderError) or ""))
         return
     end
-    if command == "" or command == "export" or command == "button" then
-        if type(S.SlashExport) == "function" and command ~= "button" then S.SlashExport(); return end
-        if type(S.SlashButton) == "function" and command == "button" then S.SlashButton(); return end
+    if command == "minimap" or command == "map" then
+        if type(S.SlashMinimap) == "function" then S.SlashMinimap(); return end
+        say("Minimap UI missing."); return
+    end
+    if command == "button" then
+        if type(S.SlashButton) == "function" then S.SlashButton(); return end
+        say("Floating button UI missing."); return
+    end
+    if command == "" or command == "export" then
+        if type(S.SlashExport) == "function" then S.SlashExport(); return end
         say("Core loaded. Export UI missing - use /wowsync status. Try /gearx as a load check.")
         return
     end
-    say("Unknown [" .. raw .. "]. Try /wowsync status")
+    say("/wowsync [export] - refresh handoff. /wowsync status - freshness. /wowsync minimap - toggle minimap button (left=sync, right=reload UI). /wowsync button - toggle floating SYNC. Natural /reload flushes SavedVariables for the Dashboard.")
 end
