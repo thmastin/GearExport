@@ -1,0 +1,19 @@
+## Interface: 16001
+## Title: WoWSync
+## Notes: Forever observational WoWSync v1 compatibility package
+## Version: 2.2
+## SavedVariables: GearExportDB, WoWSyncDB
+## IconTexture: Interface\AddOns\GearExport\WoWSyncIcon.tga
+## X-WoWSync-Target: Forever
+
+WoWSyncCompat.lua
+WoWSyncForever.lua
+WoWSyncCore.lua
+WoWSyncForeverCollectors.lua
+WoWSyncForeverBags.lua
+WoWSyncForeverProfessions.lua
+WoWSyncForeverSpells.lua
+WoWSyncForeverBank.lua
+WoWSyncForeverTrainers.lua
+WoWSyncRender.lua
+WoWSyncUI.lua

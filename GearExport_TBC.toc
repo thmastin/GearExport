@@ -1,6 +1,6 @@
-## Interface: 11509
+## Interface: 20506
 ## Title: WoWSync
-## Notes: Shared WOWSYNC v1 character export for Classic Era
+## Notes: Shared WOWSYNC v1 character export for Burning Crusade Classic / Anniversary
 ## Version: 2.2
 ## SavedVariables: GearExportDB, WoWSyncDB
 ## IconTexture: Interface\AddOns\GearExport\WoWSyncIcon.tga
