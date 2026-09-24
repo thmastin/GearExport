@@ -39,11 +39,17 @@ addon identity remain valid. The unchanged source PNG and conversion notes are
 preserved in the repository's `assets` directory.
 
 For a single-client package, run `node scripts/package.cjs TBC`,
-`node scripts/package.cjs ClassicEra`, or `node scripts/package.cjs Retail` from
-the repository. Copy the resulting `dist/<target>/GearExport` folder into that
-client's `Interface/AddOns` directory. Each package has one selected
-`GearExport.toc`; Retail excludes BankCleanup. Retail targets `_retail_`, Era
-targets `_classic_era_`, and TBC Anniversary targets `_anniversary_`.
+`node scripts/package.cjs ClassicEra`, `node scripts/package.cjs Retail`, or
+`node scripts/package.cjs Forever` from the repository. Copy the resulting
+`dist/<target>/GearExport` folder into that client's `Interface/AddOns`
+directory. Each package has one selected `GearExport.toc`; Retail excludes
+BankCleanup. Retail targets `_retail_`, Era targets `_classic_era_`, TBC
+Anniversary targets `_anniversary_`, and Forever targets `_classic_beta_`.
+
+Forever's package is larger (~28 files) because it ships Forever adapter Lua and
+Forever docs and omits the legacy exporter, collectors, and BankCleanup. The
+other flavors are thinner TOC subsets of the same shared root (~18 files). See
+`scripts/package.cjs` for the exact file lists per target.
 
 The following source-tree installation example is for Anniversary/Classic:
 

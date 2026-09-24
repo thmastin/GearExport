@@ -14,7 +14,7 @@ const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).d
 const failures = [];
 for (const [file, expected] of Object.entries(manifest.hashes)) {
     const source = file === 'GearExport.toc' ?
-        ({ Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: file, Forever: 'GearExport-Forever.toc' })[target] : file;
+        ({ Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport-BCC.toc', Forever: 'GearExport-Forever.toc' })[target] : file;
     if (hash(path.join(root, source)) !== expected) failures.push('Rebuild package: ' + file);
     const destination = path.join(installed, file);
     if (!fs.existsSync(destination) || hash(destination) !== expected) failures.push('Installed file missing/stale: ' + file);

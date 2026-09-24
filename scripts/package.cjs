@@ -5,7 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const root = path.resolve(__dirname, '..');
 const target = process.argv[2];
-const targets = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport.toc', Forever: 'GearExport-Forever.toc' };
+const targets = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport-BCC.toc', Forever: 'GearExport-Forever.toc' };
 if (!Object.hasOwn(targets, target)) throw new Error('Choose Retail, ClassicEra, TBC, or Forever');
 const toc = fs.readFileSync(path.join(root, targets[target]), 'utf8');
 if (target === 'Forever' && (!/^## Interface: 16001\r?$/m.test(toc)
