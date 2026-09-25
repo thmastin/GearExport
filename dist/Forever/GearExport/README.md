@@ -17,7 +17,7 @@ effective-stat mappings, bags, playtime, known spells, Character Bank, and
 trainers. See [Forever current limits and validation](FOREVER_REMAINING.md).
 The character/location pipeline is live-validated at levels 1 and 4. Equipment
 slot presence, references, names and levels are live-validated on Hallo.
-The current package guard accepts only Forever `1.60.1` build `69913`, with
+The current package guard accepts only Forever `1.60.1` build `70009`, with
 interface `16001` confirmed in-game. Earlier captures retain their original
 build `69893` metadata.
 
@@ -25,10 +25,10 @@ The separate [Forever bags validation build](FOREVER_BAGS.md) records the
 carried-bag implementation and live validation evidence.
 
 The [Forever professions validation record](FOREVER_PROFESSIONS.md) documents
-the build-69913 trade-skill hydration finding and its live-validated guard.
+the build-70009 trade-skill hydration finding and its live-validated guard.
 
 The [Forever Known Spells validation record](FOREVER_SPELLS.md) documents the
-build-69913 player spellbook APIs and live validation.
+build-70009 player spellbook APIs and live validation.
 
 ## Installation
 

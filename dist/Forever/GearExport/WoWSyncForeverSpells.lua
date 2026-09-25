@@ -1,4 +1,4 @@
--- Forever build 69913 C_SpellBook player-bank contracts.
+-- Forever build 70009 C_SpellBook player-bank contracts.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 

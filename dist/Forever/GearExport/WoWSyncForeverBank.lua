@@ -1,4 +1,4 @@
--- Forever build 69913 modern character-bank observer.  It intentionally asks
+-- Forever build 70009 modern character-bank observer.  It intentionally asks
 -- C_Bank for the actual tab IDs; no Classic negative container IDs are used.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever

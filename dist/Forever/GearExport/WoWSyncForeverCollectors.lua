@@ -89,7 +89,7 @@ S.collectors.location = function()
     return data, Meta(issues)
 end
 
--- Build 69913 uses ItemLocation/C_Item and C_PaperDollInfo. Do not route
+-- Build 70009 uses ItemLocation/C_Item and C_PaperDollInfo. Do not route
 -- through the Classic legacy readers merely because IsRetail() is false.
 S.collectors.equipment = function()
     local data, issues, observed, pending = { slots = {} }, {}, 0, false

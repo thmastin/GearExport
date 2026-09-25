@@ -1,4 +1,4 @@
--- Forever build 69913 profession readiness adapter.
+-- Forever build 70009 profession readiness adapter.
 --
 -- C_TradeSkillUI exposes an all-profession enumeration before its skill values
 -- hydrate. Its pre-hydration 0/0 records cannot establish that a profession is

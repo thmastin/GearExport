@@ -16,7 +16,7 @@ requires byte-identical rendered sections. Equipment tests use explicitly
 synthetic data because Phase 1 did not observe equipment.
 
 The real capture retains build `69893`; current guard tests use verified build
-`69913`. Replaying historical data does not authorize the old running build.
+`70009`. Replaying historical data does not authorize the old running build.
 
 The full level-1 export was not available in the repository or current
 SavedVariables. Its user-reported summary is recorded in `FOREVER_PHASE1.md`;

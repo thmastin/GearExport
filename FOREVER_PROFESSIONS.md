@@ -1,6 +1,6 @@
 # Forever professions: live findings and readiness guard
 
-Hallo Emberstone, Forever `1.60.1` build `69913`, has Engineering `20/75`
+Earlier verified Forever `1.60.1` build `69913` recorded Hallo Emberstone with Engineering `20/75`
 and Mining `23/75`.
 
 ## Hydration finding

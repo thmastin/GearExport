@@ -1,6 +1,6 @@
 # Forever current limits and live validation
 
-Build 69913 uses the shared asynchronous `RequestTimePlayed()` request and
+Build 70009 uses the shared asynchronous `RequestTimePlayed()` request and
 `TIME_PLAYED_MSG(total, level)` event handling. Both fields are stored only as
 non-negative integer event payloads; no response leaves them `?`. Hallo live
 validation supplied `9206` total and `1757` level seconds.
@@ -25,7 +25,7 @@ used. It was live-validated on Hallo for one purchased tab: returned container
 ID `6`, `CharacterBankTab 1`, capacity `48`, explicit empty and Rough Stone
 `x3` observations, free-slot/quantity accounting, and LAST_SEEN persistence.
 
-The trainer collector only runs during a trainer visit. Build-69913's
+The trainer collector only runs during a trainer visit. Build-70009's
 `Blizzard_TrainerUI/Mainline/Blizzard_TrainerUI.lua` consumes
 `GetTrainerServiceInfo(index)` as `name, status, texture, requiredLevel`; the
 previous adapter incorrectly read it as the Classic `name, rank, status,
@@ -36,7 +36,7 @@ Thundergranite: representative Hunter services, required levels, costs, and
 requirements matched the UI; close retains LAST_SEEN. Rank and spell ID are not
 exposed by this tuple and remain `-`/`?`; neither is inferred from the UI index.
 
-Known spells use the documented build-69913 `C_SpellBook` player bank; Hallo
+Known spells use the documented build-70009 `C_SpellBook` player bank; Hallo
 live validation captured 15 visible active player spells correctly. Effective
 equipment stats have live-confirmed conservative Armor and Damage Per Second
 mappings; unsupported keys remain UNKNOWN/partial.

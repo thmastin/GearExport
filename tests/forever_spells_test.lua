@@ -1,4 +1,4 @@
--- Synthetic build-69913 C_SpellBook records; spell identity is never inferred.
+-- Synthetic build-70009 C_SpellBook records; spell identity is never inferred.
 return function(S, check, equal, advance)
     local savedAPI, savedEnum, oldSecret = C_SpellBook, Enum, issecretvalue
     local secret = {}

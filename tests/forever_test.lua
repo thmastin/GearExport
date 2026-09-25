@@ -21,7 +21,7 @@ function CreateFrame(_, name) return widget(name) end
 UIParent, UISpecialFrames, SlashCmdList = widget(), {}, {}
 function GetTime() return seconds end
 function GetServerTime() return 1789670000 + math.floor(seconds) end
-local version, build, interface = "1.60.1", "69913", 8675309 -- Synthetic interface, not client evidence.
+local version, build, interface = "1.60.1", "70009", 8675309 -- Synthetic interface, not client evidence.
 function GetBuildInfo() return version, build, "test", interface end
 local target = "Forever"
 C_AddOns = { GetAddOnMetadata = function(name, field)
@@ -72,7 +72,7 @@ for _, other in ipairs({ "69893", "69914", "different" }) do
     equal(S.error, "The installed WoWSync build is not verified for the running Forever client.",
         "rejection describes verification rather than a package phase")
 end
-build = "69913"
+build = "70009"
 local realGUID = UnitGUID
 UnitGUID = nil; check(not S.Initialize(), "missing GUID cannot fabricate character")
 UnitGUID = function() error("Unavailable") end; check(not S.Initialize(), "throwing GUID handled")

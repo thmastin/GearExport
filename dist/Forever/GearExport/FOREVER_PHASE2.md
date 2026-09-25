@@ -8,8 +8,8 @@ build process does not install anything. Interface remains `16001`.
 
 The beta installation's `WowB.exe` file/product version and the running process
 at `D:\World of Warcraft\_classic_beta_\WowB.exe` were independently inspected:
-both report `1.60.1.69913`. The user also confirmed runtime interface `16001`.
-The guard now accepts exactly version `1.60.1`, build `69913`, and the explicit
+both report `1.60.1.70009`. The user also confirmed runtime interface `16001`.
+The guard now accepts exactly version `1.60.1`, build `70009`, and the explicit
 Forever package marker. Other builds, including the superseded `69893`, are
 rejected. The rejection message describes an unverified running client without
 referring to Phase 1.
@@ -17,7 +17,7 @@ referring to Phase 1.
 ## Live equipment acceptance
 
 The user confirmed a successful real `/wowsync` export on Hallo on build
-`69913`: slot presence, itemRef, name, item level and required level are correct.
+The prior verified build `69913` showed correct slot presence, itemRef, name, item level and required level.
 This historical equipment milestone preceded later live effective-stat, bank,
 trainer, playtime, and spell observations; see current Forever documents.
 The equipment regression fixture checks each accepted field, confirmed empty
@@ -65,7 +65,7 @@ requires `C_TooltipInfo.GetInventoryItem("player", slot)` with populated lines
 before the shared collector calls the result ready. Its renderer emits the
 normalized `{name,value}` values in the existing `effectiveStats` column.
 
-The Forever build-69913 generated item contract is materially weaker:
+The prior build-69913 generated item contract is materially weaker:
 `C_Item.GetItemStats(itemLink)` accepts only an item link and returns an
 untyped `LuaValueVariant`; it has no `ItemLocation` argument and no stated
 equipped/effective semantics. `C_Item.GetItemInfo(itemInfo)` supplies identity

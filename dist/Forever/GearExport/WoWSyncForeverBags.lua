@@ -1,4 +1,4 @@
--- Forever build 69913 C_Container contracts; carried bags only, no bank APIs.
+-- Forever build 70009 C_Container contracts; carried bags only, no bank APIs.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 

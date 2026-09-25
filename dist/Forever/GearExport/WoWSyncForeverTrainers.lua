@@ -1,4 +1,4 @@
--- Forever build 69913 uses the modern trainer tuple used by its Mainline UI:
+-- Forever build 70009 uses the modern trainer tuple used by its Mainline UI:
 -- name, status, texture, requiredLevel. It is not the Classic rank/status tuple.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
