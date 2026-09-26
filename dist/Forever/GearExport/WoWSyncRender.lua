@@ -276,9 +276,11 @@ function S.Render(snapshot, sections)
     local out = { "WOWSYNC v1", "Generated: " .. Text(snapshot.generatedAt),
         "Format: tab-separated columns; ?=unknown; timestamps=Unix seconds; money=copper; itemRef preserves item variants." }
     for _, key in ipairs(sections or S.order) do
-        local text, err = S.RenderSection(key, snapshot)
-        assert(text, err)
-        out[#out + 1] = text
+        if sections or not (S.structuredOnly and S.structuredOnly[key]) then
+            local text, err = S.RenderSection(key, snapshot)
+            assert(text, err)
+            out[#out + 1] = text
+        end
     end
     out[#out + 1] = "[END]"
     return table.concat(out, "\n\n")

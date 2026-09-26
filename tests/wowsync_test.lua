@@ -513,4 +513,9 @@ C_Map = oldMap
 assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
 GetBuildInfo, GetNumSpellTabs, GetSpellTabInfo, GetNumSkillLines, GetSkillLineInfo =
     originalBuild, originalTabs, originalTabInfo, originalSkillCount, originalSkillInfo
+-- Classic packages never collect Retail currencies even if the namespace exists.
+C_CurrencyInfo = setmetatable({}, { __index = function() error("Classic read Retail currency API") end })
+check(not S.collectors.currencies and not WoWSyncCompat.ReadCurrencyList(), "Classic has no currency capture")
+for _, key in ipairs(S.order) do check(key ~= "currencies", "Classic order excludes currencies") end
+C_CurrencyInfo = nil
 print("PASS: " .. passed .. " assertions; " .. movingCalls .. " gameplay actions")

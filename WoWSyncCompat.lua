@@ -304,6 +304,88 @@ function C.ReadGuildBankTab(tab)
     return container, incomplete, firstFailure
 end
 
+-- Retail currency list (C_CurrencyInfo, 12.1.0 API docs).  Collapsed headers hide
+-- their rows, so they are expanded for one synchronous read and re-collapsed in
+-- reverse order.  Absent, restricted or differently typed values stay absent.
+local CURRENCY_FIELDS = {
+    { "name", "string" }, { "iconFileID", "number" }, { "quantity", "number" },
+    { "maxQuantity", "number" }, { "quantityEarnedThisWeek", "number" }, { "maxWeeklyQuantity", "number" },
+    { "canEarnPerWeek", "boolean" }, { "totalEarned", "number" }, { "useTotalEarnedForMaxQty", "boolean" },
+    { "isAccountWide", "boolean" }, { "isAccountTransferable", "boolean" }, { "transferPercentage", "number" },
+}
+
+local function Known(value, kind)
+    if issecretvalue and issecretvalue(value) then return nil end
+    if type(value) ~= kind or kind == "string" and value == ""
+        or kind == "number" and (value ~= value or value == math.huge or value == -math.huge) then return nil end
+    return value
+end
+
+function C.ReadCurrencyList()
+    local api = C.IsRetail() and type(C_CurrencyInfo) == "table" and C_CurrencyInfo or nil
+    if not api or type(api.GetCurrencyListSize) ~= "function" or type(api.GetCurrencyListInfo) ~= "function" then
+        return nil, "Currency list APIs unavailable"
+    end
+    local list, expanded, header, subHeader = { entries = {} }, {}, nil, nil
+    local ok, err = pcall(function()
+        local index = 1
+        while index <= (Known(api.GetCurrencyListSize(), "number") or 0) and index <= 2000 do
+            local row = api.GetCurrencyListInfo(index)
+            local depth = type(row) == "table" and Known(row.currencyListDepth, "number") or nil
+            if type(row) ~= "table" then
+                list.incomplete = true
+            elseif row.isHeader == true then
+                local name = Known(row.name, "string")
+                if depth == nil or depth == 0 then header, subHeader = name, nil else subHeader = name end
+                if row.isHeaderExpanded == false then
+                    if type(api.ExpandCurrencyList) == "function" then
+                        api.ExpandCurrencyList(index, true)
+                        expanded[#expanded + 1] = { index = index, name = row.name }
+                    else list.incomplete = true end
+                end
+            elseif row.discovered ~= false then
+                local id = Known(row.currencyID, "number")
+                if not id or id <= 0 then
+                    local link = type(api.GetCurrencyListLink) == "function" and api.GetCurrencyListLink(index)
+                    id = type(link) == "string" and type(api.GetCurrencyIDFromLink) == "function"
+                        and Known(api.GetCurrencyIDFromLink(link), "number") or nil
+                end
+                local info = id and id > 0 and type(api.GetCurrencyInfo) == "function" and api.GetCurrencyInfo(id)
+                if type(info) ~= "table" then info = row end
+                if not id or id <= 0 then
+                    list.incomplete = true
+                elseif info.discovered ~= false then
+                    local entry = { currencyID = id, header = header, listOrder = #list.entries + 1 }
+                    if subHeader and (depth == nil or depth > 1) then entry.subHeader = subHeader end
+                    for _, field in ipairs(CURRENCY_FIELDS) do
+                        local value = Known(info[field[1]], field[2])
+                        if value == nil then value = Known(row[field[1]], field[2]) end
+                        entry[field[1]] = value
+                    end
+                    if not entry.name or entry.quantity == nil then list.incomplete = true end
+                    list.entries[#list.entries + 1] = entry
+                end
+            end
+            index = index + 1
+        end
+        list.size = Known(api.GetCurrencyListSize(), "number")
+        if type(api.GetCurrencyFilter) == "function" then list.filter = Known(api.GetCurrencyFilter(), "number") end
+    end)
+    -- Restore only headers still found where they were expanded; never guess.
+    for position = #expanded, 1, -1 do
+        local item = expanded[position]
+        local okRow, row = pcall(api.GetCurrencyListInfo, item.index)
+        if not okRow or type(row) ~= "table" or row.isHeader ~= true or row.name ~= item.name
+            or not pcall(api.ExpandCurrencyList, item.index, false) then
+            list.restoreFailed = true
+            break
+        end
+    end
+    if not ok then return nil, "Currency list read failed: " .. tostring(err), true end
+    if not list.size or list.size == 0 then return nil, "Currency list empty or not loaded yet", true end
+    return list
+end
+
 function C.EnumerateSpellbook()
     if C.IsRetail() then
         local api, enum = C_SpellBook, Enum
@@ -479,7 +561,8 @@ function C.RegisterOptionalEvents(frame)
         for _, event in ipairs({ "BANK_TABS_CHANGED", "BANK_TAB_SETTINGS_UPDATED", "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED",
             "GUILDBANKFRAME_OPENED", "GUILDBANKFRAME_CLOSED", "GUILDBANKBAGSLOTS_CHANGED", "GUILDBANK_UPDATE_TABS",
             "GUILDBANK_ITEM_LOCK_CHANGED",
-            "PLAYER_SPECIALIZATION_CHANGED", "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE", "SPELL_TEXT_UPDATE" }) do
+            "PLAYER_SPECIALIZATION_CHANGED", "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE", "SPELL_TEXT_UPDATE",
+            "CURRENCY_DISPLAY_UPDATE" }) do
             events[#events + 1] = event
         end
     end

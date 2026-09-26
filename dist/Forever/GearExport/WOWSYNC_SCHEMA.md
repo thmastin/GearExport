@@ -323,3 +323,40 @@ session observations. No duration formatting is stored.
 
 See [the cross-client API audit](PLAYTIME_API_AUDIT.md) for source evidence and
 live validation limitations.
+
+## Retail currencies (additive, SavedVariables only)
+
+Retail adds a per-character `currencies` section at
+`WoWSyncDB.characters[guid].sections.currencies` with the standard section
+envelope (`data`, `observedAt`, `changedAt`, `revision`, `completeness`,
+`source`, `capture`, optional `reason`/`lastAttemptAt`/`lastAttemptError`).
+`observedAt` is the capture time in Unix seconds, like every other section.
+`schemaVersion` remains 1 and the WOWSYNC v1 text does not contain this section
+yet: current importers reject unknown text section headers, so
+`S.structuredOnly` keeps it out of `latestExport`. Classic Era, TBC Anniversary
+and Forever never register the collector.
+
+`data` fields: `formatVersion=1`; `listRead=true` (the list was actually read);
+`listSize` (rows including headers, with every header expanded); optional
+`listFilter` (raw `C_CurrencyInfo.GetCurrencyFilter()` value); `coverage`;
+optional `headerRestoreFailed=true`; and ordered `currencies[]`. Each entry has
+`currencyID`, `listOrder`, optional `header` (top-level expansion/category
+header) and `subHeader` (nested header), plus these CurrencyInfo fields when the
+client supplied them: `name`, `iconFileID`, `quantity`, `maxQuantity`,
+`quantityEarnedThisWeek`, `maxWeeklyQuantity`, `canEarnPerWeek`, `totalEarned`,
+`useTotalEarnedForMaxQty`, `isAccountWide`, `isAccountTransferable`,
+`transferPercentage`. Values are raw client values (a `maxQuantity` of 0 is the
+client's own "no cap" value, not an inference); absent or restricted values are
+omitted, never written as zero.
+
+Section absent, or present without `data`: currencies are UNKNOWN. With
+`listRead=true`, a currency that is not listed was not in the character's
+discovered currency list read at `observedAt`. Rows the client marks
+`discovered=false` (for example account-transferable currencies shown by the
+list filter) are skipped. An empty list is treated as not loaded yet and is
+retried rather than recorded.
+
+Capture runs on login/world entry, SYNC, and throttled `CURRENCY_DISPLAY_UPDATE`
+(a pending refresh is flushed at logout). Collapsed headers are expanded for one
+synchronous read and re-collapsed in reverse order. Currency-only refreshes do
+not re-render `latestExport`.

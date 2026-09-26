@@ -358,6 +358,22 @@ if Compat.IsRetail and Compat.IsRetail() then
     function S.GuildBankActive() return S.guildCapture ~= nil end
 end
 
+-- Retail-only per-character currencies (S.structuredOnly: SavedVariables, not the
+-- v1 text).  listRead distinguishes a read list from UNKNOWN; a currency missing
+-- from a read list was not in the character's discovered currency list.
+if Compat.IsRetail and Compat.IsRetail() and Compat.ReadCurrencyList then
+    S.collectors.currencies = function()
+        S.currencyReadAt = GetTime()
+        local list, reason, retry = Compat.ReadCurrencyList()
+        if not list then return nil, { reason = reason or "Currency list unavailable", retry = retry } end
+        local data = { listRead = true, formatVersion = 1, listSize = list.size, listFilter = list.filter,
+            currencies = list.entries, headerRestoreFailed = list.restoreFailed,
+            coverage = "Retail C_CurrencyInfo currency list with every header expanded; discovered currencies only" }
+        return data, { completeness = list.incomplete and "partial" or "complete",
+            reason = list.incomplete and "Some currency rows lacked an ID, name or quantity" or nil, retry = list.incomplete }
+    end
+end
+
 S.collectors.equipment = function()
     local data, incomplete = { slots = {} }, false
     for slot = 1, 19 do

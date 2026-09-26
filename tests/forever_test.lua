@@ -144,4 +144,6 @@ equal(SLASH_WOWSYNC1, "/wowsync", "command preserved")
 check(not SlashCmdList.GEAREXPORT and not SlashCmdList.BANKCLEANUP, "no legacy/action commands loaded")
 equal(actions, 0, "no gameplay actions")
 check(requests >= 1, "only observational playtime requests")
+check(not S.collectors.currencies and not C.ReadCurrencyList(), "Forever has no currency capture")
+for _, key in ipairs(S.order) do check(key ~= "currencies", "Forever order excludes currencies") end
 print("PASS: " .. passed .. " Forever assertions; 0 gameplay actions")

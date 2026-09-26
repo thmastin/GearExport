@@ -6,7 +6,11 @@ local S = { apiVersion = 1, schemaVersion = 1, collectors = {}, dirty = {},
 if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
     table.insert(S.order, 6, "accountBank")
     table.insert(S.order, 7, "guildBank")
+    S.order[#S.order + 1] = "currencies"
 end
+-- Captured into SavedVariables only: the WOWSYNC v1 text omits these sections so
+-- existing importers, which reject unknown section headers, keep working.
+S.structuredOnly = { currencies = true }
 addon.Sync = S
 WoWSync = S
 
@@ -157,7 +161,7 @@ function S.Mark(key, delay)
     local pending = S.dirty[key]
     if not pending then pending = { first = now, tries = 0 }; S.dirty[key] = pending end
     pending.due = math.min(now + (delay or 0.35), pending.first + 1.5)
-    S.autoExportPending = true
+    if not S.structuredOnly[key] then S.autoExportPending = true end
     S.Wake()
 end
 
@@ -408,6 +412,10 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.Mark("location")
     elseif event == "PLAYER_MONEY" or event == "PLAYER_LEVEL_UP" or event == "PLAYER_XP_UPDATE" then
         S.Mark("character")
+    elseif event == "CURRENCY_DISPLAY_UPDATE" then
+        -- A payload-less update just after our own header expansion is not a
+        -- currency change; real changes name the currency and always refresh.
+        if arg ~= nil or not S.currencyReadAt or GetTime() - S.currencyReadAt > 0.5 then S.Mark("currencies") end
     end
 end)
 

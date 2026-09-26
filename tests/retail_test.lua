@@ -224,6 +224,62 @@ function GetTrainerServiceTypeFilter() return true end
 function GetTrainerServiceSkillReq() return trainerCategory, 1, true end
 function GetTrainerServiceNumAbilityReq() return 0 end
 BuyTrainerService, BuyMerchantItem, SendMail, EquipItemByName, CastSpellByName = action, action, action, action, action
+-- Retail currency list: nested, partly collapsed headers and one undiscovered row.
+local currencyRows = {
+    { name = "Midnight", isHeader = true, isHeaderExpanded = true, currencyListDepth = 0 },
+    { name = "Season 1", isHeader = true, isHeaderExpanded = false, currencyListDepth = 1 },
+    { currencyID = 3008, name = "Valorstones", currencyListDepth = 2, discovered = true, iconFileID = 5868902,
+        quantity = 1500, maxQuantity = 2000, quantityEarnedThisWeek = 0, maxWeeklyQuantity = 0, canEarnPerWeek = false,
+        totalEarned = 0, useTotalEarnedForMaxQty = false, isAccountWide = false, isAccountTransferable = false },
+    { currencyID = 3290, name = "Gilded Crest", currencyListDepth = 2, discovered = true, iconFileID = 5872049,
+        quantity = 45, maxQuantity = 180, quantityEarnedThisWeek = 30, maxWeeklyQuantity = 90, canEarnPerWeek = true,
+        totalEarned = 90, useTotalEarnedForMaxQty = true, isAccountWide = false, isAccountTransferable = true, transferPercentage = 90 },
+    { currencyID = 3100, name = "Hidden Transferable", currencyListDepth = 1, discovered = false, quantity = 0 },
+    { name = "Legacy", isHeader = true, isHeaderExpanded = false, currencyListDepth = 0 },
+    { currencyID = 1792, name = "Honor", currencyListDepth = 1, discovered = true, iconFileID = 1455894,
+        quantity = 0, maxQuantity = 15000, isAccountWide = true, isAccountTransferable = false, listWithoutID = true },
+}
+local currencyToggles = 0
+local function visibleCurrencyRows()
+    local rows, hiddenBelow = {}, nil
+    for _, row in ipairs(currencyRows) do
+        if not (hiddenBelow and row.currencyListDepth > hiddenBelow) then
+            hiddenBelow = nil
+            rows[#rows + 1] = row
+            if row.isHeader and not row.isHeaderExpanded then hiddenBelow = row.currencyListDepth end
+        end
+    end
+    return rows
+end
+local function currencyCopy(row, withoutID)
+    local copy = {}
+    for key, value in pairs(row) do if key ~= "listWithoutID" then copy[key] = value end end
+    if withoutID then copy.currencyID = nil end
+    return copy
+end
+C_CurrencyInfo = {
+    GetCurrencyListSize = function() return #visibleCurrencyRows() end,
+    GetCurrencyListInfo = function(index)
+        local row = visibleCurrencyRows()[index]
+        return row and currencyCopy(row, row.listWithoutID) or nil
+    end,
+    ExpandCurrencyList = function(index, expand)
+        local row = visibleCurrencyRows()[index]
+        check(row and row.isHeader, "only currency headers are expanded/collapsed")
+        row.isHeaderExpanded = expand; currencyToggles = currencyToggles + 1
+    end,
+    GetCurrencyListLink = function(index)
+        local row = visibleCurrencyRows()[index]
+        return row and row.currencyID and ("|cffffffff|Hcurrency:" .. row.currencyID .. ":0|h[" .. row.name .. "]|h|r") or nil
+    end,
+    GetCurrencyIDFromLink = function(value) return tonumber(value:match("currency:(%d+)")) end,
+    GetCurrencyInfo = function(id)
+        for _, row in ipairs(currencyRows) do if row.currencyID == id then return currencyCopy(row) end end
+    end,
+    GetCurrencyFilter = function() return 1 end,
+    PickupCurrency = action, SetCurrencyUnused = action, SetCurrencyBackpack = action,
+    SetCurrencyBackpackByID = action, RequestCurrencyFromAccountCharacter = action, SetCurrencyFilter = action,
+}
 local addon = {}
 for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
@@ -266,10 +322,56 @@ local rendered = S.Render(frozen)
 check(rendered:find("WOWSYNC v1", 1, true) == 1 and rendered:find("[END]", 1, true), "same canonical envelope")
 check(rendered:find("[ACCOUNT BANK]\nState: UNKNOWN\nScope: ACCOUNT_WARBAND", 1, true), "unobserved account bank retains explicit scope")
 equal(S.Render(frozen), rendered, "deterministic rendering")
-for _, key in ipairs(S.order) do check(rendered:find(S.RenderSection(key, frozen), 1, true), "shared section renderer " .. key) end
+for _, key in ipairs(S.order) do if not S.structuredOnly[key] then check(rendered:find(S.RenderSection(key, frozen), 1, true), "shared section renderer " .. key) end end
 check(rendered:find("ClientFamily: Retail", 1, true), "Retail metadata rendered")
 check(rendered:find(itemRef, 1, true), "full itemRef rendered")
 check(not rendered:find("Not a rank", 1, true), "no manufactured rank")
+-- Retail currencies: SavedVariables only, headers restored, unknown fields absent.
+local currencies = S.record.sections.currencies
+check(S.optionalEvents.CURRENCY_DISPLAY_UPDATE, "Retail currency event registered")
+check(currencies and currencies.completeness == "complete" and currencies.observedAt, "currency list observed on login")
+equal(currencies.data.listRead, true, "currency list read flag")
+equal(currencies.data.formatVersion, 1, "currency section format version")
+equal(#currencies.data.currencies, 3, "discovered currencies only")
+local valor, crest, honor = currencies.data.currencies[1], currencies.data.currencies[2], currencies.data.currencies[3]
+equal(valor.currencyID, 3008, "currency ID from list info")
+equal(valor.header, "Midnight", "top-level currency header")
+equal(valor.subHeader, "Season 1", "nested currency header")
+equal(valor.listOrder, 1, "currency list order")
+equal(valor.quantityEarnedThisWeek, 0, "observed zero kept")
+equal(valor.iconFileID, 5868902, "currency icon")
+equal(crest.useTotalEarnedForMaxQty, true, "season cap semantics")
+equal(crest.totalEarned, 90, "season total earned")
+equal(crest.transferPercentage, 90, "transfer percentage")
+equal(crest.listOrder, 2, "second currency order")
+equal(honor.currencyID, 1792, "currency ID from list link")
+equal(honor.header, "Legacy", "collapsed header expanded for read")
+equal(honor.subHeader, nil, "no nested header for top-level group")
+equal(honor.maxWeeklyQuantity, nil, "missing currency field stays absent")
+equal(honor.transferPercentage, nil, "missing transfer percentage stays absent")
+equal(honor.isAccountWide, true, "account-wide flag")
+equal(currencies.data.listSize, 7, "fully expanded list size")
+equal(currencies.data.listFilter, 1, "currency list filter recorded")
+check(currencyRows[2].isHeaderExpanded == false and currencyRows[6].isHeaderExpanded == false, "collapsed currency headers restored")
+check(currencyToggles >= 4, "currency headers expanded then re-collapsed")
+check(not rendered:find("Valorstones", 1, true) and not rendered:find("CURRENC", 1, true), "currencies stay out of v1 text")
+local latestAt, currencyRevision = S.record.latestExport and S.record.latestExport.generatedAt, currencies.revision
+check(latestAt, "latest export generated before currency refresh")
+currencyRows[3].quantity = 1600
+seconds = seconds + 5
+event("CURRENCY_DISPLAY_UPDATE", 3008); advance(0.5)
+equal(S.record.sections.currencies.data.currencies[1].quantity, 1600, "currency update refreshes quantity")
+equal(S.record.sections.currencies.revision, currencyRevision + 1, "currency change revision")
+equal(S.record.latestExport.generatedAt, latestAt, "currency-only update does not re-render text")
+event("CURRENCY_DISPLAY_UPDATE"); check(not S.dirty.currencies, "own header toggle echo ignored")
+advance(1); event("CURRENCY_DISPLAY_UPDATE"); check(S.dirty.currencies, "later payload-less update refreshes"); advance(1)
+local savedCurrencyAPI = C_CurrencyInfo
+C_CurrencyInfo = nil
+event("CURRENCY_DISPLAY_UPDATE", 3008); advance(1)
+check(S.record.sections.currencies.lastAttemptError and S.record.sections.currencies.data.listRead, "missing currency API keeps last observation")
+C_CurrencyInfo = savedCurrencyAPI
+event("CURRENCY_DISPLAY_UPDATE", 3008); advance(1)
+equal(S.record.sections.currencies.lastAttemptError, nil, "successful currency read clears error")
 check(not S.guildHooksInstalled, "Guild Bank frame absent from initial Retail addon lifecycle does not fail")
 GuildBankFrame = widget("GuildBankFrame"); GuildBankFrame:Hide()
 -- The LoadOnDemand UI can become visible before GearExport discovers its frame.

@@ -75,6 +75,9 @@ C_Traits), renown (C_MajorFactions), reputation (C_Reputation), weekly objective
 domains, not dependencies of the current model. No collectors or actions for these
 systems are introduced. A future small opt-in currency view could be useful;
 MoneyCopper continues to mean character gold only.
+Exception: Retail now captures per-character currencies read-only into
+`sections.currencies` (SavedVariables only, not the text export); see
+WOWSYNC_SCHEMA.md "Retail currencies".
 
 Future account state should own shared Warband storage and account balances once,
 with independent observation time/access/coverage. Character views must reference
