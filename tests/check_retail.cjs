@@ -3,7 +3,7 @@ const assert = require('assert');
 const retail = fs.readFileSync('GearExport-Retail.toc', 'utf8');
 assert(/^## Interface: 120100$/m.test(retail), 'Retail target must match audited 12.1.0');
 const files = toc => toc.split(/\r?\n/).filter(line => line.endsWith('.lua'));
-const expected = files(fs.readFileSync('GearExport.toc', 'utf8')).filter(file => file !== 'BankCleanup.lua');
+const expected = files(fs.readFileSync('GearExport.toc', 'utf8')).filter(file => file !== 'BankCleanup.lua' && file !== 'WoWSyncGuildBankDiagnostic.lua');
 expected.push('WoWSyncGuildBankDiagnostic.lua');
 assert.deepStrictEqual(files(retail), expected, 'Retail must use the same implementation and load order, excluding BankCleanup');
 assert(!retail.includes('BankCleanup.lua'), 'Retail must not load Classic bank actions');

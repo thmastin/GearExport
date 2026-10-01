@@ -9,6 +9,7 @@ WoWSyncCompat.lua
 GearExport.lua
 WoWSyncCore.lua
 WoWSyncCollectors.lua
+WoWSyncStateCollectors.lua
 WoWSyncRender.lua
 WoWSyncUI.lua
 WoWSyncGuildBankDiagnostic.lua

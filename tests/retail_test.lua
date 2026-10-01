@@ -281,7 +281,7 @@ C_CurrencyInfo = {
     SetCurrencyBackpackByID = action, RequestCurrencyFromAccountCharacter = action, SetCurrencyFilter = action,
 }
 local addon = {}
-for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
+for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncStateCollectors.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
 local S = addon.Sync
@@ -615,9 +615,10 @@ check(oldRender:find("[PROFESSIONS]", 1, true), "schema sections retained")
 -- Reinitialize with the same SavedVariables as /reload would.
 assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
 assert(loadfile("tests/retail_played_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/state_domains_test.lua"))()(S, check, equal)
 local savedDB = WoWSyncDB
 local reloaded = {}
-for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncRender.lua" }) do
+for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncStateCollectors.lua", "WoWSyncRender.lua" }) do
     assert(loadfile(file))("GearExport", reloaded)
 end
 reloaded.Sync.Initialize()
