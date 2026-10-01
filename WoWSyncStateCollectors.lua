@@ -35,7 +35,8 @@ end
 local function clientIdentity()
     local version, build, buildDate, interface
     if type(GetBuildInfo) == "function" then version, build, buildDate, interface = GetBuildInfo() end
-    return { clientFamily = "Retail", clientVersion = validString(version), clientBuild = validNumber(build), interface = validNumber(interface) }
+    local buildNumber = type(build) == "string" and tonumber(build) or build
+    return { clientFamily = "Retail", clientVersion = validString(version), clientBuild = validNumber(buildNumber), interface = validNumber(interface) }
 end
 
 S.collectors.combatSpecialization = function()
@@ -182,6 +183,112 @@ S.collectors.professionSpecializations = function()
     end
     table.sort(data.professions, function(a,b) return a.baseSkillLineID < b.baseSkillLineID end)
     return data, { completeness = incomplete and "partial" or "complete", reason = incomplete and "One or more specialization trees/nodes/currencies were unavailable" or nil }
+end
+
+local function professionRecipeContext()
+    local api = C_TradeSkillUI
+    if not api or type(api.GetChildProfessionInfo) ~= "function" or type(api.GetBaseProfessionInfo) ~= "function" then
+        return nil, "active profession context APIs unavailable"
+    end
+    local childState, child = safeCall(api.GetChildProfessionInfo)
+    local baseState, base = safeCall(api.GetBaseProfessionInfo)
+    if childState ~= "OBSERVED_VALUE" or type(child) ~= "table" or baseState ~= "OBSERVED_VALUE" or type(base) ~= "table" then
+        return nil, "active profession context is not ready"
+    end
+    local skillLineID = validNumber(child.professionID, true)
+    local baseSkillLineID = validNumber(base.professionID, true)
+    local parentID = validNumber(child.parentProfessionID, true)
+    if not skillLineID or not baseSkillLineID or not parentID or parentID ~= baseSkillLineID then
+        return nil, "active profession identity is ambiguous"
+    end
+    return {
+        baseSkillLineID = baseSkillLineID,
+        baseProfessionName = validString(base.professionName),
+        parentProfessionID = parentID,
+        skillLineID = skillLineID,
+        professionID = skillLineID,
+        professionName = validString(child.professionName),
+        expansionName = validString(child.expansionName),
+        skill = validNumber(child.skillLevel),
+        maxSkill = validNumber(child.maxSkillLevel),
+    }
+end
+
+local function recipeBoolean(value)
+    if issecretvalue and issecretvalue(value) then return nil end
+    if type(value) == "boolean" then return value end
+    return nil
+end
+
+S.collectors.professionRecipes = function()
+    local api = C_TradeSkillUI
+    if not api or type(api.GetAllRecipeIDs) ~= "function" or type(api.GetRecipeInfo) ~= "function" then
+        return nil, { reason = "Profession recipe APIs unavailable", retry = false }
+    end
+    local context, contextError = professionRecipeContext()
+    if not context then return nil, { reason = contextError, retry = true, stale = true } end
+
+    -- GetAllRecipeIDs is only meaningful for the currently initialized context.
+    -- A cold empty result is unavailable coverage, never an observed zero.
+    local idsState, ids = safeCall(api.GetAllRecipeIDs)
+    if idsState ~= "OBSERVED_VALUE" or type(ids) ~= "table" then
+        return nil, { reason = "Recipe enumeration " .. idsState, retry = idsState == "NIL_RESULT", stale = true }
+    end
+    local recipeIDs, seen = {}, {}
+    for _, rawID in ipairs(ids) do
+        local id = validNumber(rawID, true)
+        if id and not seen[id] then seen[id] = true; recipeIDs[#recipeIDs + 1] = id end
+    end
+    table.sort(recipeIDs)
+    if #recipeIDs == 0 then
+        return nil, { reason = "Recipe enumeration empty; profession context not established", retry = true, stale = true }
+    end
+
+    local observedAt = S.Now()
+    local recipes, unknown, learnedTrue, learnedFalse = {}, 0, 0, 0
+    for _, recipeID in ipairs(recipeIDs) do
+        local infoState, info = safeCall(api.GetRecipeInfo, recipeID)
+        local learned
+        if type(info) == "table" then learned = recipeBoolean(info.learned) end
+        local learnedState = learned == true and "OBSERVED_TRUE" or learned == false and "OBSERVED_FALSE" or "UNKNOWN"
+        if learnedState == "UNKNOWN" then unknown = unknown + 1 end
+        if learnedState == "OBSERVED_TRUE" then learnedTrue = learnedTrue + 1 end
+        if learnedState == "OBSERVED_FALSE" then learnedFalse = learnedFalse + 1 end
+        local associationState, associated = safeCall(api.IsRecipeInSkillLine, recipeID, context.skillLineID)
+        local skillLineIDs = {}
+        if associationState == "OBSERVED_VALUE" and type(associated) == "boolean" and associated then
+            skillLineIDs[1] = context.skillLineID
+        end
+        recipes[#recipes + 1] = {
+            recipeID = recipeID,
+            learned = learned,
+            learnedState = learnedState,
+            recipeInfoResult = infoState,
+            skillLineIDs = skillLineIDs,
+            skillLineAssociationState = associationState == "OBSERVED_VALUE" and type(associated) == "boolean" and "OBSERVED" or "UNKNOWN",
+            skillLineAssociationResult = associationState,
+        }
+    end
+    context.observedAt = observedAt
+    context.sessionObservedAt = S.sessionStartedAt
+    context.client = clientIdentity()
+    context.evidence = "OBSERVED"
+    context.recipes = recipes
+    local coverage = { state = "PARTIAL", enumeration = "OBSERVED", candidateCompleteness = "UNKNOWN",
+        returnedRecipeCount = #recipeIDs, learnedTrueCount = learnedTrue, learnedFalseCount = learnedFalse,
+        explicitLearnedCount = #recipeIDs - unknown, unknownLearnedCount = unknown,
+        filteredEnumerationUsed = false }
+    context.coverage = S.Copy(coverage)
+    local data = {
+        formatVersion = 1,
+        ownerScope = "CHARACTER",
+        observedAt = observedAt,
+        client = clientIdentity(),
+        enumerationSource = "C_TradeSkillUI.GetAllRecipeIDs",
+        coverage = coverage,
+        professions = { context },
+    }
+    return data, { completeness = "partial", reason = "Observed initialized profession recipe state; global candidate catalogue completeness is unknown" }
 end
 
 local function factionRecord(id)

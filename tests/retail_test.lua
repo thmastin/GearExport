@@ -616,6 +616,7 @@ check(oldRender:find("[PROFESSIONS]", 1, true), "schema sections retained")
 assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
 assert(loadfile("tests/retail_played_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/state_domains_test.lua"))()(S, check, equal)
+assert(loadfile("tests/profession_recipes_test.lua"))()(S, check, equal)
 local savedDB = WoWSyncDB
 local reloaded = {}
 for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncStateCollectors.lua", "WoWSyncRender.lua" }) do
