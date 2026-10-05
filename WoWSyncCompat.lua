@@ -76,8 +76,8 @@ local function CandidateLocation(kind, container, slot)
     if not C.IsRetail() or not ItemLocation then return nil end
     local ctor = kind == "equipment" and ItemLocation.CreateFromEquipmentSlot or ItemLocation.CreateFromBagAndSlot
     local ok, location
-    if kind == "equipment" then ok, location = pcall(ctor, slot)
-    else ok, location = pcall(ctor, container, slot) end
+    if kind == "equipment" then ok, location = pcall(ctor, ItemLocation, slot)
+    else ok, location = pcall(ctor, ItemLocation, container, slot) end
     if not ok then return nil end
     return location
 end
@@ -180,13 +180,14 @@ function C.GetGearCandidate(kind, container, slot, itemID, itemLink)
     candidate.itemBindToAccountUntilEquip = ref and ReadEvidence(C_Item and C_Item.IsItemBindToAccountUntilEquip, ref) or Evidence(nil)
     local equippable, equippableKnown = Read(C_Item and C_Item.IsEquippableItem, ref)
     local metadataReady = cacheKnown and cached == true or not cacheKnown and Known(name)
+    if equippableKnown and equippable == false and metadataReady then
+        return nil, "not-equippable"
+    end
     if not locationValid then
         if locationIdentityValid and not locatedString then pcall(C_Item and C_Item.RequestLoadItemData, location) end
         return candidate, "unknown"
     end
     if equippableKnown and equippable == true then candidate.candidateState = "EQUIPPABLE"
-    elseif equippableKnown and equippable == false and metadataReady then
-        return nil, "not-equippable"
     else
         if exactLocation then pcall(C_Item and C_Item.RequestLoadItemData, exactLocation) end
         return candidate, "unknown"

@@ -9,30 +9,51 @@ Enum = { BagIndex = { Backpack = 0, ReagentBag = 5 }, BankType = { Character = 0
     TooltipDataLineType = { ItemBinding = 20 }, TooltipDataItemBinding = { Soulbound = 3, BnetAccount = 2, BindToAccountUntilEquipped = 10 } }
 local itemRef = "item:240001:7440:213743:0:0:0:0:0:90:0:0:16:4:10354:10299:6652:12030:2:28:2462:38:8"
 local link = "|cffa335ee|H" .. itemRef .. "|h[Crafted Sample]|h|r"
-local pending, bankView, requests = false, true, 0
+local pending, bankView, requests, locationsValid = false, true, 0, true
+local expectedLocation
 ItemLocation = {
-    CreateFromBagAndSlot = function(bag, slot) return { kind = "bag", bag = bag, slot = slot } end,
-    CreateFromEquipmentSlot = function(slot) return { kind = "equipment", slot = slot } end,
+    CreateFromBagAndSlot = function(self, bagID, slotIndex)
+        equal(self, ItemLocation, "bag ItemLocation constructor receiver")
+        check(type(bagID) == "number", "bag constructor receives bag ID in argument 2")
+        check(type(slotIndex) == "number", "bag constructor receives slot index in argument 3")
+        if expectedLocation then
+            equal(bagID, expectedLocation.bagID, "exact bag ID constructor argument")
+            equal(slotIndex, expectedLocation.slot, "exact bag slot constructor argument")
+        end
+        return { valid = locationsValid, kind = "bag", bagID = bagID, slot = slotIndex }
+    end,
+    CreateFromEquipmentSlot = function(self, equipmentSlotIndex)
+        equal(self, ItemLocation, "equipment ItemLocation constructor receiver")
+        check(type(equipmentSlotIndex) == "number", "equipment slot is constructor argument 2")
+        if expectedLocation then equal(equipmentSlotIndex, expectedLocation.slot, "exact equipment slot constructor argument") end
+        return { valid = locationsValid, kind = "equipment", slot = equipmentSlotIndex }
+    end,
 }
+check(not pcall(ItemLocation.CreateFromBagAndSlot, 0, 1), "bag ItemLocation mock rejects missing receiver")
+check(not pcall(ItemLocation.CreateFromEquipmentSlot, 1), "equipment ItemLocation mock rejects missing receiver")
+local function requireValidLocation(loc)
+    assert(type(loc) == "table" and loc.valid == true and loc.kind, "C_Item location API requires a valid ItemLocation")
+end
+local baseEquipLocation = "INVTYPE_HEAD"
 C_Item = {
     GetItemInfo = function(ref)
         check(ref ~= nil, "item reference supplied")
         if pending then return nil end
-        return "Crafted Sample", link, 4, 200, 80, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 4321, 4, 4, 8, 10, nil, false
+        return "Crafted Sample", link, 4, 200, 80, "Armor", "Plate", 1, baseEquipLocation, 1, 4321, 4, 4, 8, 10, nil, false
     end,
-    GetItemID = function() return 240001 end,
-    DoesItemExist = function() return true end,
-    GetItemLink = function() return link end,
+    GetItemID = function(loc) requireValidLocation(loc); return 240001 end,
+    DoesItemExist = function(loc) requireValidLocation(loc); return true end,
+    GetItemLink = function(loc) requireValidLocation(loc); return link end,
     GetDetailedItemLevelInfo = function(ref) equal(ref, link, "instance link for level"); if not pending then return 289 end end,
-    GetItemGUID = function(loc) return loc.kind .. "-" .. tostring(loc.bag or "") .. "-" .. loc.slot end,
-    GetItemInventoryType = function(loc) if not pending then return loc.kind == "equipment" and "INVTYPE_HEAD" or "INVTYPE_HEAD" end end,
-    GetCurrentItemLevel = function(loc) if not pending then return loc.kind == "equipment" and 289 or 276 end end,
-    IsBound = function() return false end,
-    IsBoundToAccountUntilEquip = function() return false end,
+    GetItemGUID = function(loc) requireValidLocation(loc); return loc.kind .. "-" .. tostring(loc.bagID or "") .. "-" .. loc.slot end,
+    GetItemInventoryType = function(loc) requireValidLocation(loc); if not pending then return "INVTYPE_HEAD" end end,
+    GetCurrentItemLevel = function(loc) requireValidLocation(loc); if not pending then return loc.kind == "equipment" and 289 or 276 end end,
+    IsBound = function(loc) requireValidLocation(loc); return false end,
+    IsBoundToAccountUntilEquip = function(loc) requireValidLocation(loc); return false end,
     IsItemBindToAccount = function() return true end,
     IsItemBindToAccountUntilEquip = function() return false end,
-    IsItemDataCached = function() return not pending end,
-    RequestLoadItemData = function() requests = requests + 1 end,
+    IsItemDataCached = function(loc) requireValidLocation(loc); return not pending end,
+    RequestLoadItemData = function(loc) requireValidLocation(loc); requests = requests + 1 end,
     IsEquippableItem = function() return not pending end,
     GetItemStats = function() if not pending then return { ITEM_MOD_HASTE_RATING_SHORT = 42, ITEM_MOD_MASTERY_RATING_SHORT = 31 } end end,
     RequestLoadItemDataByID = function(id) equal(id, 240001, "metadata request ID"); requests = requests + 1 end,
@@ -225,6 +246,9 @@ equal(bagCandidate.itemString.value, itemRef, "variant string kept intact")
 equal(bagCandidate.itemGUID.state, "KNOWN", "location GUID captured")
 equal(bagCandidate.currentItemLevel.value, 276, "candidate level read from instance location")
 equal(equippedCandidate.currentItemLevel.value, 289, "same base ID can have distinct instance level")
+equal(bagCandidate.itemID.value, equippedCandidate.itemID.value, "two candidate instances may share a base item ID")
+check(bagCandidate.observedLocation.type ~= equippedCandidate.observedLocation.type,
+    "same-base candidates retain distinct observed locations")
 equal(bagCandidate.isBound.value, false, "known false bound evidence preserved")
 equal(bagCandidate.itemBindToAccount.value, true, "item-info account binding predicate retained raw")
 equal(bagCandidate.tooltipBindingType.value, Enum.TooltipDataItemBinding.BnetAccount, "typed tooltip binding captured")
@@ -233,6 +257,7 @@ check(bagCandidate.accountCanUse == nil and bagCandidate.transferableToAlt == ni
     and bagCandidate.recommendedUpgrade == nil and bagCandidate.demand == nil
     and bagCandidate.surplus == nil and bagCandidate.disposition == nil, "no derived gear/economic policy fields")
 local function rawCandidate() return C.GetGearCandidate("bag", 0, 1, 240001, link) end
+local function rawEquipmentCandidate() return C.GetGearCandidate("equipment", nil, 1, 240001, link) end
 local savedAPIs = {
     itemID = C_Item.GetItemID, exists = C_Item.DoesItemExist, itemLink = C_Item.GetItemLink, guid = C_Item.GetItemGUID,
     invType = C_Item.GetItemInventoryType, currentLevel = C_Item.GetCurrentItemLevel,
@@ -244,6 +269,14 @@ local savedAPIs = {
 }
 local candidate = rawCandidate()
 equal(candidate.observedLocation.type, "CONTAINER_SLOT", "bag ItemLocation represented as observation location")
+expectedLocation = { bagID = 0, slot = 1 }
+candidate = rawCandidate()
+expectedLocation = nil
+equal(candidate.itemGUID.value, "bag-0-1", "bag constructor preserves exact location arguments")
+expectedLocation = { slot = 1 }
+candidate = rawEquipmentCandidate()
+expectedLocation = nil
+equal(candidate.itemGUID.value, "equipment--1", "equipment constructor preserves exact slot argument")
 C_Item.GetCurrentItemLevel = function() return 312 end
 candidate = rawCandidate(); equal(candidate.currentItemLevel.value, 312, "same base item accepts a distinct instance level")
 C_Item.GetCurrentItemLevel = function() return nil end
@@ -304,6 +337,17 @@ equal(candidate.itemGUID.state, "UNKNOWN", "replaced location cannot attach a GU
 C_Item.IsEquippableItem = function() return false end
 C_Item.GetItemID = savedAPIs.itemID
 local nonEquippable, state = rawCandidate(); equal(nonEquippable, nil, "known non-equippable omitted"); equal(state, "not-equippable", "non-equippable result explicit internally")
+locationsValid = false
+baseEquipLocation = "INVTYPE_NON_EQUIP_IGNORE"
+candidate, state = rawCandidate()
+equal(candidate, nil, "invalid location plus definitive non-equippable item is omitted")
+equal(state, "not-equippable", "invalid location does not mask definitive non-equippable evidence")
+C_Item.IsEquippableItem = function() return nil end
+candidate, state = rawCandidate()
+equal(candidate.candidateState, "UNKNOWN", "invalid location plus unresolved classification is retained")
+equal(candidate.itemGUID.state, "UNKNOWN", "invalid location cannot attach instance GUID")
+locationsValid = true
+baseEquipLocation = "INVTYPE_HEAD"
 C_Item.IsEquippableItem = function() return true end
 C_Item.IsItemDataCached = function() return false end
 C_Item.IsEquippableItem = function() return false end
