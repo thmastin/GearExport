@@ -252,6 +252,35 @@ function S.Render(snapshot, sections)
         end
         if #(evidence.candidates or {}) == 0 then Field(sidecar, "Candidates", "None observed") end
         out[#out + 1] = table.concat(sidecar, "\n")
+        if type(evidence.tooltipBindingDiagnostics) == "table" then
+            local debug = { "[DEBUG TOOLTIP ITEM BINDING]", "Temporary diagnostic; display text omitted; no policy interpretation." }
+            Row(debug, "source", "containerID", "slot", "itemID", "tooltipDataExists", "itemBindingLineExists",
+                "lineFields", "lineFieldsTruncated", "argsShape", "unexpectedPayload")
+            local function Fields(fields)
+                local parts = {}
+                for _, entry in ipairs(fields or {}) do
+                    parts[#parts + 1] = Text(entry.key) .. "=" .. Text(entry.value)
+                end
+                return table.concat(parts, ",")
+            end
+            local function Args(sample)
+                local parts = {}
+                for _, arg in ipairs(sample.argsShape or {}) do
+                    parts[#parts + 1] = tostring(arg.index) .. "{" .. Fields(arg.fields)
+                        .. (arg.valueType and ("type=" .. Text(arg.valueType)) or "")
+                        .. (arg.fieldsTruncated and ",..." or "") .. "}"
+                end
+                if sample.argsTruncated then parts[#parts + 1] = "..." end
+                return table.concat(parts, ";")
+            end
+            for _, sample in ipairs(evidence.tooltipBindingDiagnostics) do
+                Row(debug, sample.source, sample.containerID, sample.slot, sample.itemID,
+                    sample.tooltipDataExists, sample.itemBindingLineExists,
+                    Fields(sample.lineFields), sample.lineFieldsTruncated, Args(sample), sample.unexpectedPayload)
+            end
+            if #evidence.tooltipBindingDiagnostics == 0 then Field(debug, "Samples", "None available") end
+            out[#out + 1] = table.concat(debug, "\n")
+        end
     end
     out[#out + 1] = "[END]"
     return table.concat(out, "\n\n")

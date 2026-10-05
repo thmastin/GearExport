@@ -258,6 +258,11 @@ check(bagCandidate.accountCanUse == nil and bagCandidate.transferableToAlt == ni
     and bagCandidate.surplus == nil and bagCandidate.disposition == nil, "no derived gear/economic policy fields")
 local function rawCandidate() return C.GetGearCandidate("bag", 0, 1, 240001, link) end
 local function rawEquipmentCandidate() return C.GetGearCandidate("equipment", nil, 1, 240001, link) end
+local debugCandidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
+check(debugCandidate ~= nil and debugObservation.tooltipDataExists and debugObservation.itemBindingLineExists,
+    "temporary tooltip diagnostic reports an ItemBinding line")
+check(#debugObservation.lineFields > 0 and #debugObservation.argsShape == 1,
+    "temporary tooltip diagnostic exposes bounded primitive line and args fields")
 local savedAPIs = {
     itemID = C_Item.GetItemID, exists = C_Item.DoesItemExist, itemLink = C_Item.GetItemLink, guid = C_Item.GetItemGUID,
     invType = C_Item.GetItemInventoryType, currentLevel = C_Item.GetCurrentItemLevel,
@@ -327,6 +332,47 @@ C_TooltipInfo.GetBagItem = function() return { lines = { { type = Enum.TooltipDa
     args = { { field = "bindingType", intVal = Enum.TooltipDataItemBinding.BindToAccountUntilEquipped } } } } } end
 candidate = rawCandidate(); equal(candidate.tooltipBindingType.value,
     Enum.TooltipDataItemBinding.BindToAccountUntilEquipped, "typed account-until-equipped enum captured")
+C_TooltipInfo.GetBagItem = function() return { lines = { { type = Enum.TooltipDataLineType.ItemBinding,
+    bonding = Enum.TooltipDataItemBinding.Soulbound, leftText = "localized display text" } } } end
+candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
+equal(candidate.tooltipBindingType.state, "UNKNOWN", "diagnostic bonding field does not change production binding semantics")
+local bondingFound, displayTextFound = false, false
+for _, field in ipairs(debugObservation.lineFields) do
+    if field.key == "bonding" and field.value == Enum.TooltipDataItemBinding.Soulbound then bondingFound = true end
+    if field.key == "leftText" then displayTextFound = true end
+end
+check(bondingFound and not displayTextFound, "diagnostic exposes bonding and omits localized display text")
+C_TooltipInfo.GetBagItem = function() return nil end
+candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
+check(not debugObservation.tooltipDataExists and not debugObservation.itemBindingLineExists,
+    "missing tooltip data is represented safely")
+C_TooltipInfo.GetBagItem = function() error("tooltip API unavailable") end
+candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
+check(not debugObservation.tooltipDataExists and not debugObservation.itemBindingLineExists,
+    "tooltip API error is represented safely")
+C_TooltipInfo.GetBagItem = function()
+    local line = { type = Enum.TooltipDataLineType.ItemBinding }
+    setmetatable(line, { __index = function() error("unexpected tooltip payload") end })
+    return { lines = { line } }
+end
+candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
+check(debugObservation.unexpectedPayload and candidate.tooltipBindingType.state == "UNKNOWN",
+    "unexpected tooltip payload remains safe and unknown")
+C_TooltipInfo.GetBagItem = function() return { lines = { { leftText = "localized only" } } } end
+candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
+check(debugObservation.tooltipDataExists and not debugObservation.itemBindingLineExists,
+    "missing ItemBinding line is represented safely")
+C_TooltipInfo.GetBagItem = function()
+    local line = { type = Enum.TooltipDataLineType.ItemBinding, args = {} }
+    for index = 1, 30 do line["field" .. index] = index end
+    for index = 1, 12 do line.args[index] = { field = "key" .. index, intVal = index } end
+    return { lines = { line } }
+end
+candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
+check(#debugObservation.lineFields == 24 and debugObservation.lineFieldsTruncated
+    and #debugObservation.argsShape == 8
+    and debugObservation.argsTruncated, "diagnostic primitive keys and args have fixed bounds")
+C_TooltipInfo.GetBagItem = savedAPIs.bagTooltip
 C_PlayerInfo.CanUseItem = function() return false end
 candidate = rawCandidate(); equal(candidate.currentCharacterCanUse.value, false, "current-character false is preserved")
 C_PlayerInfo.CanUseItem = function() error("unavailable") end
@@ -387,6 +433,12 @@ for _, key in ipairs(S.order) do check(rendered:find(S.RenderSection(key, frozen
 check(rendered:find("ClientFamily: Retail", 1, true), "Retail metadata rendered")
 check(rendered:find(itemRef, 1, true), "full itemRef rendered")
 check(rendered:find("[GEAR CANDIDATES]", 1, true), "candidate sidecar rendered additively")
+check(rendered:find("[DEBUG TOOLTIP ITEM BINDING]", 1, true), "temporary typed-tooltip diagnostic is rendered")
+check(rendered:find("Temporary diagnostic; display text omitted", 1, true), "diagnostic scope is explicit")
+check(rendered:find("field=bindingType,intVal=", 1, true), "structured args fields are visible in diagnostic export")
+check(not rendered:find("localized display text", 1, true), "diagnostic export excludes localized tooltip text")
+check(#(S.record.gearCandidates.tooltipBindingDiagnostics or {}) <= 3,
+    "at most one tooltip diagnostic observation per source")
 check(not S.Render(frozen, { "bags", "bank" }):find("[GEAR CANDIDATES]", 1, true), "focused legacy section rendering excludes sidecar")
 check(S.Render(frozen, { "gearCandidates" }):find("[GEAR CANDIDATES]", 1, true), "focused sidecar selection is supported")
 check(not rendered:find("transferableToAlt", 1, true) and not rendered:find("accountCanUse", 1, true)

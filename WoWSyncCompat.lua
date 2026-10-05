@@ -88,40 +88,92 @@ local function ItemString(link)
     return ok and value or nil
 end
 
-local function TooltipBinding(kind, container, slot)
-    if not C_TooltipInfo then return nil end
+-- TEMPORARY Retail-only payload inspection; never feeds ContractVersion 1 evidence.
+local function TooltipBindingDiagnostic(kind, container, slot, itemID)
+    local diagnostic = { source = kind, containerID = container, slot = slot,
+        itemID = itemID, tooltipDataExists = false, itemBindingLineExists = false,
+        lineFields = {}, argsShape = {} }
+    if not C_TooltipInfo then return nil, diagnostic end
     local ok, info
     if kind == "equipment" and type(C_TooltipInfo.GetInventoryItem) == "function" then
         ok, info = pcall(C_TooltipInfo.GetInventoryItem, "player", slot)
     elseif kind ~= "equipment" and type(C_TooltipInfo.GetBagItem) == "function" then
         ok, info = pcall(C_TooltipInfo.GetBagItem, container, slot)
     end
-    if not ok or type(info) ~= "table" or type(info.lines) ~= "table" then return nil end
+    if not ok or type(info) ~= "table" then return nil, diagnostic end
+    diagnostic.tooltipDataExists = true
+    if type(info.lines) ~= "table" then return nil, diagnostic end
     local lineType = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.ItemBinding
-    if lineType == nil then return nil end
+    if lineType == nil then return nil, diagnostic end
     for _, line in ipairs(info.lines) do
         if type(line) == "table" and line.type == lineType then
-            if Known(line.bindingType) then return line.bindingType end
-            if Known(line.itemBinding) then return line.itemBinding end
+            diagnostic.itemBindingLineExists = true
+            local function Safe(value)
+                if not Known(value) then return nil end
+                local valueType = type(value)
+                if valueType == "string" then
+                    if #value > 80 then return value:sub(1, 80) end
+                    return value:gsub("[\t\r\n]", " ")
+                end
+                if valueType == "number" and (value ~= value or value == math.huge or value == -math.huge) then return nil end
+                if valueType == "number" or valueType == "boolean" then return value end
+                return nil
+            end
+            local function SortedPrimitiveFields(source, omitText)
+                local keys, fields = {}, {}
+                for key in pairs(source) do
+                    if type(key) == "string" then keys[#keys + 1] = key end
+                end
+                table.sort(keys)
+                local truncated = false
+                for _, key in ipairs(keys) do
+                    local normalized = key:lower()
+                    local isText = normalized:find("text", 1, true) or normalized == "stringval"
+                    local value
+                    if not omitText or not isText then value = Safe(source[key]) end
+                    if value ~= nil then
+                        if #fields < 24 then fields[#fields + 1] = { key = key, value = value }
+                        else truncated = true end
+                    end
+                end
+                return fields, truncated
+            end
+            diagnostic.lineFields, diagnostic.lineFieldsTruncated = SortedPrimitiveFields(line, true)
+            if type(line.args) == "table" then
+                local count = math.min(#line.args, 8)
+                for index = 1, count do
+                    local arg = line.args[index]
+                    if type(arg) == "table" then
+                        local fields, truncated = SortedPrimitiveFields(arg, true)
+                        diagnostic.argsShape[#diagnostic.argsShape + 1] = {
+                            index = index, fields = fields, fieldsTruncated = truncated }
+                    else
+                        diagnostic.argsShape[#diagnostic.argsShape + 1] = { index = index, valueType = type(arg) }
+                    end
+                end
+                if #line.args > count then diagnostic.argsTruncated = true end
+            end
+            if Known(line.bindingType) then return line.bindingType, diagnostic end
+            if Known(line.itemBinding) then return line.itemBinding, diagnostic end
             for _, arg in ipairs(type(line.args) == "table" and line.args or {}) do
                 if type(arg) == "table" and (arg.field == "bindingType" or arg.field == "itemBinding")
-                    and Known(arg.intVal) then return arg.intVal end
+                    and Known(arg.intVal) then return arg.intVal, diagnostic end
             end
-            return nil
+            return nil, diagnostic
         end
     end
-    return nil
+    return nil, diagnostic
 end
 
-local function TooltipBindingEvidence(kind, container, slot)
-    local value = TooltipBinding(kind, container, slot)
-    if not Known(value) then return Evidence(nil) end
+local function TooltipBindingEvidence(kind, container, slot, itemID)
+    local value, diagnostic = TooltipBindingDiagnostic(kind, container, slot, itemID)
+    if not Known(value) then return Evidence(nil), diagnostic end
     local enums = Enum and Enum.TooltipDataItemBinding
-    if type(enums) ~= "table" then return { state = "UNKNOWN", rawValue = value } end
+    if type(enums) ~= "table" then return { state = "UNKNOWN", rawValue = value }, diagnostic end
     for _, knownValue in pairs(enums) do
-        if knownValue == value then return Evidence(value) end
+        if knownValue == value then return Evidence(value), diagnostic end
     end
-    return { state = "UNKNOWN", rawValue = value }
+    return { state = "UNKNOWN", rawValue = value }, diagnostic
 end
 
 function C.GetGearCandidate(kind, container, slot, itemID, itemLink)
@@ -140,6 +192,17 @@ function C.GetGearCandidate(kind, container, slot, itemID, itemLink)
     end
     local exactLocation = locationValid and location or nil
     local itemString = ItemString(itemLink) or (locationValid and locatedString)
+    local tooltipBinding, tooltipDiagnostic
+    if exactLocation then
+        local ok, value, diagnostic = pcall(TooltipBindingEvidence, kind, container, slot, itemID)
+        if ok then tooltipBinding, tooltipDiagnostic = value, diagnostic
+        else
+            tooltipBinding = Evidence(nil)
+            tooltipDiagnostic = { source = kind, containerID = container, slot = slot, itemID = itemID,
+                tooltipDataExists = nil, itemBindingLineExists = nil, lineFields = {}, argsShape = {},
+                unexpectedPayload = true }
+        end
+    else tooltipBinding = Evidence(nil) end
     local candidate = {
         candidateState = "UNKNOWN",
         itemID = Evidence(itemID),
@@ -152,7 +215,7 @@ function C.GetGearCandidate(kind, container, slot, itemID, itemLink)
         currentItemLevel = exactLocation and ReadEvidence(C_Item and C_Item.GetCurrentItemLevel, exactLocation) or Evidence(nil),
         isBound = exactLocation and ReadEvidence(C_Item and C_Item.IsBound, exactLocation) or Evidence(nil),
         boundToAccountUntilEquip = exactLocation and ReadEvidence(C_Item and C_Item.IsBoundToAccountUntilEquip, exactLocation) or Evidence(nil),
-        tooltipBindingType = exactLocation and TooltipBindingEvidence(kind, container, slot) or Evidence(nil),
+        tooltipBindingType = tooltipBinding,
         currentCharacterCanUse = ReadEvidence(C_PlayerInfo and C_PlayerInfo.CanUseItem, itemID),
     }
     local ref = Known(itemLink) and itemLink or (locationValid and locatedLink) or (Known(itemID) and itemID or nil)
@@ -192,21 +255,26 @@ function C.GetGearCandidate(kind, container, slot, itemID, itemLink)
         if exactLocation then pcall(C_Item and C_Item.RequestLoadItemData, exactLocation) end
         return candidate, "unknown"
     end
-    return candidate, nil
+    return candidate, nil, tooltipDiagnostic
 end
 
 function C.CollectGearCandidates()
     if not C.IsRetail() then return nil, false end
     if type(GetCursorInfo) == "function" and GetCursorInfo() then return nil, true end
-    local candidates, pending = {}, false
+    local candidates, pending, diagnostics, sampled = {}, false, {}, {}
     local function Add(kind, container, slot, id, link)
-        local candidate, state = C.GetGearCandidate(kind, container, slot, id, link)
+        local candidate, state, diagnostic = C.GetGearCandidate(kind, container, slot, id, link)
         if state == "unknown" then pending = true end
         if candidate then
             for _, value in pairs(candidate) do
                 if type(value) == "table" and value.state == "UNKNOWN" then pending = true end
             end
             candidates[#candidates + 1] = candidate
+            local sampleKind = kind == "equipment" and "equipment" or kind == "bank" and "bank" or "bag"
+            if candidate.candidateState == "EQUIPPABLE" and not sampled[sampleKind] and diagnostic then
+                diagnostics[#diagnostics + 1] = diagnostic
+                sampled[sampleKind] = true
+            end
         end
     end
     local bags, bank = C.GetBankRanges()
@@ -248,7 +316,7 @@ function C.CollectGearCandidates()
         if (x.containerID or -1) ~= (y.containerID or -1) then return (x.containerID or -1) < (y.containerID or -1) end
         return x.slot < y.slot
     end)
-    return candidates, pending
+    return candidates, pending, diagnostics
 end
 
 function C.GetEquipmentStats(link, slot, legacyReader)
