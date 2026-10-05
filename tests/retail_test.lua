@@ -62,13 +62,11 @@ C_Item = {
 C_TooltipInfo = {
     GetInventoryItem = function()
         if pending then return nil end
-        return { lines = { { type = Enum.TooltipDataLineType.ItemBinding,
-            args = { { field = "bindingType", intVal = Enum.TooltipDataItemBinding.Soulbound } } } } }
+        return { lines = { { type = Enum.TooltipDataLineType.ItemBinding, bonding = 3 } } }
     end,
     GetBagItem = function()
         if pending then return nil end
-        return { lines = { { type = Enum.TooltipDataLineType.ItemBinding,
-            args = { { field = "bindingType", intVal = Enum.TooltipDataItemBinding.BnetAccount } } } } }
+        return { lines = { { type = Enum.TooltipDataLineType.ItemBinding, bonding = 9 } } }
     end,
 }
 C_PlayerInfo = { CanUseItem = function(id) equal(id, 240001, "current character query uses base ID"); return true end }
@@ -251,18 +249,15 @@ check(bagCandidate.observedLocation.type ~= equippedCandidate.observedLocation.t
     "same-base candidates retain distinct observed locations")
 equal(bagCandidate.isBound.value, false, "known false bound evidence preserved")
 equal(bagCandidate.itemBindToAccount.value, true, "item-info account binding predicate retained raw")
-equal(bagCandidate.tooltipBindingType.value, Enum.TooltipDataItemBinding.BnetAccount, "typed tooltip binding captured")
+equal(bagCandidate.tooltipBindingType.state, "UNKNOWN", "observed bonding=9 remains unknown when not in the binding enum")
+equal(bagCandidate.tooltipBindingType.rawValue, 9, "observed bonding=9 remains raw evidence")
+equal(equippedCandidate.tooltipBindingType.value, Enum.TooltipDataItemBinding.Soulbound, "observed bonding=3 maps to typed tooltip binding")
 equal(bagCandidate.currentCharacterCanUse.value, true, "current-character evidence captured")
 check(bagCandidate.accountCanUse == nil and bagCandidate.transferableToAlt == nil
     and bagCandidate.recommendedUpgrade == nil and bagCandidate.demand == nil
     and bagCandidate.surplus == nil and bagCandidate.disposition == nil, "no derived gear/economic policy fields")
 local function rawCandidate() return C.GetGearCandidate("bag", 0, 1, 240001, link) end
 local function rawEquipmentCandidate() return C.GetGearCandidate("equipment", nil, 1, 240001, link) end
-local debugCandidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
-check(debugCandidate ~= nil and debugObservation.tooltipDataExists and debugObservation.itemBindingLineExists,
-    "temporary tooltip diagnostic reports an ItemBinding line")
-check(#debugObservation.lineFields > 0 and #debugObservation.argsShape == 1,
-    "temporary tooltip diagnostic exposes bounded primitive line and args fields")
 local savedAPIs = {
     itemID = C_Item.GetItemID, exists = C_Item.DoesItemExist, itemLink = C_Item.GetItemLink, guid = C_Item.GetItemGUID,
     invType = C_Item.GetItemInventoryType, currentLevel = C_Item.GetCurrentItemLevel,
@@ -324,54 +319,19 @@ candidate = rawCandidate(); equal(candidate.tooltipBindingType.state, "UNKNOWN",
 C_TooltipInfo.GetBagItem = nil
 candidate = rawCandidate(); equal(candidate.tooltipBindingType.state, "UNKNOWN", "unavailable tooltip API remains unknown")
 C_TooltipInfo.GetBagItem = savedAPIs.bagTooltip
-C_TooltipInfo.GetBagItem = function() return { lines = { { type = Enum.TooltipDataLineType.ItemBinding,
-    args = { { field = "bindingType", intVal = 999 } } } } } end
-candidate = rawCandidate(); equal(candidate.tooltipBindingType.state, "UNKNOWN", "unknown typed tooltip enum stays unknown")
-equal(candidate.tooltipBindingType.rawValue, 999, "unknown typed tooltip enum raw value retained")
+C_TooltipInfo.GetBagItem = function() return { lines = { { type = Enum.TooltipDataLineType.ItemBinding, bonding = 999 } } } end
+candidate = rawCandidate(); equal(candidate.tooltipBindingType.state, "UNKNOWN", "unknown numeric bonding stays semantically unknown")
+equal(candidate.tooltipBindingType.rawValue, 999, "unknown numeric bonding remains raw evidence")
 C_TooltipInfo.GetBagItem = function() return { lines = { { type = Enum.TooltipDataLineType.ItemBinding,
     args = { { field = "bindingType", intVal = Enum.TooltipDataItemBinding.BindToAccountUntilEquipped } } } } } end
 candidate = rawCandidate(); equal(candidate.tooltipBindingType.value,
-    Enum.TooltipDataItemBinding.BindToAccountUntilEquipped, "typed account-until-equipped enum captured")
-C_TooltipInfo.GetBagItem = function() return { lines = { { type = Enum.TooltipDataLineType.ItemBinding,
-    bonding = Enum.TooltipDataItemBinding.Soulbound, leftText = "localized display text" } } } end
-candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
-equal(candidate.tooltipBindingType.state, "UNKNOWN", "diagnostic bonding field does not change production binding semantics")
-local bondingFound, displayTextFound = false, false
-for _, field in ipairs(debugObservation.lineFields) do
-    if field.key == "bonding" and field.value == Enum.TooltipDataItemBinding.Soulbound then bondingFound = true end
-    if field.key == "leftText" then displayTextFound = true end
-end
-check(bondingFound and not displayTextFound, "diagnostic exposes bonding and omits localized display text")
-C_TooltipInfo.GetBagItem = function() return nil end
-candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
-check(not debugObservation.tooltipDataExists and not debugObservation.itemBindingLineExists,
-    "missing tooltip data is represented safely")
-C_TooltipInfo.GetBagItem = function() error("tooltip API unavailable") end
-candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
-check(not debugObservation.tooltipDataExists and not debugObservation.itemBindingLineExists,
-    "tooltip API error is represented safely")
-C_TooltipInfo.GetBagItem = function()
-    local line = { type = Enum.TooltipDataLineType.ItemBinding }
-    setmetatable(line, { __index = function() error("unexpected tooltip payload") end })
-    return { lines = { line } }
-end
-candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
-check(debugObservation.unexpectedPayload and candidate.tooltipBindingType.state == "UNKNOWN",
-    "unexpected tooltip payload remains safe and unknown")
+    Enum.TooltipDataItemBinding.BindToAccountUntilEquipped, "existing structured args fallback remains supported")
+C_TooltipInfo.GetBagItem = function() return { lines = { { type = Enum.TooltipDataLineType.ItemBinding } } } end
+candidate = rawCandidate(); equal(candidate.tooltipBindingType.state, "UNKNOWN", "ItemBinding without bonding remains unknown")
 C_TooltipInfo.GetBagItem = function() return { lines = { { leftText = "localized only" } } } end
-candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
-check(debugObservation.tooltipDataExists and not debugObservation.itemBindingLineExists,
-    "missing ItemBinding line is represented safely")
-C_TooltipInfo.GetBagItem = function()
-    local line = { type = Enum.TooltipDataLineType.ItemBinding, args = {} }
-    for index = 1, 30 do line["field" .. index] = index end
-    for index = 1, 12 do line.args[index] = { field = "key" .. index, intVal = index } end
-    return { lines = { line } }
-end
-candidate, _, debugObservation = C.GetGearCandidate("bag", 0, 1, 240001, link)
-check(#debugObservation.lineFields == 24 and debugObservation.lineFieldsTruncated
-    and #debugObservation.argsShape == 8
-    and debugObservation.argsTruncated, "diagnostic primitive keys and args have fixed bounds")
+candidate = rawCandidate(); equal(candidate.tooltipBindingType.state, "UNKNOWN", "missing ItemBinding line remains unknown")
+C_TooltipInfo.GetBagItem = function() error("tooltip API unavailable") end
+candidate = rawCandidate(); equal(candidate.tooltipBindingType.state, "UNKNOWN", "failing tooltip API remains unknown")
 C_TooltipInfo.GetBagItem = savedAPIs.bagTooltip
 C_PlayerInfo.CanUseItem = function() return false end
 candidate = rawCandidate(); equal(candidate.currentCharacterCanUse.value, false, "current-character false is preserved")
@@ -433,12 +393,6 @@ for _, key in ipairs(S.order) do check(rendered:find(S.RenderSection(key, frozen
 check(rendered:find("ClientFamily: Retail", 1, true), "Retail metadata rendered")
 check(rendered:find(itemRef, 1, true), "full itemRef rendered")
 check(rendered:find("[GEAR CANDIDATES]", 1, true), "candidate sidecar rendered additively")
-check(rendered:find("[DEBUG TOOLTIP ITEM BINDING]", 1, true), "temporary typed-tooltip diagnostic is rendered")
-check(rendered:find("Temporary diagnostic; display text omitted", 1, true), "diagnostic scope is explicit")
-check(rendered:find("field=bindingType,intVal=", 1, true), "structured args fields are visible in diagnostic export")
-check(not rendered:find("localized display text", 1, true), "diagnostic export excludes localized tooltip text")
-check(#(S.record.gearCandidates.tooltipBindingDiagnostics or {}) <= 3,
-    "at most one tooltip diagnostic observation per source")
 check(not S.Render(frozen, { "bags", "bank" }):find("[GEAR CANDIDATES]", 1, true), "focused legacy section rendering excludes sidecar")
 check(S.Render(frozen, { "gearCandidates" }):find("[GEAR CANDIDATES]", 1, true), "focused sidecar selection is supported")
 check(not rendered:find("transferableToAlt", 1, true) and not rendered:find("accountCanUse", 1, true)
@@ -487,7 +441,18 @@ check(S.Render(S.GetSnapshot()):find("UNKNOWN", 1, true), "unknown evidence roun
 check(S.dirty.gearCandidates == nil, "candidate asynchronous retries exhaust within bounded scheduler")
 pending = false; event("ITEM_DATA_LOAD_RESULT", 240001); advance(1)
 equal(S.record.sections.equipment.completeness, "complete", "metadata event repairs equipment")
-check(S.record.gearCandidates.completeness == "complete", "candidate retry resolves after item data event")
+check(S.record.gearCandidates.completeness == "partial", "unknown raw bonding evidence keeps candidate snapshot partial")
+local resolvedCandidate, unknownBindingRetained = false, false
+for _, candidate in ipairs(S.record.gearCandidates.candidates) do
+    if candidate.observedLocation.type == "EQUIPMENT_SLOT" then
+        resolvedCandidate = candidate.candidateState == "EQUIPPABLE"
+    elseif candidate.observedLocation.type == "CONTAINER_SLOT" and candidate.observedLocation.containerID == 0 then
+        unknownBindingRetained = candidate.tooltipBindingType.state == "UNKNOWN"
+            and candidate.tooltipBindingType.rawValue == 9
+    end
+end
+check(resolvedCandidate and unknownBindingRetained,
+    "candidate retry resolves classification and retains raw bonding=9")
 event("TRAINER_SHOW"); advance(1)
 equal(S.record.sections.trainer.data.snapshots.PROF_ALCHEMY.services[1].requiredLevel, 80, "canonical Retail trainer tuple")
 event("TRAINER_CLOSED"); trainerCategory = "Blacksmithing"; event("TRAINER_SHOW"); advance(1); event("TRAINER_CLOSED")

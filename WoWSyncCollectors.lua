@@ -137,9 +137,9 @@ S.collectors.gearCandidates = function()
     if not Compat.IsRetail() or not Compat.CollectGearCandidates then
         return nil, { reason = "Retail gear candidate collector unavailable" }
     end
-    local candidates, pending, tooltipBindingDiagnostics = Compat.CollectGearCandidates()
+    local candidates, pending = Compat.CollectGearCandidates()
     if not candidates then return nil, { reason = "Candidate locations unavailable", retry = true } end
-    return { candidates = candidates, tooltipBindingDiagnostics = tooltipBindingDiagnostics }, {
+    return { candidates = candidates }, {
         completeness = pending and "partial" or "complete",
         reason = pending and "Some candidate item data is pending" or nil,
         retry = pending,

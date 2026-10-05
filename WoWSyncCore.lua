@@ -137,7 +137,6 @@ local function CommitGearCandidates(data, meta)
         end
     end
     S.record.gearCandidates = { contractVersion = 1, candidates = candidates,
-        tooltipBindingDiagnostics = S.Copy(data.tooltipBindingDiagnostics or {}),
         observedAt = now, completeness = hasUnknown and "partial" or meta.completeness or "complete",
         reason = hasUnknown and "Some candidate evidence fields are unknown" or meta.reason }
     S.record.gearCandidatesLastAttemptAt = now
