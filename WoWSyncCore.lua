@@ -4,6 +4,7 @@ local S = { apiVersion = 1, schemaVersion = 1, collectors = {}, dirty = {},
     order = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer" },
     bankOpen = false, trainerOpen = false, sessions = { bank = 0, trainer = 0 } }
 addon.Sync = S
+S.captureOrder = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer", "gearCandidates" }
 WoWSync = S
 
 function S.Copy(value)
@@ -106,6 +107,43 @@ function S.Attempt(key, reason)
     old.lastAttemptAt, old.lastAttemptError = S.Now(), reason
 end
 
+local function CommitGearCandidates(data, meta)
+    local now = S.Now()
+    local candidates = data.candidates
+    for _, candidate in ipairs(candidates) do candidate.observedAt = now end
+    local previous = S.record.gearCandidates
+    if previous and type(previous.candidates) == "table" then
+        -- A closed Character Bank is LAST_SEEN; retain its last observed rows.
+        local bankViewable = S.bankOpen and WoWSyncCompat.IsBankViewable and WoWSyncCompat.IsBankViewable()
+        if not bankViewable then
+            for _, old in ipairs(previous.candidates) do
+                if old.observedLocation and old.observedLocation.type == "BANK_SLOT" then
+                    local kept = S.Copy(old); kept.observationState = "LAST_SEEN"
+                    candidates[#candidates + 1] = kept
+                end
+            end
+            table.sort(candidates, function(a, b)
+                local x, y = a.observedLocation, b.observedLocation
+                if x.type ~= y.type then return x.type < y.type end
+                if (x.containerID or -1) ~= (y.containerID or -1) then return (x.containerID or -1) < (y.containerID or -1) end
+                return x.slot < y.slot
+            end)
+        end
+    end
+    local hasUnknown = false
+    for _, candidate in ipairs(candidates) do
+        for _, value in pairs(candidate) do
+            if type(value) == "table" and value.state == "UNKNOWN" then hasUnknown = true end
+        end
+    end
+    S.record.gearCandidates = { contractVersion = 1, candidates = candidates,
+        observedAt = now, completeness = hasUnknown and "partial" or meta.completeness or "complete",
+        reason = hasUnknown and "Some candidate evidence fields are unknown" or meta.reason }
+    S.record.gearCandidatesLastAttemptAt = now
+    S.record.gearCandidatesLastAttemptError = nil
+end
+S.CommitGearCandidates = CommitGearCandidates
+
 function S.Mark(key, delay)
     if not S.collectors[key] then return end
     if key == "bank" and not S.bankOpen or key == "trainer" and not S.trainerOpen then return end
@@ -129,6 +167,7 @@ function S.RequestSync()
     if not S.Initialize() then return false, S.error or "Character is not ready yet." end
     S.RequestPlayed()
     for _, key in ipairs(S.order) do S.Mark(key, 0.15) end
+    if WoWSyncCompat and WoWSyncCompat.IsRetail() then S.Mark("gearCandidates", 0.15) end
     return true
 end
 
@@ -136,6 +175,9 @@ function S.GetSnapshot()
     if not S.Initialize() then return nil end
     local snapshot = { identity = S.Copy(S.record.identity), sections = S.Copy(S.record.sections),
         visits = S.Copy(S.record.visits) }
+    if WoWSyncCompat and WoWSyncCompat.IsRetail() then
+        snapshot.gearCandidates = S.Copy(S.record.gearCandidates)
+    end
     snapshot.schemaVersion = S.schemaVersion
     snapshot.generatedAt = S.Now()
     snapshot.access = { bank = S.bankOpen and (not WoWSyncCompat or WoWSyncCompat.IsBankViewable()), trainer = S.trainerOpen,
@@ -156,7 +198,7 @@ local function Process(force)
     if not S.Initialize() then return end
     S.capture = (S.capture or 0) + 1
     local now = GetTime()
-    for _, key in ipairs(S.order) do
+    for _, key in ipairs(S.captureOrder) do
         local pending = S.dirty[key]
         if pending and (force or now >= pending.due) then
             S.dirty[key] = nil
@@ -165,9 +207,14 @@ local function Process(force)
             if ok and data then
                 if key == "trainer" and data.category and data.snapshot then
                     S.CommitTrainer(data.category, data.snapshot, meta)
+                elseif key == "gearCandidates" then
+                    CommitGearCandidates(data, meta)
                 else
                     S.Commit(key, data, meta)
                 end
+            elseif key == "gearCandidates" then
+                S.record.gearCandidatesLastAttemptAt = S.Now()
+                S.record.gearCandidatesLastAttemptError = meta.reason or "Candidate data unavailable"
             else S.Attempt(key, meta.reason or "Data unavailable") end
             if meta.retry and not force and pending.tries < 4
                 and (key ~= "bank" or S.bankOpen) and (key ~= "trainer" or S.trainerOpen) then
@@ -254,6 +301,10 @@ if not addon.SyncEvents and WoWSyncCompat and WoWSyncCompat.RegisterOptionalEven
     for event in pairs(WoWSyncCompat.RegisterOptionalEvents(frame)) do S.optionalEvents = S.optionalEvents or {}; S.optionalEvents[event] = true end
 end
 
+local function MarkGearCandidates()
+    if WoWSyncCompat and WoWSyncCompat.IsRetail() then S.Mark("gearCandidates") end
+end
+
 frame:SetScript("OnEvent", function(_, event, arg, arg2)
     if event == "ADDON_LOADED" then
         if arg == ADDON_NAME then S.Initialize(); if S.InitializeUI then S.InitializeUI() end end
@@ -273,9 +324,9 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
     elseif event == "PLAYER_LOGOUT" then
         if S.record then Process(true) end
     elseif event == "BANKFRAME_OPENED" then
-        S.bankOpen = true; Visit("bank"); S.Mark("bank"); S.Mark("bags")
+        S.bankOpen = true; Visit("bank"); S.Mark("bank"); S.Mark("bags"); MarkGearCandidates()
     elseif event == "BANKFRAME_CLOSED" then
-        S.bankOpen = false; Close("bank"); S.Mark("bags")
+        S.bankOpen = false; Close("bank"); S.Mark("bags"); MarkGearCandidates()
     elseif event == "TRAINER_SHOW" then
         S.trainerOpen = true; Visit("trainer"); S.Mark("trainer"); S.Mark("spells")
     elseif event == "TRAINER_CLOSED" then
@@ -284,9 +335,9 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.Mark("trainer")
     elseif event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED"
         or event == "PLAYERBANKSLOTS_CHANGED" or event == "PLAYERBANKBAGSLOTS_CHANGED" or event == "BANK_TABS_CHANGED" then
-        S.Mark("bags"); S.Mark("bank")
+        S.Mark("bags"); S.Mark("bank"); MarkGearCandidates()
     elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "UNIT_INVENTORY_CHANGED" and arg == "player" then
-        S.Mark("equipment"); S.Mark("bags")
+        S.Mark("equipment"); S.Mark("bags"); MarkGearCandidates()
     elseif event == "SKILL_LINES_CHANGED" or event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE"
         or event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELL_TEXT_UPDATE"
         or event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then
@@ -297,6 +348,7 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
                 local section = S.record.sections[key]
                 if section and section.completeness == "partial" then S.Mark(key) end
             end
+            MarkGearCandidates()
         end
     elseif event:match("^ZONE_CHANGED") then
         S.Mark("location")

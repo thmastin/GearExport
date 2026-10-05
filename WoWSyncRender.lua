@@ -213,10 +213,45 @@ function S.Render(snapshot, sections)
     assert(type(snapshot) == "table" and snapshot.schemaVersion == 1, "Unsupported WoWSync snapshot")
     local out = { "WOWSYNC v1", "Generated: " .. Text(snapshot.generatedAt),
         "Format: tab-separated columns; ?=unknown; timestamps=Unix seconds; money=copper; itemRef preserves item variants." }
+    local includeGearCandidates = sections == nil
     for _, key in ipairs(sections or S.order) do
-        local text, err = S.RenderSection(key, snapshot)
-        assert(text, err)
-        out[#out + 1] = text
+        if key == "gearCandidates" then includeGearCandidates = true
+        else
+            local text, err = S.RenderSection(key, snapshot)
+            assert(text, err)
+            out[#out + 1] = text
+        end
+    end
+    if includeGearCandidates and snapshot.gearCandidates then
+        local evidence = snapshot.gearCandidates
+        local sidecar = { "[GEAR CANDIDATES]" }
+        Field(sidecar, "State", Text(evidence.completeness or "unknown") .. "; observed=" .. Text(evidence.observedAt))
+        Field(sidecar, "ContractVersion", evidence.contractVersion)
+        if evidence.reason then Field(sidecar, "CoverageNote", evidence.reason) end
+        Row(sidecar, "candidateState", "locationType", "containerID", "slot", "itemID", "itemString",
+            "itemGUID", "equipType", "currentItemLevel", "requiredLevel", "classID", "subclassID",
+            "baseEquipLocation", "isBound", "boundToAccountUntilEquip", "itemBindToAccount",
+            "itemBindToAccountUntilEquip", "tooltipBindingType", "tooltipBindingRawValue",
+            "currentCharacterCanUse", "observationState")
+        local function Value(e)
+            if type(e) ~= "table" or e.state ~= "KNOWN" then return "?" end
+            return e.value
+        end
+        local function Raw(e)
+            return type(e) == "table" and e.state == "UNKNOWN" and e.rawValue or nil
+        end
+        for _, item in ipairs(evidence.candidates or {}) do
+            local loc = item.observedLocation or {}
+            Row(sidecar, item.candidateState, loc.type, loc.containerID, loc.slot,
+                Value(item.itemID), Value(item.itemString), Value(item.itemGUID), Value(item.equipType),
+                Value(item.currentItemLevel), Value(item.requiredLevel), Value(item.classID), Value(item.subclassID),
+                Value(item.baseEquipLocation), Value(item.isBound), Value(item.boundToAccountUntilEquip),
+                Value(item.itemBindToAccount), Value(item.itemBindToAccountUntilEquip),
+                Value(item.tooltipBindingType), Raw(item.tooltipBindingType),
+                Value(item.currentCharacterCanUse), item.observationState or "OBSERVED")
+        end
+        if #(evidence.candidates or {}) == 0 then Field(sidecar, "Candidates", "None observed") end
+        out[#out + 1] = table.concat(sidecar, "\n")
     end
     out[#out + 1] = "[END]"
     return table.concat(out, "\n\n")

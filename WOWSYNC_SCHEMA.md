@@ -98,6 +98,63 @@ Older snapshots without these optional fields render as before:
   an assumption that any skill requirement means weapon training. Unknown remains
   a separate snapshot and never overwrites named profession/class categories.
 
+### Retail gear candidate sidecar (contract v1)
+
+On Retail only, `GetSnapshot()` may include optional root property
+`gearCandidates={contractVersion=1,candidates,observedAt,completeness,reason}`.
+The default full text export appends `[GEAR CANDIDATES]` before `[END]` when this
+sidecar has been observed. Focused `Render` calls include it only when
+`gearCandidates` is in the selection. The eight public WoWSync v1 sections and
+their order are unchanged. Readers that do not know the sidecar may ignore it.
+The record is persisted alongside the character observation; failed refresh
+attempts retain the last successful sidecar and update only its last-attempt
+metadata.
+
+Each candidate is associated with its observation location, never aggregated by
+base item ID. `candidateState` is `EQUIPPABLE` only when the API affirmatively
+identifies the located candidate as equippable; `UNKNOWN` retains unresolved
+items while data is loading. A known non-equippable item is omitted. Candidate
+rows are ordered by location kind, container ID, then slot. Character bank rows
+are read only while viewable; after closing the bank, prior rows remain with
+`observationState=LAST_SEEN` and their original per-row observation time.
+
+Evidence fields use `{state="KNOWN",value=...}` or `{state="UNKNOWN"}`. Missing,
+failed, secret, unrecognized, stale, or invalid-location results remain UNKNOWN;
+known `false` and explicit numeric zero remain KNOWN. A complete sidecar means
+the current scan has no unresolved evidence fields; partial means at least one
+candidate field is unknown. No missing value is represented by false or zero.
+
+Field scopes and sources:
+
+- `itemID`: current bag/equipment row, base item.
+- `itemString`: full link from that observed location, variant evidence. It is
+  not a unique physical instance identifier.
+- `itemGUID`: `C_Item.GetItemGUID(ItemLocation)`, instance evidence when exposed.
+  It is checked against the observed item ID and current location, but is not a
+  permanent identifier across moves, transfers, or replacement.
+- `observedLocation`: the bag/container and slot or equipment slot used to build
+  the ItemLocation. It identifies where the observation was made, not identity.
+- `equipType`, `currentItemLevel`, `isBound`, and
+  `boundToAccountUntilEquip`: ItemLocation-scoped current-candidate evidence.
+  The level is from `C_Item.GetCurrentItemLevel`, not base item level.
+- `requiredLevel`, `classID`, `subclassID`, and `baseEquipLocation`: item-info
+  facts from `C_Item.GetItemInfo`; they are not a complete restriction record.
+- `itemBindToAccount` and `itemBindToAccountUntilEquip`: raw item-info predicates,
+  not current-instance state or transferability conclusions.
+- `tooltipBindingType`: raw recognized numeric binding enum from the structured
+  `C_TooltipInfo` ItemBinding line only. An unrecognized numeric enum remains
+  UNKNOWN with `rawValue` preserved where available. It is not parsed from
+  localized text.
+- `currentCharacterCanUse`: `C_PlayerInfo.CanUseItem(itemID)`, scoped only to
+  the current character and base item.
+
+The predicates are independent observations: `isBound=false` is not interpreted
+as tradeable or transferable; `boundToAccountUntilEquip=false` only rules out
+that state. This contract contains no field proving recipient-specific transfer,
+alt usability, auctionability, or disposition. It creates neither demand nor an
+upgrade recommendation. Capability and item level remain observations, not
+recommendations.
+
 Future account state should own Warband bank and account currencies once with
 independent freshness, rather than duplicate them across GUID-keyed characters.
 No account/alt export mode is introduced by the Retail compatibility target.

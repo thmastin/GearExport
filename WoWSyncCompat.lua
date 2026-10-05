@@ -44,6 +44,212 @@ function C.RequestItemData(itemID)
     if C.IsRetail() and itemID then Optional(C_Item and C_Item.RequestLoadItemDataByID, itemID) end
 end
 
+local function Known(value)
+    if value == nil then return false end
+    if type(issecretvalue) == "function" then
+        local ok, secret = pcall(issecretvalue, value)
+        if not ok or secret then return false end
+    end
+    return true
+end
+
+local function Evidence(value)
+    if not Known(value) then return { state = "UNKNOWN" } end
+    return { state = "KNOWN", value = value }
+end
+
+local function Read(fn, ...)
+    if type(fn) ~= "function" then return nil, false end
+    local ok, value = pcall(fn, ...)
+    if not ok then return nil, false end
+    if not Known(value) then return nil, false end
+    return value, true
+end
+
+local function ReadEvidence(fn, ...)
+    local value, valid = Read(fn, ...)
+    if not valid then return { state = "UNKNOWN" } end
+    return Evidence(value)
+end
+
+local function CandidateLocation(kind, container, slot)
+    if not C.IsRetail() or not ItemLocation then return nil end
+    local ctor = kind == "equipment" and ItemLocation.CreateFromEquipmentSlot or ItemLocation.CreateFromBagAndSlot
+    local ok, location
+    if kind == "equipment" then ok, location = pcall(ctor, slot)
+    else ok, location = pcall(ctor, container, slot) end
+    if not ok then return nil end
+    return location
+end
+
+local function ItemString(link)
+    if type(link) ~= "string" then return nil end
+    local ok, value = pcall(string.match, link, "(item:[^|]+)")
+    return ok and value or nil
+end
+
+local function TooltipBinding(kind, container, slot)
+    if not C_TooltipInfo then return nil end
+    local ok, info
+    if kind == "equipment" and type(C_TooltipInfo.GetInventoryItem) == "function" then
+        ok, info = pcall(C_TooltipInfo.GetInventoryItem, "player", slot)
+    elseif kind ~= "equipment" and type(C_TooltipInfo.GetBagItem) == "function" then
+        ok, info = pcall(C_TooltipInfo.GetBagItem, container, slot)
+    end
+    if not ok or type(info) ~= "table" or type(info.lines) ~= "table" then return nil end
+    local lineType = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.ItemBinding
+    if lineType == nil then return nil end
+    for _, line in ipairs(info.lines) do
+        if type(line) == "table" and line.type == lineType then
+            if Known(line.bindingType) then return line.bindingType end
+            if Known(line.itemBinding) then return line.itemBinding end
+            for _, arg in ipairs(type(line.args) == "table" and line.args or {}) do
+                if type(arg) == "table" and (arg.field == "bindingType" or arg.field == "itemBinding")
+                    and Known(arg.intVal) then return arg.intVal end
+            end
+            return nil
+        end
+    end
+    return nil
+end
+
+local function TooltipBindingEvidence(kind, container, slot)
+    local value = TooltipBinding(kind, container, slot)
+    if not Known(value) then return Evidence(nil) end
+    local enums = Enum and Enum.TooltipDataItemBinding
+    if type(enums) ~= "table" then return { state = "UNKNOWN", rawValue = value } end
+    for _, knownValue in pairs(enums) do
+        if knownValue == value then return Evidence(value) end
+    end
+    return { state = "UNKNOWN", rawValue = value }
+end
+
+function C.GetGearCandidate(kind, container, slot, itemID, itemLink)
+    if not C.IsRetail() then return nil, "not-retail" end
+    local location = CandidateLocation(kind, container, slot)
+    local locationIdentityValid, locationValid, locatedLink, locatedString = false, false, nil, nil
+    if location and Known(itemID) then
+        local locatedID, idKnown = Read(C_Item and C_Item.GetItemID, location)
+        local exists, existsKnown = Read(C_Item and C_Item.DoesItemExist, location)
+        locationIdentityValid = idKnown and locatedID == itemID and existsKnown and exists == true
+        locatedLink = Read(C_Item and C_Item.GetItemLink, location)
+        locatedString = ItemString(locatedLink)
+        local observedString = ItemString(itemLink)
+        locationValid = locationIdentityValid and locatedString ~= nil
+            and (observedString == nil or observedString == locatedString)
+    end
+    local exactLocation = locationValid and location or nil
+    local itemString = ItemString(itemLink) or (locationValid and locatedString)
+    local candidate = {
+        candidateState = "UNKNOWN",
+        itemID = Evidence(itemID),
+        itemString = Evidence(itemString),
+        observedLocation = kind == "equipment"
+            and { type = "EQUIPMENT_SLOT", slot = slot }
+            or { type = kind == "bank" and "BANK_SLOT" or "CONTAINER_SLOT", containerID = container, slot = slot },
+        itemGUID = exactLocation and ReadEvidence(C_Item and C_Item.GetItemGUID, exactLocation) or Evidence(nil),
+        equipType = exactLocation and ReadEvidence(C_Item and C_Item.GetItemInventoryType, exactLocation) or Evidence(nil),
+        currentItemLevel = exactLocation and ReadEvidence(C_Item and C_Item.GetCurrentItemLevel, exactLocation) or Evidence(nil),
+        isBound = exactLocation and ReadEvidence(C_Item and C_Item.IsBound, exactLocation) or Evidence(nil),
+        boundToAccountUntilEquip = exactLocation and ReadEvidence(C_Item and C_Item.IsBoundToAccountUntilEquip, exactLocation) or Evidence(nil),
+        tooltipBindingType = exactLocation and TooltipBindingEvidence(kind, container, slot) or Evidence(nil),
+        currentCharacterCanUse = ReadEvidence(C_PlayerInfo and C_PlayerInfo.CanUseItem, itemID),
+    }
+    local ref = Known(itemLink) and itemLink or (locationValid and locatedLink) or (Known(itemID) and itemID or nil)
+    local cached, cacheKnown
+    if exactLocation then cached, cacheKnown = Read(C_Item and C_Item.IsItemDataCached, exactLocation) end
+    if cacheKnown and cached == false and exactLocation then
+        pcall(C_Item and C_Item.RequestLoadItemData, exactLocation)
+    end
+    local name, link, quality, itemLevel, requiredLevel, itemType, subType,
+        stackCount, itemEquipLoc, icon, sellPrice, classID, subclassID = nil
+    local infoFn = C_Item and C_Item.GetItemInfo
+    if type(infoFn) == "function" and ref then
+        local values = { pcall(infoFn, ref) }
+        if values[1] then
+            name, link, quality, itemLevel, requiredLevel, itemType, subType,
+                stackCount, itemEquipLoc, icon, sellPrice, classID, subclassID =
+                    values[2], values[3], values[4], values[5], values[6], values[7], values[8],
+                    values[9], values[10], values[11], values[12], values[13], values[14]
+        end
+    end
+    candidate.requiredLevel = Evidence(requiredLevel)
+    candidate.classID, candidate.subclassID = Evidence(classID), Evidence(subclassID)
+    candidate.baseEquipLocation = Evidence(itemEquipLoc)
+    candidate.itemBindToAccount = ref and ReadEvidence(C_Item and C_Item.IsItemBindToAccount, ref) or Evidence(nil)
+    candidate.itemBindToAccountUntilEquip = ref and ReadEvidence(C_Item and C_Item.IsItemBindToAccountUntilEquip, ref) or Evidence(nil)
+    local equippable, equippableKnown = Read(C_Item and C_Item.IsEquippableItem, ref)
+    local metadataReady = cacheKnown and cached == true or not cacheKnown and Known(name)
+    if not locationValid then
+        if locationIdentityValid and not locatedString then pcall(C_Item and C_Item.RequestLoadItemData, location) end
+        return candidate, "unknown"
+    end
+    if equippableKnown and equippable == true then candidate.candidateState = "EQUIPPABLE"
+    elseif equippableKnown and equippable == false and metadataReady then
+        return nil, "not-equippable"
+    else
+        if exactLocation then pcall(C_Item and C_Item.RequestLoadItemData, exactLocation) end
+        return candidate, "unknown"
+    end
+    return candidate, nil
+end
+
+function C.CollectGearCandidates()
+    if not C.IsRetail() then return nil, false end
+    if type(GetCursorInfo) == "function" and GetCursorInfo() then return nil, true end
+    local candidates, pending = {}, false
+    local function Add(kind, container, slot, id, link)
+        local candidate, state = C.GetGearCandidate(kind, container, slot, id, link)
+        if state == "unknown" then pending = true end
+        if candidate then
+            for _, value in pairs(candidate) do
+                if type(value) == "table" and value.state == "UNKNOWN" then pending = true end
+            end
+            candidates[#candidates + 1] = candidate
+        end
+    end
+    local bags, bank = C.GetBankRanges()
+    if not bags then return nil, true end
+    local bankAccessible = WoWSync and WoWSync.bankOpen and C.IsBankViewable()
+    if bankAccessible and not bank then return nil, true end
+    if not bankAccessible then bank = nil end
+    local function ScanContainers(ids, isBank)
+        for _, bag in ipairs(ids or {}) do
+            local count = C.GetContainerSlotCount(bag)
+            if count == nil or C.ContainerRequiresCapacity(bag, isBank) and count == 0 then return false end
+            local free = C.GetContainerFreeSlots(bag)
+            local occupied = 0
+            for slot = 1, count do
+                local info = C.GetContainerInfo(bag, slot)
+                if info then
+                    occupied = occupied + 1
+                    if not Known(info.isLocked) or info.isLocked == true then return false end
+                    local link = Known(info.hyperlink) and info.hyperlink or C.GetContainerLink(bag, slot)
+                    local id = Known(info.itemID) and info.itemID or tonumber(ItemString(link) and ItemString(link):match("item:(%d+)"))
+                    Add(isBank and "bank" or "bag", bag, slot, id, link)
+                end
+            end
+            if free ~= nil and occupied ~= count - free then return false end
+        end
+        return true
+    end
+    if not ScanContainers(bags, false) then return nil, true end
+    for slot = 1, 19 do
+        local link = Optional(GetInventoryItemLink, "player", slot)
+        local id = Optional(GetInventoryItemID, "player", slot)
+        if Known(link) or Known(id) then Add("equipment", nil, slot, id, link) end
+    end
+    if bank and not ScanContainers(bank, true) then return nil, true end
+    if type(GetCursorInfo) == "function" and GetCursorInfo() then return nil, true end
+    table.sort(candidates, function(a, b)
+        local x, y = a.observedLocation, b.observedLocation
+        if x.type ~= y.type then return x.type < y.type end
+        if (x.containerID or -1) ~= (y.containerID or -1) then return (x.containerID or -1) < (y.containerID or -1) end
+        return x.slot < y.slot
+    end)
+    return candidates, pending
+end
+
 function C.GetEquipmentStats(link, slot, legacyReader)
     if not C.IsRetail() then return legacyReader(link, slot) end
     local values = Optional(C_Item and C_Item.GetItemStats, link)

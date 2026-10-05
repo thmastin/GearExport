@@ -5,22 +5,52 @@ local function equal(a, b, message) check(a == b, message .. ": " .. tostring(a)
 local function action() actions = actions + 1; error("Gameplay action invoked") end
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
 Enum = { BagIndex = { Backpack = 0, ReagentBag = 5 }, BankType = { Character = 0, Account = 2 },
-    SpellBookSpellBank = { Player = 0, Pet = 1 }, SpellBookItemType = { Spell = 1, FutureSpell = 2, Flyout = 4, PetAction = 3 } }
+    SpellBookSpellBank = { Player = 0, Pet = 1 }, SpellBookItemType = { Spell = 1, FutureSpell = 2, Flyout = 4, PetAction = 3 },
+    TooltipDataLineType = { ItemBinding = 20 }, TooltipDataItemBinding = { Soulbound = 3, BnetAccount = 2, BindToAccountUntilEquipped = 10 } }
 local itemRef = "item:240001:7440:213743:0:0:0:0:0:90:0:0:16:4:10354:10299:6652:12030:2:28:2462:38:8"
 local link = "|cffa335ee|H" .. itemRef .. "|h[Crafted Sample]|h|r"
 local pending, bankView, requests = false, true, 0
+ItemLocation = {
+    CreateFromBagAndSlot = function(bag, slot) return { kind = "bag", bag = bag, slot = slot } end,
+    CreateFromEquipmentSlot = function(slot) return { kind = "equipment", slot = slot } end,
+}
 C_Item = {
     GetItemInfo = function(ref)
         check(ref ~= nil, "item reference supplied")
         if pending then return nil end
-        return "Crafted Sample", link, 4, 200, 80, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 4321
+        return "Crafted Sample", link, 4, 200, 80, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 4321, 4, 4, 8, 10, nil, false
     end,
+    GetItemID = function() return 240001 end,
+    DoesItemExist = function() return true end,
+    GetItemLink = function() return link end,
     GetDetailedItemLevelInfo = function(ref) equal(ref, link, "instance link for level"); if not pending then return 289 end end,
+    GetItemGUID = function(loc) return loc.kind .. "-" .. tostring(loc.bag or "") .. "-" .. loc.slot end,
+    GetItemInventoryType = function(loc) if not pending then return loc.kind == "equipment" and "INVTYPE_HEAD" or "INVTYPE_HEAD" end end,
+    GetCurrentItemLevel = function(loc) if not pending then return loc.kind == "equipment" and 289 or 276 end end,
+    IsBound = function() return false end,
+    IsBoundToAccountUntilEquip = function() return false end,
+    IsItemBindToAccount = function() return true end,
+    IsItemBindToAccountUntilEquip = function() return false end,
+    IsItemDataCached = function() return not pending end,
+    RequestLoadItemData = function() requests = requests + 1 end,
+    IsEquippableItem = function() return not pending end,
     GetItemStats = function() if not pending then return { ITEM_MOD_HASTE_RATING_SHORT = 42, ITEM_MOD_MASTERY_RATING_SHORT = 31 } end end,
     RequestLoadItemDataByID = function(id) equal(id, 240001, "metadata request ID"); requests = requests + 1 end,
     GetItemCount = function() return 2 end,
 }
-C_TooltipInfo = { GetInventoryItem = function() if not pending then return { lines = { { leftText = "Crafted Sample" } } } end end }
+C_TooltipInfo = {
+    GetInventoryItem = function()
+        if pending then return nil end
+        return { lines = { { type = Enum.TooltipDataLineType.ItemBinding,
+            args = { { field = "bindingType", intVal = Enum.TooltipDataItemBinding.Soulbound } } } } }
+    end,
+    GetBagItem = function()
+        if pending then return nil end
+        return { lines = { { type = Enum.TooltipDataLineType.ItemBinding,
+            args = { { field = "bindingType", intVal = Enum.TooltipDataItemBinding.BnetAccount } } } } }
+    end,
+}
+C_PlayerInfo = { CanUseItem = function(id) equal(id, 240001, "current character query uses base ID"); return true end }
 C_Bank = {
     CanViewBank = function(kind) equal(kind, Enum.BankType.Character, "only character bank read"); return bankView end,
     FetchPurchasedBankTabIDs = function(kind) equal(kind, Enum.BankType.Character, "purchased character IDs"); return { 6, 8 } end,
@@ -183,6 +213,124 @@ equal(#S.record.sections.bags.data.containers, 6, "canonical bags include reagen
 equal(S.record.sections.bags.data.containers[6].storage, "REAGENT_BAG", "reagent category")
 equal(S.record.sections.equipment.data.slots[1].itemString, itemRef, "all modern item modifiers preserved")
 equal(S.record.sections.equipment.data.slots[1].itemLevel, 289, "instance level in snapshot")
+check(S.record.gearCandidates and S.record.gearCandidates.contractVersion == 1, "Retail candidate sidecar persisted")
+local bagCandidate, equippedCandidate
+for _, candidate in ipairs(S.record.gearCandidates.candidates) do
+    if candidate.observedLocation.type == "CONTAINER_SLOT" and candidate.observedLocation.containerID == 0 then bagCandidate = candidate end
+    if candidate.observedLocation.type == "EQUIPMENT_SLOT" then equippedCandidate = candidate end
+end
+check(bagCandidate and equippedCandidate, "bag and equipment candidates observed")
+equal(bagCandidate.candidateState, "EQUIPPABLE", "known equippable candidate retained")
+equal(bagCandidate.itemString.value, itemRef, "variant string kept intact")
+equal(bagCandidate.itemGUID.state, "KNOWN", "location GUID captured")
+equal(bagCandidate.currentItemLevel.value, 276, "candidate level read from instance location")
+equal(equippedCandidate.currentItemLevel.value, 289, "same base ID can have distinct instance level")
+equal(bagCandidate.isBound.value, false, "known false bound evidence preserved")
+equal(bagCandidate.itemBindToAccount.value, true, "item-info account binding predicate retained raw")
+equal(bagCandidate.tooltipBindingType.value, Enum.TooltipDataItemBinding.BnetAccount, "typed tooltip binding captured")
+equal(bagCandidate.currentCharacterCanUse.value, true, "current-character evidence captured")
+check(bagCandidate.accountCanUse == nil and bagCandidate.transferableToAlt == nil
+    and bagCandidate.recommendedUpgrade == nil and bagCandidate.demand == nil
+    and bagCandidate.surplus == nil and bagCandidate.disposition == nil, "no derived gear/economic policy fields")
+local function rawCandidate() return C.GetGearCandidate("bag", 0, 1, 240001, link) end
+local savedAPIs = {
+    itemID = C_Item.GetItemID, exists = C_Item.DoesItemExist, itemLink = C_Item.GetItemLink, guid = C_Item.GetItemGUID,
+    invType = C_Item.GetItemInventoryType, currentLevel = C_Item.GetCurrentItemLevel,
+    isBound = C_Item.IsBound, boundUntil = C_Item.IsBoundToAccountUntilEquip,
+    info = C_Item.GetItemInfo, equippable = C_Item.IsEquippableItem,
+    bindAccount = C_Item.IsItemBindToAccount, bindUntil = C_Item.IsItemBindToAccountUntilEquip,
+    cached = C_Item.IsItemDataCached, canUse = C_PlayerInfo.CanUseItem,
+    bagTooltip = C_TooltipInfo.GetBagItem,
+}
+local candidate = rawCandidate()
+equal(candidate.observedLocation.type, "CONTAINER_SLOT", "bag ItemLocation represented as observation location")
+C_Item.GetCurrentItemLevel = function() return 312 end
+candidate = rawCandidate(); equal(candidate.currentItemLevel.value, 312, "same base item accepts a distinct instance level")
+C_Item.GetCurrentItemLevel = function() return nil end
+candidate = rawCandidate(); equal(candidate.currentItemLevel.state, "UNKNOWN", "missing location level remains unknown")
+C_Item.GetCurrentItemLevel = function() error("location unavailable") end
+candidate = rawCandidate(); equal(candidate.currentItemLevel.state, "UNKNOWN", "instance API error remains unknown")
+local secretLevel = {}
+issecretvalue = function(value) return value == secretLevel end
+C_Item.GetCurrentItemLevel = function() return secretLevel end
+candidate = rawCandidate(); equal(candidate.currentItemLevel.state, "UNKNOWN", "secret-like instance level remains unknown")
+issecretvalue = nil
+C_Item.GetCurrentItemLevel = savedAPIs.currentLevel
+C_Item.GetItemInventoryType = function() return nil end
+candidate = rawCandidate(); equal(candidate.equipType.state, "UNKNOWN", "missing equip type remains unknown")
+C_Item.GetItemInventoryType = savedAPIs.invType
+C_Item.GetItemInfo = function() return "x", link, 4, 200, 0, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 1, 4, 4 end
+candidate = rawCandidate(); equal(candidate.requiredLevel.value, 0, "explicit required-level zero stays known")
+C_Item.GetItemInfo = function() return "x", link, 4, 200, nil, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 1, 4, 4 end
+candidate = rawCandidate(); equal(candidate.requiredLevel.state, "UNKNOWN", "missing required level remains unknown")
+C_Item.IsBound = function() return true end
+C_Item.IsBoundToAccountUntilEquip = function() return true end
+candidate = rawCandidate(); equal(candidate.isBound.value, true, "bound true preserved"); equal(candidate.boundToAccountUntilEquip.value, true, "Warbound-until-equipped predicate preserved")
+C_Item.IsBoundToAccountUntilEquip = function() return false end
+candidate = rawCandidate(); equal(candidate.boundToAccountUntilEquip.value, false, "specific binding-state false preserved independently")
+C_Item.GetItemGUID = function() return nil end
+candidate = rawCandidate(); equal(candidate.itemGUID.state, "UNKNOWN", "absent GUID stays unknown")
+C_Item.GetItemGUID = savedAPIs.guid
+local variantLink = link:gsub("240001:7440", "240001:7441")
+C_Item.GetItemLink = function() return link end
+candidate = C.GetGearCandidate("bag", 0, 1, 240001, variantLink)
+equal(candidate.candidateState, "UNKNOWN", "same-base replacement variant invalidates location evidence")
+equal(candidate.currentItemLevel.state, "UNKNOWN", "same-base replacement receives no instance level")
+C_Item.GetItemLink = function() return variantLink end
+candidate = C.GetGearCandidate("bag", 0, 1, 240001, variantLink)
+equal(candidate.itemString.value, variantLink:match("(item:[^|]+)"), "distinct full item string retained for same base ID")
+equal(candidate.itemID.value, 240001, "variant remains associated with same base ID")
+C_Item.GetItemLink = savedAPIs.itemLink
+C_TooltipInfo.GetBagItem = function() return { lines = { { leftText = "Warbound" } } } end
+candidate = rawCandidate(); equal(candidate.tooltipBindingType.state, "UNKNOWN", "localized tooltip text is never parsed")
+C_TooltipInfo.GetBagItem = nil
+candidate = rawCandidate(); equal(candidate.tooltipBindingType.state, "UNKNOWN", "unavailable tooltip API remains unknown")
+C_TooltipInfo.GetBagItem = savedAPIs.bagTooltip
+C_TooltipInfo.GetBagItem = function() return { lines = { { type = Enum.TooltipDataLineType.ItemBinding,
+    args = { { field = "bindingType", intVal = 999 } } } } } end
+candidate = rawCandidate(); equal(candidate.tooltipBindingType.state, "UNKNOWN", "unknown typed tooltip enum stays unknown")
+equal(candidate.tooltipBindingType.rawValue, 999, "unknown typed tooltip enum raw value retained")
+C_TooltipInfo.GetBagItem = function() return { lines = { { type = Enum.TooltipDataLineType.ItemBinding,
+    args = { { field = "bindingType", intVal = Enum.TooltipDataItemBinding.BindToAccountUntilEquipped } } } } } end
+candidate = rawCandidate(); equal(candidate.tooltipBindingType.value,
+    Enum.TooltipDataItemBinding.BindToAccountUntilEquipped, "typed account-until-equipped enum captured")
+C_PlayerInfo.CanUseItem = function() return false end
+candidate = rawCandidate(); equal(candidate.currentCharacterCanUse.value, false, "current-character false is preserved")
+C_PlayerInfo.CanUseItem = function() error("unavailable") end
+candidate = rawCandidate(); equal(candidate.currentCharacterCanUse.state, "UNKNOWN", "current-character API error stays unknown")
+C_Item.GetItemID = function() return 100 end
+candidate = rawCandidate(); equal(candidate.candidateState, "UNKNOWN", "replaced location cannot assert candidate identity")
+equal(candidate.itemGUID.state, "UNKNOWN", "replaced location cannot attach a GUID")
+C_Item.IsEquippableItem = function() return false end
+C_Item.GetItemID = savedAPIs.itemID
+local nonEquippable, state = rawCandidate(); equal(nonEquippable, nil, "known non-equippable omitted"); equal(state, "not-equippable", "non-equippable result explicit internally")
+C_Item.IsEquippableItem = function() return true end
+C_Item.IsItemDataCached = function() return false end
+C_Item.IsEquippableItem = function() return false end
+candidate, state = rawCandidate(); equal(candidate.candidateState, "UNKNOWN", "uncached item not dropped as non-equippable")
+check(requests > 1, "location-scoped async loading requested")
+for key, value in pairs(savedAPIs) do
+    if key == "itemID" then C_Item.GetItemID = value
+    elseif key == "exists" then C_Item.DoesItemExist = value
+    elseif key == "itemLink" then C_Item.GetItemLink = value
+    elseif key == "guid" then C_Item.GetItemGUID = value
+    elseif key == "invType" then C_Item.GetItemInventoryType = value
+    elseif key == "currentLevel" then C_Item.GetCurrentItemLevel = value
+    elseif key == "isBound" then C_Item.IsBound = value
+    elseif key == "boundUntil" then C_Item.IsBoundToAccountUntilEquip = value
+    elseif key == "info" then C_Item.GetItemInfo = value
+    elseif key == "equippable" then C_Item.IsEquippableItem = value
+    elseif key == "bindAccount" then C_Item.IsItemBindToAccount = value
+    elseif key == "bindUntil" then C_Item.IsItemBindToAccountUntilEquip = value
+    elseif key == "cached" then C_Item.IsItemDataCached = value
+    elseif key == "canUse" then C_PlayerInfo.CanUseItem = value
+    elseif key == "bagTooltip" then C_TooltipInfo.GetBagItem = value end
+end
+local retailProject = WOW_PROJECT_ID
+WOW_PROJECT_ID = 2
+equal(C.CollectGearCandidates(), nil, "candidate collector is Retail-only")
+equal(S.GetSnapshot().gearCandidates, nil, "Retail sidecar is not exposed for another client family")
+WOW_PROJECT_ID = retailProject
 equal(#S.record.sections.spells.data.entries, 5, "deduplicated learned spells including profession abilities")
 equal(S.record.sections.spells.data.entries[5].spellID, 1005, "profession spell outside class tab ranges")
 equal(#S.record.sections.professions.data.entries, 3, "canonical professions")
@@ -194,13 +342,36 @@ equal(S.Render(frozen), rendered, "deterministic rendering")
 for _, key in ipairs(S.order) do check(rendered:find(S.RenderSection(key, frozen), 1, true), "shared section renderer " .. key) end
 check(rendered:find("ClientFamily: Retail", 1, true), "Retail metadata rendered")
 check(rendered:find(itemRef, 1, true), "full itemRef rendered")
+check(rendered:find("[GEAR CANDIDATES]", 1, true), "candidate sidecar rendered additively")
+check(not S.Render(frozen, { "bags", "bank" }):find("[GEAR CANDIDATES]", 1, true), "focused legacy section rendering excludes sidecar")
+check(S.Render(frozen, { "gearCandidates" }):find("[GEAR CANDIDATES]", 1, true), "focused sidecar selection is supported")
+check(not rendered:find("transferableToAlt", 1, true) and not rendered:find("accountCanUse", 1, true)
+    and not rendered:find("recommendedUpgrade", 1, true) and not rendered:find("surplus", 1, true), "renderer has no derived policy outputs")
 check(not rendered:find("Not a rank", 1, true), "no manufactured rank")
+local goodGearCandidates = S.record.gearCandidates
+local originalRanges = C.GetBankRanges
+C.GetBankRanges = function() return nil, nil end
+event("BAG_UPDATE_DELAYED"); advance(3)
+equal(S.record.gearCandidates.observedAt, goodGearCandidates.observedAt, "failed candidate refresh retains prior observation")
+equal(#S.record.gearCandidates.candidates, #goodGearCandidates.candidates, "failed candidate refresh retains prior rows")
+C.GetBankRanges = originalRanges
+event("BAG_UPDATE_DELAYED"); advance(1)
 BankFrame:Show(); event("BANKFRAME_OPENED"); advance(1)
 equal(#S.record.sections.bank.data.containers, 2, "character purchased tabs only")
+local bankCandidateSeen = false
+for _, candidate in ipairs(S.record.gearCandidates.candidates) do
+    if candidate.observedLocation.type == "BANK_SLOT" then bankCandidateSeen = true end
+end
+check(bankCandidateSeen, "viewable Character Bank candidates included")
 check(S.Render(S.GetSnapshot()):find("ACCOUNT/Warband API-supported but deferred", 1, true), "explicit account limitation")
 local bankObserved = S.record.sections.bank.observedAt
 bankView = false; event("BANK_TABS_CHANGED"); advance(3)
 equal(S.record.sections.bank.observedAt, bankObserved, "unviewable bank preserves last seen data")
+local bankCandidateLastSeen = false
+for _, candidate in ipairs(S.record.gearCandidates.candidates) do
+    if candidate.observedLocation.type == "BANK_SLOT" and candidate.observationState == "LAST_SEEN" then bankCandidateLastSeen = true end
+end
+check(bankCandidateLastSeen, "inaccessible bank candidate retained as last-seen")
 check(S.record.sections.bank.lastAttemptError, "unviewable refresh reported")
 check(S.RenderSection("bank", S.GetSnapshot()):find("LAST_SEEN", 1, true), "unviewable open bank is last seen")
 event("BANKFRAME_CLOSED"); BankFrame:Hide()
@@ -210,8 +381,17 @@ pending = true; event("PLAYER_EQUIPMENT_CHANGED"); advance(3)
 equal(S.record.sections.equipment.completeness, "partial", "delayed modern equipment partial")
 equal(S.record.sections.equipment.data.slots[1].itemString, itemRef, "identity survives metadata delay")
 check(requests > 1, "metadata loading requested")
+local pendingCandidate
+for _, candidate in ipairs(S.record.gearCandidates.candidates) do
+    if candidate.observedLocation.type == "EQUIPMENT_SLOT" then pendingCandidate = candidate end
+end
+check(pendingCandidate and pendingCandidate.candidateState == "UNKNOWN", "uncached equippability remains an unknown candidate")
+equal(pendingCandidate.currentItemLevel.state, "UNKNOWN", "pending instance level remains unknown")
+check(S.Render(S.GetSnapshot()):find("UNKNOWN", 1, true), "unknown evidence round-trips through snapshot/render")
+check(S.dirty.gearCandidates == nil, "candidate asynchronous retries exhaust within bounded scheduler")
 pending = false; event("ITEM_DATA_LOAD_RESULT", 240001); advance(1)
 equal(S.record.sections.equipment.completeness, "complete", "metadata event repairs equipment")
+check(S.record.gearCandidates.completeness == "complete", "candidate retry resolves after item data event")
 event("TRAINER_SHOW"); advance(1)
 equal(S.record.sections.trainer.data.snapshots.PROF_ALCHEMY.services[1].requiredLevel, 80, "canonical Retail trainer tuple")
 event("TRAINER_CLOSED"); trainerCategory = "Blacksmithing"; event("TRAINER_SHOW"); advance(1); event("TRAINER_CLOSED")

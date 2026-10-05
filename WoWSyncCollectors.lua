@@ -133,6 +133,19 @@ S.collectors.equipment = function()
         reason = incomplete and "Item metadata or equipped tooltip pending" or nil, retry = incomplete }
 end
 
+S.collectors.gearCandidates = function()
+    if not Compat.IsRetail() or not Compat.CollectGearCandidates then
+        return nil, { reason = "Retail gear candidate collector unavailable" }
+    end
+    local candidates, pending = Compat.CollectGearCandidates()
+    if not candidates then return nil, { reason = "Candidate locations unavailable", retry = true } end
+    return { candidates = candidates }, {
+        completeness = pending and "partial" or "complete",
+        reason = pending and "Some candidate item data is pending" or nil,
+        retry = pending,
+    }
+end
+
 S.collectors.professions = function()
     return Compat.GetProfessionState(readers.Professions)
 end
