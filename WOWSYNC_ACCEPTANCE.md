@@ -1,9 +1,9 @@
 # WoWSync implementation and acceptance checklist
 
-Status: stable v1 scope accepted following user-reported primary in-game validation
-and final automated regression checks. No new export modes or companion features
-were added. A narrow equipment-readiness lifecycle correction is regression-tested;
-its effect on the previously reported in-game partial flag is not yet observed.
+Status: stable WOWSYNC v1 scope remains accepted. Retail spec/equipment
+co-observation persistence is structured SavedVariables evidence and awaits
+follow-up live validation after its persistence correction. No new export modes
+or companion features were added.
 
 Version naming: the legacy baseline is GearExport 2.1 (`6f58d2e`); this package's TOC
 is 2.2, while the canonical export and structured schema remain WoWSync v1. The user
@@ -26,8 +26,11 @@ referred to the tested build as WoWSync v2.1; these labels do not require a sche
 - [x] Defer TSM price enrichment, mailbox/AH capture, recipe catalogues, and pet spells.
 - [x] Automated Retail active-spec/equipment co-observation verifies readiness,
       roster fields, before/after bracket, exact equipment observation link,
-      retry behavior, text-format parity, and omission from later unrelated
-      exports. Live Retail validation remains pending.
+      retry behavior, equipment-envelope ownership, projection through
+      unrelated and logout refreshes, failed-attempt retention, replacement
+      clearing, mismatch rejection, persistence reinitialization, and
+      WOWSYNC v1 text-format parity. Live Retail validation is pending a
+      follow-up capture after the persistence correction.
 
 ## Automated validation
 

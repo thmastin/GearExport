@@ -339,13 +339,20 @@ live validation limitations.
 
 ## Retail specialization/equipment co-observation (additive, SavedVariables only)
 
-`latestExport.specEquipmentObservation` is Retail-only evidence attached to
-the current `latestExport` SavedVariables record. It is a snapshot-local
-co-observation. It is not stored in the generic `combatSpecialization` section
-and is never merged forward as `LAST_SEEN`. The existing equipment collector
-and its `data.slots` representation, completeness rules, timestamps, occupied
-items, and explicit empty-slot behavior are unchanged. The existing
-`WOWSYNC v1` text export is unchanged.
+`sections.equipment.specEquipmentObservation` is the canonical Retail-only
+co-observation, stored on the same committed equipment envelope as its data and
+`observedAt`/`capture`/`revision` metadata. `latestExport.specEquipmentObservation`
+is a projection from that envelope when its complete link tuple matches. It
+survives unrelated export regeneration, including logout, while that equipment
+envelope remains current. A successful newer equipment commit replaces the
+envelope and cannot inherit older specialization evidence. A failed or
+non-committing attempt leaves the prior committed envelope and its evidence
+intact. This is observation-local provenance, not generic character state or
+`LAST_SEEN` merging, and it has no age-based expiration. It is not an
+Equipment Manager association. The existing equipment collector and its
+`data.slots` representation, completeness rules, timestamps, occupied items,
+and explicit empty-slot behavior are unchanged. The existing `WOWSYNC v1`
+text export is unchanged.
 
 The evidence has `contractVersion=1`, `clientFamily="Retail"`,
 `readiness={state=...}`, `roster={state=..., classID?, count?, specializations?}`,

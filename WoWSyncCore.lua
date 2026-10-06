@@ -348,15 +348,34 @@ function S.RequestSync()
     return true
 end
 
+local function HasMatchingEquipmentObservation(section, observation)
+    local link = type(observation) == "table" and observation.equipmentObservation or nil
+    if type(link) ~= "table" or type(section) ~= "table"
+        or section.observedAt == nil or section.capture == nil or section.revision == nil
+        or link.observedAt == nil or link.capture == nil or link.revision == nil then
+        return false
+    end
+    return link.observedAt == section.observedAt
+        and link.capture == section.capture
+        and link.revision == section.revision
+end
+
 function S.GetSnapshot()
     if not S.Initialize() then return nil end
     if not S.guild and S.ResolveGuildBankOwner then S.ResolveGuildBankOwner() end
     local snapshot = { identity = S.Copy(S.record.identity), sections = S.Copy(S.record.sections),
         visits = S.Copy(S.record.visits), itemMetadata = S.Copy(S.record.itemMetadata) }
-    -- One-shot evidence for an equipment observation completed since the last
-    -- latestExport handoff. Never copy this observation into later exports.
-    if S.pendingSpecEquipmentObservation then
-        snapshot.specEquipmentObservation = S.Copy(S.pendingSpecEquipmentObservation)
+    -- The equipment envelope owns the evidence for its exact committed scan.
+    -- Re-rendering a snapshot must not depend on an already-consumed handoff.
+    local retailOK, isRetail = false, false
+    if WoWSyncCompat and type(WoWSyncCompat.IsRetail) == "function" then
+        retailOK, isRetail = pcall(WoWSyncCompat.IsRetail)
+    end
+    local equipment = snapshot.sections and snapshot.sections.equipment
+    local observation = equipment and equipment.specEquipmentObservation
+    if retailOK and isRetail and HasMatchingEquipmentObservation(equipment, observation)
+        and observation.clientFamily == "Retail" then
+        snapshot.specEquipmentObservation = S.Copy(observation)
     end
     snapshot.schemaVersion = S.schemaVersion
     snapshot.generatedAt = S.Now()
@@ -405,7 +424,6 @@ local function RefreshLatestExport()
         latestExport.specEquipmentObservation = S.Copy(snapshot.specEquipmentObservation)
     end
     S.record.latestExport = latestExport
-    if snapshot.specEquipmentObservation then S.pendingSpecEquipmentObservation = nil end
     S.autoExportPending = next(S.dirty) and true or nil
     return text
 end
@@ -418,7 +436,6 @@ local function Process(force)
         local pending = S.dirty[key]
         if pending and (force or now >= pending.due) then
             S.dirty[key] = nil
-            if key == "equipment" then S.pendingSpecEquipmentObservation = nil end
             local ok, data, meta = pcall(S.collectors[key])
             meta = ok and (meta or {}) or { reason = "Collector error: " .. tostring(data), retry = true }
             if ok and data then
@@ -435,7 +452,7 @@ local function Process(force)
                         local observation = S.Copy(meta.specEquipmentObservation)
                         observation.equipmentObservation = { observedAt = section.observedAt,
                             capture = section.capture, revision = section.revision }
-                        S.pendingSpecEquipmentObservation = observation
+                        section.specEquipmentObservation = observation
                     end
                 end
             else S.Attempt(key, meta.reason or "Data unavailable", meta.stale) end

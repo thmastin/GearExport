@@ -616,7 +616,7 @@ check(oldRender:find("[PROFESSIONS]", 1, true), "schema sections retained")
 assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
 assert(loadfile("tests/retail_played_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/state_domains_test.lua"))()(S, check, equal)
-assert(loadfile("tests/spec_equipment_test.lua"))()(S, check, equal, advance, event)
+local specEquipmentState = assert(loadfile("tests/spec_equipment_test.lua"))()(S, check, equal, advance, event)
 assert(loadfile("tests/profession_recipes_test.lua"))()(S, check, equal)
 local savedDB = WoWSyncDB
 local reloaded = {}
@@ -626,6 +626,25 @@ end
 reloaded.Sync.Initialize()
 equal(WoWSyncDB, savedDB, "reload preserves database")
 check(WoWSyncDB.characters["Player-Retail-A"].sections.trainer.data.snapshots.PROF_ALCHEMY, "trainer persistence across reload")
+local persistedCharacter = WoWSyncDB.characters["Player-Retail-B"]
+local persistedEquipment = persistedCharacter.sections.equipment
+local persistedObservation = persistedEquipment.specEquipmentObservation
+check(persistedObservation ~= nil, "equipment envelope evidence survives SavedVariables reinitialization")
+equal(persistedObservation.equipmentObservation.observedAt, persistedEquipment.observedAt,
+  "reinitialized envelope evidence observedAt remains linked")
+equal(persistedObservation.equipmentObservation.capture, persistedEquipment.capture,
+  "reinitialized envelope evidence capture remains linked")
+equal(persistedObservation.equipmentObservation.revision, persistedEquipment.revision,
+  "reinitialized envelope evidence revision remains linked")
+check(persistedCharacter.latestExport.specEquipmentObservation ~= nil,
+  "latestExport evidence projection survives SavedVariables reinitialization")
+local reinitializedSnapshot = reloaded.Sync.GetSnapshot()
+check(reinitializedSnapshot.specEquipmentObservation ~= nil,
+  "reinitialized snapshot derives evidence from equipment envelope")
+equal(reinitializedSnapshot.specEquipmentObservation.equipmentObservation.capture, persistedEquipment.capture,
+  "reinitialized snapshot projects the exact equipment observation")
+persistedCharacter.sections.equipment = specEquipmentState.equipment
+persistedCharacter.latestExport = specEquipmentState.latestExport
 check(not SlashCmdList.BANKCLEANUP, "Retail does not load BankCleanup")
 equal(actions, 0, "no actions")
 print("PASS: " .. passed .. " Retail assertions; 0 gameplay actions")

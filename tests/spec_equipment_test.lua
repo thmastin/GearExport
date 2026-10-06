@@ -1,6 +1,8 @@
 return function(S, check, equal, advance, event)
   local oldSpecAPI, oldClass, oldLink, oldRetail = C_SpecializationInfo, UnitClass, GetInventoryItemLink, WoWSyncCompat.IsRetail
   local oldItemInfo = C_Item.GetItemInfo
+  local originalEquipmentSection = S.Copy(S.record.sections.equipment)
+  local originalLatestExport = S.Copy(S.record.latestExport)
   local activeIDs, activeRead, rosterRows, ready, trace = {}, 0, {}, true, {}
 
   UnitClass = function() return "Shaman", "SHAMAN", 7 end
@@ -122,8 +124,8 @@ return function(S, check, equal, advance, event)
   equal(data.slots[1].itemID, 240001, "non-Retail equipment collection behavior remains")
   WoWSyncCompat.IsRetail = function() return true end
 
-  -- Process/refresh path: evidence is linked to the equipment section committed
-  -- by this scan, then omitted by the next unrelated export.
+  -- The committed equipment envelope owns its co-observation. Every export
+  -- refresh projects that same observation while its equipment envelope stays current.
   configure({ 253, 253 }, true, rosterRows)
   GetInventoryItemLink = function(unit, slot)
     if slot == 1 and not trace.equipmentMarked then
@@ -134,22 +136,119 @@ return function(S, check, equal, advance, event)
   end
   S.Mark("equipment", 0)
   S.Process(true)
+  local equipmentEnvelope = S.record.sections.equipment
+  check(equipmentEnvelope.specEquipmentObservation ~= nil, "equipment envelope owns co-observation")
+  local envelopeObservation = equipmentEnvelope.specEquipmentObservation
+  local linked = envelopeObservation.equipmentObservation
+  equal(linked.capture, equipmentEnvelope.capture, "envelope link uses exact equipment capture")
+  equal(linked.revision, equipmentEnvelope.revision, "envelope link uses exact equipment revision")
+  equal(linked.observedAt, equipmentEnvelope.observedAt, "envelope link uses exact equipment observedAt")
   local snapshot = S.GetSnapshot()
-  check(snapshot.specEquipmentObservation ~= nil, "snapshot carries just-completed co-observation")
-  local linked = snapshot.specEquipmentObservation.equipmentObservation
-  equal(linked.capture, S.record.sections.equipment.capture, "link uses equipment capture identity")
-  equal(linked.revision, S.record.sections.equipment.revision, "link uses equipment section revision")
-  equal(linked.observedAt, S.record.sections.equipment.observedAt, "link uses equipment section observedAt")
+  check(snapshot.specEquipmentObservation ~= nil, "snapshot projects envelope-owned co-observation")
+  equal(snapshot.specEquipmentObservation.equipmentObservation.capture, equipmentEnvelope.capture,
+    "snapshot projection links exact equipment capture")
+  equal(snapshot.specEquipmentObservation.equipmentObservation.revision, equipmentEnvelope.revision,
+    "snapshot projection links exact equipment revision")
+  equal(snapshot.specEquipmentObservation.equipmentObservation.observedAt, equipmentEnvelope.observedAt,
+    "snapshot projection links exact equipment observedAt")
   local withoutEvidence = S.Copy(snapshot)
   withoutEvidence.specEquipmentObservation = nil
+  withoutEvidence.sections.equipment.specEquipmentObservation = nil
   equal(S.Render(snapshot), S.Render(withoutEvidence), "structured co-observation leaves WOWSYNC v1 text unchanged")
   advance(0.1)
   check(S.record.latestExport.specEquipmentObservation ~= nil, "SavedVariables latestExport has structured sidecar")
   equal(S.record.latestExport.specEquipmentObservation.equipmentObservation.capture,
-    S.record.sections.equipment.capture, "saved evidence points to rendered equipment observation")
+    equipmentEnvelope.capture, "saved evidence projects the rendered equipment observation")
+  local e1 = S.Copy(equipmentEnvelope)
+  local firstGeneratedAt = S.record.latestExport.generatedAt
+  local firstLink = S.Copy(equipmentEnvelope.specEquipmentObservation.equipmentObservation)
+  WoWSyncCompat.IsRetail = function() return false end
+  equal(S.GetSnapshot().specEquipmentObservation, nil, "non-Retail snapshot does not project Retail equipment evidence")
+  WoWSyncCompat.IsRetail = function() return true end
   event("PLAYER_MONEY")
-  advance(0.5)
-  equal(S.record.latestExport.specEquipmentObservation, nil, "unrelated later export does not carry prior co-observation")
+  advance(2)
+  check(S.record.latestExport.generatedAt > firstGeneratedAt, "unrelated refresh advances generatedAt")
+  equal(S.record.sections.equipment.observedAt, e1.observedAt, "unrelated refresh leaves equipment observedAt")
+  equal(S.record.sections.equipment.capture, e1.capture, "unrelated refresh leaves equipment capture")
+  equal(S.record.sections.equipment.revision, e1.revision, "unrelated refresh leaves equipment revision")
+  check(S.record.latestExport.specEquipmentObservation ~= nil, "unrelated refresh retains linked observation projection")
+  equal(S.record.latestExport.specEquipmentObservation.equipmentObservation.observedAt, firstLink.observedAt,
+    "unrelated refresh retains linked observedAt")
+  equal(S.record.latestExport.specEquipmentObservation.equipmentObservation.capture, firstLink.capture,
+    "unrelated refresh retains linked capture")
+  equal(S.record.latestExport.specEquipmentObservation.equipmentObservation.revision, firstLink.revision,
+    "unrelated refresh retains linked revision")
+
+  local beforeLogoutGeneratedAt = S.record.latestExport.generatedAt
+  advance(1)
+  event("PLAYER_LOGOUT")
+  check(S.record.latestExport.generatedAt > beforeLogoutGeneratedAt, "logout refresh advances generatedAt")
+  equal(S.record.sections.equipment.observedAt, e1.observedAt, "logout leaves equipment observedAt unchanged")
+  equal(S.record.sections.equipment.capture, e1.capture, "logout leaves equipment capture unchanged")
+  equal(S.record.sections.equipment.revision, e1.revision, "logout leaves equipment revision unchanged")
+  check(S.record.latestExport.specEquipmentObservation ~= nil, "logout preserves observation projection")
+  equal(S.record.latestExport.specEquipmentObservation.equipmentObservation.capture, e1.capture,
+    "logout projection remains linked to committed equipment")
+
+  -- A failed attempt updates attempt diagnostics but does not replace or clear
+  -- the prior committed equipment envelope and its observation.
+  local actualEquipmentCollector = S.collectors.equipment
+  S.collectors.equipment = function() return nil, { reason = "synthetic failed scan", retry = true } end
+  S.Mark("equipment", 0)
+  S.Process(true)
+  equal(S.record.sections.equipment.capture, e1.capture, "failed attempt retains committed equipment capture")
+  equal(S.record.sections.equipment.observedAt, e1.observedAt, "failed attempt retains committed equipment observedAt")
+  equal(S.record.sections.equipment.revision, e1.revision, "failed attempt retains committed equipment revision")
+  check(S.record.sections.equipment.specEquipmentObservation ~= nil, "failed attempt retains envelope evidence")
+  equal(S.record.sections.equipment.specEquipmentObservation.equipmentObservation.observedAt, e1.observedAt,
+    "failed attempt retains evidence observedAt link")
+  equal(S.record.sections.equipment.specEquipmentObservation.equipmentObservation.capture, e1.capture,
+    "failed attempt keeps evidence linked to old equipment")
+  equal(S.record.sections.equipment.specEquipmentObservation.equipmentObservation.revision, e1.revision,
+    "failed attempt retains evidence revision link")
+  advance(2)
+  check(S.record.latestExport.specEquipmentObservation ~= nil, "refresh after failed attempt still projects committed evidence")
+  S.collectors.equipment = actualEquipmentCollector
+
+  -- A corrupt/mismatched persisted tuple is never repaired or projected.
+  local validObservation = S.Copy(S.record.sections.equipment.specEquipmentObservation)
+  for _, field in ipairs({ "observedAt", "revision" }) do
+    local value = S.record.sections.equipment.specEquipmentObservation.equipmentObservation[field]
+    S.record.sections.equipment.specEquipmentObservation.equipmentObservation[field] = value + 1000
+    equal(S.GetSnapshot().specEquipmentObservation, nil, "mismatched " .. field .. " link is rejected")
+    S.record.sections.equipment.specEquipmentObservation.equipmentObservation[field] = value
+  end
+  S.record.sections.equipment.specEquipmentObservation.equipmentObservation.capture = e1.capture + 1000
+  equal(S.GetSnapshot().specEquipmentObservation, nil, "mismatched envelope link is rejected by snapshot")
+  S.Mark("character", 0)
+  S.Process(true)
+  advance(2)
+  equal(S.record.latestExport.specEquipmentObservation, nil, "mismatched envelope link is not projected to latestExport")
+  S.record.sections.equipment.specEquipmentObservation = validObservation
+
+  -- A successful newer equipment commit without specialization evidence must
+  -- replace the envelope without inheriting E1's evidence.
+  advance(1)
+  S.collectors.equipment = function()
+    return S.Copy(S.record.sections.equipment.data), { completeness = "complete" }
+  end
+  S.Mark("equipment", 0)
+  S.Process(true)
+  local e2 = S.record.sections.equipment
+  check(e2.capture ~= e1.capture, "new equipment observation has a new capture")
+  equal(e2.specEquipmentObservation, nil, "new equipment envelope without spec evidence does not inherit E1")
+  equal(S.GetSnapshot().specEquipmentObservation, nil, "E2 snapshot has no inherited co-observation")
+  advance(2)
+  equal(S.record.latestExport.specEquipmentObservation, nil, "E2 latestExport does not associate E1 evidence")
+  S.collectors.equipment = actualEquipmentCollector
+
+  -- Leave a valid E1-style record available for the Retail suite's explicit
+  -- reinitialization/persistence check, then let the runner restore its fixture.
+  S.record.sections.equipment = e1
+  S.Mark("character", 0)
+  S.Process(true)
+  advance(2)
+  check(S.record.latestExport.specEquipmentObservation ~= nil, "restored committed envelope projects for persistence check")
 
   -- Each partial/retried scan must finish its own bracket. The test's existing
   -- item metadata stub becomes unavailable and forces the collector retry path.
@@ -164,8 +263,11 @@ return function(S, check, equal, advance, event)
   advance(2.8)
   check(scanCount > 1, "incomplete metadata caused full equipment retries")
   equal(activeRead, scanCount * 2, "every retry has a before and completion-time after spec read")
+  equal(S.record.sections.equipment.specEquipmentObservation.equipmentObservation.capture,
+    S.record.sections.equipment.capture, "latest retry evidence remains linked to its committed envelope")
   C_Item.GetItemInfo = oldItemInfo
 
   C_SpecializationInfo, UnitClass, GetInventoryItemLink = oldSpecAPI, oldClass, oldLink
   WoWSyncCompat.IsRetail = oldRetail
+  return { equipment = originalEquipmentSection, latestExport = originalLatestExport }
 end
