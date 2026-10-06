@@ -1,8 +1,10 @@
 return function(S, check, equal)
-  local oldSpecialization, oldInfo, oldClass = GetSpecialization, GetSpecializationInfo, UnitClass
+  local oldSpecializationInfo, oldClass = C_SpecializationInfo, UnitClass
   local oldClassTalents, oldTraits, oldSkills, oldProfessions, oldProfessionInfo, oldProfSpecs, oldRep, oldGossip = C_ClassTalents, C_Traits, C_TradeSkillUI, GetProfessions, GetProfessionInfo, C_ProfSpecs, C_Reputation, C_GossipInfo
-  GetSpecialization = function() return 2 end
-  GetSpecializationInfo = function() return 263, "Enhancement", "", 1, "DAMAGER" end
+  C_SpecializationInfo = {
+    GetSpecialization = function() return 2 end,
+    GetSpecializationInfo = function() return 263, "Enhancement", "", 1, "DAMAGER", 2, 0, "", 0, true end,
+  }
   UnitClass = function() return "Shaman", "SHAMAN", 7 end
   C_ClassTalents = { GetActiveConfigID = function() return 99679859 end, GetActiveHeroTalentSpec = function() return 55 end }
   C_Traits = { GetSubTreeInfo = function(_, id) equal(id, 55, "Hero Talent subtree name lookup"); return { name = "Totemic" } end }
@@ -86,7 +88,7 @@ return function(S, check, equal)
   equal(S.account.sections.reputation.data.factions[1].factionID, 5, "account-wide reputation stored at account scope")
   equal(#S.record.sections.reputation.data.factions, 1, "account-wide reputation is excluded from character-owned copy")
 
-  GetSpecialization, GetSpecializationInfo, UnitClass = oldSpecialization, oldInfo, oldClass
+  C_SpecializationInfo, UnitClass = oldSpecializationInfo, oldClass
   C_ClassTalents, C_Traits, C_TradeSkillUI = oldClassTalents, oldTraits, oldSkills
   GetProfessions, GetProfessionInfo, C_ProfSpecs, C_Reputation, C_GossipInfo = oldProfessions, oldProfessionInfo, oldProfSpecs, oldRep, oldGossip
 end

@@ -24,6 +24,10 @@ referred to the tested build as WoWSync v2.1; these labels do not require a sche
 - [x] No automatic item movement, vending, mail, auctions, purchases, training,
       equipment changes, spells, or cleanup.
 - [x] Defer TSM price enrichment, mailbox/AH capture, recipe catalogues, and pet spells.
+- [x] Automated Retail active-spec/equipment co-observation verifies readiness,
+      roster fields, before/after bracket, exact equipment observation link,
+      retry behavior, text-format parity, and omission from later unrelated
+      exports. Live Retail validation remains pending.
 
 ## Automated validation
 

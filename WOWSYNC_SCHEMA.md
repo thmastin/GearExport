@@ -337,6 +337,49 @@ session observations. No duration formatting is stored.
 See [the cross-client API audit](PLAYTIME_API_AUDIT.md) for source evidence and
 live validation limitations.
 
+## Retail specialization/equipment co-observation (additive, SavedVariables only)
+
+`latestExport.specEquipmentObservation` is Retail-only evidence attached to
+the current `latestExport` SavedVariables record. It is a snapshot-local
+co-observation. It is not stored in the generic `combatSpecialization` section
+and is never merged forward as `LAST_SEEN`. The existing equipment collector
+and its `data.slots` representation, completeness rules, timestamps, occupied
+items, and explicit empty-slot behavior are unchanged. The existing
+`WOWSYNC v1` text export is unchanged.
+
+The evidence has `contractVersion=1`, `clientFamily="Retail"`,
+`readiness={state=...}`, `roster={state=..., classID?, count?, specializations?}`,
+`activeSpecBefore`, `activeSpecAfter`, `stability`, `atomicity`, and
+`equipmentObservation={observedAt,capture,revision}`. The equipment link uses
+the envelope metadata of the section committed by this exact scan. Roster
+entries preserve `index`, stable numeric `specID`, and any returned `name`,
+`role`, `primaryStat`, and `isUnlocked`. Nil values remain absent; false remains
+false. Specialization index is provenance/lookup only. `specID` is durable
+identity. `isUnlocked` is not required for identity or stability.
+
+Readiness is `READY`, `NOT_READY`, or `UNKNOWN`. A roster is `OBSERVED` only
+after successful enumeration while ready; `NOT_READY` and `UNKNOWN` rosters do
+not masquerade as empty lists. Stability is `NOT_READY` if the client reports
+uninitialized specialization data, `UNKNOWN` if readiness or either active
+specID is unknown, `UNSTABLE` if known before/after specIDs differ, and
+`STABLE` only when readiness is true and both known specIDs match. `STABLE`
+means only that the active specID matched around the completed synchronous
+equipment scan; it does not claim transactional atomicity.
+
+Equipment item metadata can cause the existing collector to return a partial
+observation and retry. Each actual retry re-runs the whole scan and receives a
+new before/after bracket. The after read is not taken when only scheduling a
+retry. Equipment completeness remains governed by the existing equipment
+contract; downstream acceptance still requires sufficiently complete observed
+equipment.
+
+This evidence has no age-based freshness or expiry meaning. GearExport keeps no
+per-spec history, does not synthesize inactive-spec baselines, and does not
+copy a previous spec observation into an unrelated later export. Dashboard may
+later derive latest valid observations from imported snapshots. This evidence
+does not read Equipment Manager sets or infer set associations, and it makes no
+upgrade, suitability, allocation, or recommendation claim.
+
 ## Retail currencies (additive, SavedVariables only)
 
 Retail adds a per-character `currencies` section at

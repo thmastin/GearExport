@@ -375,6 +375,10 @@ if Compat.IsRetail and Compat.IsRetail() and Compat.ReadCurrencyList then
 end
 
 S.collectors.equipment = function()
+    local specObservation
+    if Compat.IsRetail and Compat.IsRetail() and S.BeginRetailSpecEquipmentObservation then
+        specObservation = S.BeginRetailSpecEquipmentObservation()
+    end
     local data, incomplete = { slots = {} }, false
     for slot = 1, 19 do
         local link = GetInventoryItemLink("player", slot)
@@ -392,8 +396,12 @@ S.collectors.equipment = function()
             return nil, { reason = "Equipment identity pending", retry = true }
         end
     end
-    return data, { completeness = incomplete and "partial" or "complete",
+    local meta = { completeness = incomplete and "partial" or "complete",
         reason = incomplete and "Item metadata or equipped tooltip pending" or nil, retry = incomplete }
+    if specObservation and S.FinishRetailSpecEquipmentObservation then
+        meta.specEquipmentObservation = S.FinishRetailSpecEquipmentObservation(specObservation)
+    end
+    return data, meta
 end
 
 S.collectors.professions = function()

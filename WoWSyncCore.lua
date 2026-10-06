@@ -353,6 +353,11 @@ function S.GetSnapshot()
     if not S.guild and S.ResolveGuildBankOwner then S.ResolveGuildBankOwner() end
     local snapshot = { identity = S.Copy(S.record.identity), sections = S.Copy(S.record.sections),
         visits = S.Copy(S.record.visits), itemMetadata = S.Copy(S.record.itemMetadata) }
+    -- One-shot evidence for an equipment observation completed since the last
+    -- latestExport handoff. Never copy this observation into later exports.
+    if S.pendingSpecEquipmentObservation then
+        snapshot.specEquipmentObservation = S.Copy(S.pendingSpecEquipmentObservation)
+    end
     snapshot.schemaVersion = S.schemaVersion
     snapshot.generatedAt = S.Now()
     snapshot.access = { bank = S.bankOpen and (not WoWSyncCompat or WoWSyncCompat.IsBankViewable()), trainer = S.trainerOpen,
@@ -395,7 +400,12 @@ local function RefreshLatestExport()
         return nil
     end
     S.lastRenderError = nil
-    S.record.latestExport = { text = text, generatedAt = snapshot.generatedAt }
+    local latestExport = { text = text, generatedAt = snapshot.generatedAt }
+    if snapshot.specEquipmentObservation then
+        latestExport.specEquipmentObservation = S.Copy(snapshot.specEquipmentObservation)
+    end
+    S.record.latestExport = latestExport
+    if snapshot.specEquipmentObservation then S.pendingSpecEquipmentObservation = nil end
     S.autoExportPending = next(S.dirty) and true or nil
     return text
 end
@@ -408,6 +418,7 @@ local function Process(force)
         local pending = S.dirty[key]
         if pending and (force or now >= pending.due) then
             S.dirty[key] = nil
+            if key == "equipment" then S.pendingSpecEquipmentObservation = nil end
             local ok, data, meta = pcall(S.collectors[key])
             meta = ok and (meta or {}) or { reason = "Collector error: " .. tostring(data), retry = true }
             if ok and data then
@@ -417,6 +428,15 @@ local function Process(force)
                     S.CommitProfessionRecipes(data, meta)
                 else
                     S.Commit(key, data, meta)
+                end
+                if key == "equipment" and type(meta.specEquipmentObservation) == "table" then
+                    local section = S.record and S.record.sections and S.record.sections.equipment
+                    if section and section.capture == S.capture then
+                        local observation = S.Copy(meta.specEquipmentObservation)
+                        observation.equipmentObservation = { observedAt = section.observedAt,
+                            capture = section.capture, revision = section.revision }
+                        S.pendingSpecEquipmentObservation = observation
+                    end
                 end
             else S.Attempt(key, meta.reason or "Data unavailable", meta.stale) end
             if meta.retry and not force and pending.tries < 4

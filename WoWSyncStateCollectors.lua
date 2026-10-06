@@ -25,6 +25,11 @@ local function validBoolean(v)
     if issecretvalue and issecretvalue(v) then return nil end
     return type(v) == "boolean" and v or type(v) == "boolean" and false or nil
 end
+local function validBooleanExact(v)
+    if issecretvalue and issecretvalue(v) then return nil end
+    if type(v) == "boolean" then return v end
+    return nil
+end
 local function safeCall(fn, ...)
     if type(fn) ~= "function" then return "API_MISSING" end
     local packed = { pcall(fn, ...) }
@@ -39,13 +44,95 @@ local function clientIdentity()
     return { clientFamily = "Retail", clientVersion = validString(version), clientBuild = validNumber(buildNumber), interface = validNumber(interface) }
 end
 
-S.collectors.combatSpecialization = function()
-    local indexState, index = safeCall(GetSpecialization)
-    if indexState ~= "OBSERVED_VALUE" then return nil, { reason = "Active specialization " .. indexState, retry = indexState == "NIL_RESULT" } end
-    local infoState, specID, name, _, _, role = safeCall(GetSpecializationInfo, index)
-    if infoState ~= "OBSERVED_VALUE" or not validNumber(specID, true) then
-        return nil, { reason = "Specialization details " .. infoState, retry = infoState == "NIL_RESULT" }
+-- Shared Retail specialization readers. Equipment uses these around its own
+-- synchronous scan; combatSpecialization reuses the active-spec reader but is
+-- deliberately not used as co-observation evidence.
+local function activeSpecialization()
+    local api = C_SpecializationInfo
+    if not api or type(api.GetSpecialization) ~= "function" or type(api.GetSpecializationInfo) ~= "function" then
+        return { state = "UNKNOWN", result = "API_MISSING" }
     end
+    local ok, index = pcall(api.GetSpecialization)
+    if not ok then return { state = "UNKNOWN", result = "API_ERROR", error = tostring(index) } end
+    index = validNumber(index, true)
+    if not index then return { state = "UNKNOWN", result = "NIL_OR_INVALID" } end
+    local infoOK, specID, name, _, _, role, primaryStat, _, _, _, isUnlocked = pcall(api.GetSpecializationInfo, index)
+    if not infoOK then return { state = "UNKNOWN", index = index, result = "API_ERROR", error = tostring(specID) } end
+    specID = validNumber(specID, true)
+    return { state = specID and "OBSERVED" or "UNKNOWN", index = index, specID = specID,
+        name = validString(name), role = validString(role), primaryStat = validNumber(primaryStat),
+        isUnlocked = validBooleanExact(isUnlocked), result = specID and "OBSERVED_VALUE" or "NIL_OR_INVALID" }
+end
+
+local function specializationRoster(readiness)
+    if readiness.state ~= "READY" then return { state = readiness.state } end
+    local api = C_SpecializationInfo
+    if not api or type(api.GetNumSpecializationsForClassID) ~= "function"
+        or type(api.GetSpecializationInfo) ~= "function" then
+        return { state = "UNKNOWN", result = "API_MISSING" }
+    end
+    local classOK, _, _, classID = pcall(UnitClass, "player")
+    classID = classOK and validNumber(classID, true) or nil
+    if not classID then return { state = "UNKNOWN", result = classOK and "CLASS_ID_UNKNOWN" or "API_ERROR" } end
+    local countOK, rawCount = pcall(api.GetNumSpecializationsForClassID, classID)
+    local count = countOK and validNumber(rawCount) or nil
+    if not count or count < 0 or count % 1 ~= 0 or count > 32 then
+        return { state = "UNKNOWN", classID = classID, result = countOK and "COUNT_UNKNOWN" or "API_ERROR",
+            error = not countOK and tostring(rawCount) or nil }
+    end
+    local specs, errorSeen = {}, nil
+    for index = 1, count do
+        local ok, specID, name, _, _, role, primaryStat, _, _, _, isUnlocked = pcall(
+            api.GetSpecializationInfo, index, false, false, nil, nil, nil, classID)
+        if not ok then
+            errorSeen = tostring(specID)
+        else
+            specs[#specs + 1] = { index = index, specID = validNumber(specID, true), name = validString(name),
+                role = validString(role), primaryStat = validNumber(primaryStat), isUnlocked = validBooleanExact(isUnlocked) }
+        end
+    end
+    return { state = errorSeen and "ERROR" or "OBSERVED", classID = classID,
+        count = count, specializations = specs, error = errorSeen }
+end
+
+function S.BeginRetailSpecEquipmentObservation()
+    local readiness = { state = "UNKNOWN", result = "API_MISSING" }
+    local api = C_SpecializationInfo
+    if api and type(api.IsInitialized) == "function" then
+        local ok, initialized = pcall(api.IsInitialized)
+        if not ok then readiness = { state = "UNKNOWN", result = "API_ERROR", error = tostring(initialized) }
+        elseif type(initialized) == "boolean" then
+            readiness = { state = initialized and "READY" or "NOT_READY", isInitialized = initialized,
+                result = "OBSERVED_VALUE" }
+        else readiness = { state = "UNKNOWN", result = "NIL_OR_INVALID" } end
+    end
+    return { contractVersion = 1, clientFamily = "Retail", readiness = readiness,
+        roster = specializationRoster(readiness), activeSpecBefore = activeSpecialization() }
+end
+
+function S.FinishRetailSpecEquipmentObservation(observation)
+    observation.activeSpecAfter = activeSpecialization()
+    local before, after = observation.activeSpecBefore, observation.activeSpecAfter
+    if observation.readiness.state == "NOT_READY" then
+        observation.stability = "NOT_READY"
+    elseif observation.readiness.state ~= "READY" then
+        observation.stability = "UNKNOWN"
+    elseif before.state ~= "OBSERVED" or after.state ~= "OBSERVED"
+        or not before.specID or not after.specID then
+        observation.stability = "UNKNOWN"
+    elseif before.specID == after.specID then
+        observation.stability = "STABLE"
+    else
+        observation.stability = "UNSTABLE"
+    end
+    observation.atomicity = "NOT_CLAIMED"
+    return observation
+end
+
+S.collectors.combatSpecialization = function()
+    local active = activeSpecialization()
+    if active.state ~= "OBSERVED" then return nil, { reason = "Active specialization " .. active.result,
+        retry = active.result == "NIL_OR_INVALID" } end
     local configState, configID = safeCall(C_ClassTalents and C_ClassTalents.GetActiveConfigID)
     local heroState, heroID = safeCall(C_ClassTalents and C_ClassTalents.GetActiveHeroTalentSpec)
     local hero = validNumber(heroID, true)
@@ -57,8 +144,8 @@ S.collectors.combatSpecialization = function()
         if type(detail) == "table" then heroName = validString(detail.name) end
     end
     local data = { formatVersion = 1, observedAt = S.Now(), ownerScope = "CHARACTER", client = clientIdentity(),
-        activeSpec = { evidence = "OBSERVED", index = validNumber(index), specID = validNumber(specID, true),
-            classID = validNumber(classID, true), name = validString(name), role = validString(role) },
+        activeSpec = { evidence = "OBSERVED", index = active.index, specID = active.specID,
+            classID = validNumber(classID, true), name = active.name, role = active.role },
         talentConfig = { evidence = configState == "OBSERVED_VALUE" and validNumber(configID, true) and "OBSERVED" or "UNKNOWN",
             configID = configState == "OBSERVED_VALUE" and validNumber(configID, true) or nil, result = configState },
         heroTalent = { evidence = hero and "OBSERVED" or "UNKNOWN", subtreeID = hero, name = heroName, result = heroState } }
