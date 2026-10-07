@@ -222,6 +222,21 @@ The account/alt export modes and read-only external companion remain documented
 extension paths only. BankCleanup remains a separate, read-only dependency boundary
 for WoWSync and is not modified by the Classic compatibility work.
 
+## Retail spec/equipment evidence
+
+- [x] Retail equipment envelope owns its same-scan specialization co-observation
+      and exact `observedAt`/`capture`/`revision` link.
+- [x] `latestExport` projects only a matching current envelope sidecar; unrelated
+      regeneration and logout preserve it, while a newer equipment commit cannot
+      inherit it.
+- [x] Synchronous before/after active-spec bracket; `STABLE`/`UNSTABLE` require
+      known matching/differing specIDs, and atomicity remains `NOT_CLAIMED`.
+- [x] Structured SavedVariables only; no WOWSYNC v1 text change, generic
+      LAST_SEEN merge, age expiration, Equipment Manager association, or gear
+      recommendation semantics.
+- [ ] Adversarial review and live Retail validation of the current-main semantic
+      port are pending; prior validation was for a different code lineage.
+
 ## README LLM documentation — completed after primary validation
 
 The user explicitly confirmed validation passed and requested these prompts in the

@@ -326,3 +326,29 @@ session observations. No duration formatting is stored.
 
 See [the cross-client API audit](PLAYTIME_API_AUDIT.md) for source evidence and
 live validation limitations.
+
+## Retail specialization/equipment co-observation (structured SavedVariables only)
+
+Retail equipment collection may attach `specEquipmentObservation` to the same
+`sections.equipment` envelope that owns the equipment `data`, `observedAt`,
+`capture`, `revision`, and completeness. Its `equipmentObservation` tuple copies
+those three envelope values exactly. Snapshot and `latestExport` projections are
+created only when all tuple fields match the current equipment envelope. A new
+successful equipment observation replaces the envelope and cannot inherit prior
+specialization evidence; a failed attempt leaves the previous committed envelope
+and its evidence paired. Re-rendering may update `latestExport.generatedAt` while
+the equipment observation and its evidence remain unchanged. `generatedAt` is not
+equipment provenance.
+
+The evidence is Retail-only and records specialization readiness, the available
+roster, active specialization before and after the synchronous equipment scan,
+and a stability classification. `specID` is the durable identity; roster index
+is provenance. Missing values remain unknown. `STABLE` means only that readiness
+was true and both known active `specID` values matched; `UNSTABLE` means both were
+known and differed. It does not claim transactional atomicity (`NOT_CLAIMED`).
+`observedAt` is provenance, not an expiration threshold. GearExport retains no
+historical per-spec baseline and applies no age-based or `LAST_SEEN` behavior.
+
+This sidecar is not rendered into WOWSYNC v1; existing `[EQUIPMENT]` and
+`[GEAR CANDIDATES]` text remain unchanged. It contains no Equipment Manager
+association and makes no upgrade, suitability, or allocation conclusion.

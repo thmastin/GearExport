@@ -111,7 +111,83 @@ end
 S.collectors.bags = function() return Containers(false) end
 S.collectors.bank = function() return Containers(true) end
 
+local function OptionalCall(fn, ...)
+    if type(fn) ~= "function" then return false, nil end
+    return pcall(fn, ...)
+end
+
+local function SpecObservation()
+    if not Compat.IsRetail() then return nil end
+    local api = C_SpecializationInfo
+    local observation = { contractVersion = 1, clientFamily = "Retail", atomicity = "NOT_CLAIMED" }
+    local ok, initialized = OptionalCall(api and api.IsInitialized)
+    if not ok or type(initialized) ~= "boolean" then
+        observation.readiness = "UNKNOWN"
+    elseif initialized then
+        observation.readiness = "READY"
+    else
+        observation.readiness = "NOT_READY"
+    end
+
+    local classOK, _, _, classID = pcall(UnitClass, "player")
+    if classOK and classID ~= nil then observation.classID = classID end
+    if observation.readiness == "READY" then
+        local roster = { state = "UNKNOWN" }
+        observation.roster = roster
+        local countOK, count = OptionalCall(api and api.GetNumSpecializationsForClassID, classID)
+        if countOK and type(count) == "number" and count >= 0 and count % 1 == 0 then
+            local rows, failed = {}, false
+            for index = 1, count do
+                local infoOK, specID, name, _, _, role, primaryStat, _, _, _, isUnlocked =
+                    OptionalCall(api and api.GetSpecializationInfo, index, false, false, nil, nil, nil, classID)
+                if not infoOK or type(specID) ~= "number" or specID < 1 or specID % 1 ~= 0 then
+                    failed = true
+                else
+                    local row = { index = index, specID = specID }
+                    if name ~= nil then row.name = name end
+                    if role ~= nil then row.role = role end
+                    if primaryStat ~= nil then row.primaryStat = primaryStat end
+                    if isUnlocked ~= nil then row.isUnlocked = isUnlocked end
+                    rows[#rows + 1] = row
+                end
+            end
+            if not failed then
+                roster.state, roster.specializations = "OBSERVED", rows
+            else
+                roster.state, roster.specializations = "ERROR", rows
+            end
+        elseif countOK then
+            roster.state = "UNKNOWN"
+        else
+            roster.state = "ERROR"
+        end
+    else
+        observation.roster = { state = observation.readiness == "NOT_READY" and "NOT_READY" or "UNKNOWN" }
+    end
+
+    local function ReadActive()
+        local active = {}
+        if observation.readiness ~= "READY" then return active end
+        local indexOK, index = OptionalCall(api and api.GetSpecialization)
+        if not indexOK then return active end
+        if index ~= nil then active.index = index end
+        if type(index) ~= "number" then return active end
+        local infoOK, specID, name, _, _, role, primaryStat, _, _, _, isUnlocked =
+            OptionalCall(api and api.GetSpecializationInfo, index)
+        if not infoOK then return active end
+        if type(specID) == "number" and specID >= 1 and specID % 1 == 0 then active.specID = specID end
+        if name ~= nil then active.name = name end
+        if role ~= nil then active.role = role end
+        if primaryStat ~= nil then active.primaryStat = primaryStat end
+        if isUnlocked ~= nil then active.isUnlocked = isUnlocked end
+        return active
+    end
+    observation.activeSpecBefore = ReadActive()
+    return observation, ReadActive
+end
+
 S.collectors.equipment = function()
+    local observation, readActiveAfter = SpecObservation()
     local data, incomplete = { slots = {} }, false
     for slot = 1, 19 do
         local link = GetInventoryItemLink("player", slot)
@@ -129,8 +205,21 @@ S.collectors.equipment = function()
             return nil, { reason = "Equipment identity pending", retry = true }
         end
     end
-    return data, { completeness = incomplete and "partial" or "complete",
+    local meta = { completeness = incomplete and "partial" or "complete",
         reason = incomplete and "Item metadata or equipped tooltip pending" or nil, retry = incomplete }
+    if observation then
+        observation.activeSpecAfter = readActiveAfter()
+        local beforeID, afterID = observation.activeSpecBefore.specID, observation.activeSpecAfter.specID
+        if observation.readiness == "NOT_READY" then
+            observation.stability = "NOT_READY"
+        elseif observation.readiness == "READY" and type(beforeID) == "number" and type(afterID) == "number" then
+            observation.stability = beforeID == afterID and "STABLE" or "UNSTABLE"
+        else
+            observation.stability = "UNKNOWN"
+        end
+        meta.specEquipmentObservation = observation
+    end
+    return data, meta
 end
 
 S.collectors.gearCandidates = function()

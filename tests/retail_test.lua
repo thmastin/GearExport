@@ -576,6 +576,7 @@ check(oldRender:find("[PROFESSIONS]", 1, true), "schema sections retained")
 -- Reinitialize with the same SavedVariables as /reload would.
 assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
 assert(loadfile("tests/retail_played_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/spec_equipment_test.lua"))()(S, check, equal, advance, event, addon)
 local savedDB = WoWSyncDB
 local reloaded = {}
 for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncRender.lua" }) do
@@ -584,6 +585,11 @@ end
 reloaded.Sync.Initialize()
 equal(WoWSyncDB, savedDB, "reload preserves database")
 check(WoWSyncDB.characters["Player-Retail-A"].sections.trainer.data.snapshots.PROF_ALCHEMY, "trainer persistence across reload")
+local reloadedFeatureRecord = WoWSyncDB.characters[UnitGUID("player")]
+check(reloadedFeatureRecord.sections.equipment.specEquipmentObservation,
+    "equipment-envelope evidence survives reinitialization")
+check(reloadedFeatureRecord.latestExport.specEquipmentObservation,
+    "latestExport projection survives reinitialization")
 check(not SlashCmdList.BANKCLEANUP, "Retail does not load BankCleanup")
 equal(actions, 0, "no actions")
 print("PASS: " .. passed .. " Retail assertions; 0 gameplay actions")

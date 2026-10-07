@@ -177,6 +177,17 @@ function S.GetSnapshot()
         visits = S.Copy(S.record.visits) }
     if WoWSyncCompat and WoWSyncCompat.IsRetail() then
         snapshot.gearCandidates = S.Copy(S.record.gearCandidates)
+        local equipment = snapshot.sections.equipment
+        local observation = equipment and equipment.specEquipmentObservation
+        local link = type(observation) == "table" and observation.equipmentObservation
+        if type(link) == "table" and type(link.observedAt) == "number"
+            and type(link.capture) == "number" and type(link.revision) == "number"
+            and type(equipment.observedAt) == "number" and type(equipment.capture) == "number"
+            and type(equipment.revision) == "number"
+            and link.observedAt == equipment.observedAt and link.capture == equipment.capture
+            and link.revision == equipment.revision and observation.clientFamily == "Retail" then
+            snapshot.specEquipmentObservation = S.Copy(observation)
+        end
     end
     snapshot.schemaVersion = S.schemaVersion
     snapshot.generatedAt = S.Now()
@@ -194,6 +205,22 @@ end
 
 local frame = CreateFrame("Frame")
 S.eventFrame = frame
+local function RefreshLatestExport()
+    local snapshot = S.GetSnapshot()
+    if not snapshot then return nil end
+    local ok, text = pcall(S.Render, snapshot)
+    if not ok or type(text) ~= "string" then
+        S.lastRenderError = tostring(text)
+        return nil
+    end
+    local latestExport = { text = text, generatedAt = snapshot.generatedAt }
+    if snapshot.specEquipmentObservation then
+        latestExport.specEquipmentObservation = S.Copy(snapshot.specEquipmentObservation)
+    end
+    S.record.latestExport = latestExport
+    S.lastRenderError = nil
+    return text
+end
 local function Process(force)
     if not S.Initialize() then return end
     S.capture = (S.capture or 0) + 1
@@ -211,6 +238,22 @@ local function Process(force)
                     CommitGearCandidates(data, meta)
                 else
                     S.Commit(key, data, meta)
+                    if key == "equipment" then
+                        local section = S.record.sections.equipment
+                        local observation = meta.specEquipmentObservation
+                        if WoWSyncCompat and WoWSyncCompat.IsRetail() and type(observation) == "table"
+                            and observation.clientFamily == "Retail"
+                            and section.capture == S.capture
+                            and type(observation.activeSpecBefore) == "table"
+                            and type(observation.activeSpecAfter) == "table"
+                            and (observation.stability == "STABLE" or observation.stability == "UNSTABLE"
+                                or observation.stability == "UNKNOWN" or observation.stability == "NOT_READY") then
+                            observation = S.Copy(observation)
+                            observation.equipmentObservation = { observedAt = section.observedAt,
+                                capture = section.capture, revision = section.revision }
+                            section.specEquipmentObservation = observation
+                        end
+                    end
                 end
             elseif key == "gearCandidates" then
                 S.record.gearCandidatesLastAttemptAt = S.Now()
@@ -232,12 +275,8 @@ local function Tick()
     if S.exportRequest and (not next(S.dirty) and not S.playedPending or GetTime() >= S.exportRequest.deadline) then
         local callback = S.exportRequest.callback
         S.exportRequest = nil
-        local snapshot = S.GetSnapshot()
-        if snapshot then
-            local text = S.Render(snapshot)
-            S.record.latestExport = { text = text, generatedAt = snapshot.generatedAt }
-            callback(text)
-        end
+        local text = RefreshLatestExport()
+        if text then callback(text) end
     end
     if not next(S.dirty) and not S.exportRequest then frame:SetScript("OnUpdate", nil) end
 end
@@ -322,7 +361,10 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.RequestPlayed()
         S.Mark("character")
     elseif event == "PLAYER_LOGOUT" then
-        if S.record then Process(true) end
+        if S.record then
+            Process(true)
+            if S.record.latestExport then RefreshLatestExport() end
+        end
     elseif event == "BANKFRAME_OPENED" then
         S.bankOpen = true; Visit("bank"); S.Mark("bank"); S.Mark("bags"); MarkGearCandidates()
     elseif event == "BANKFRAME_CLOSED" then
