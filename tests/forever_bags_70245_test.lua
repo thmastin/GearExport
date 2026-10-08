@@ -89,5 +89,16 @@ return function(S, check, equal)
         if slot == 1 then return { itemID = 1, itemName = "moving", hyperlink = "item:1", stackCount = 1, isLocked = true } end
     end
     equal(S.collectors.bags(), nil, "moving item snapshot fails closed")
+    C_Container.GetContainerItemInfo = oldInfo
+    local observed, observedMeta = S.collectors.bags()
+    S.Commit("bags", observed, observedMeta)
+    C_Container.GetContainerNumSlots = nil
+    local failed, failedMeta = S.collectors.bags()
+    equal(failed, nil, "missing carried API fails the new capture")
+    equal(failedMeta.stale, true, "failed 70245 bag capture marks preserved evidence stale")
+    S.Attempt("bags", failedMeta.reason, failedMeta.stale)
+    local stale = S.RenderSection("bags", S.GetSnapshot())
+    check(stale:find("State: LAST_SEEN", 1, true), "previous bag evidence is not labeled current after failure")
+    check(stale:find("RefreshIssue:", 1, true), "failed capture reason is exported")
     C_Container, issecretvalue = oldAPI, nil
 end

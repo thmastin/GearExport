@@ -36,10 +36,14 @@ local function BindingFacet(info, issues)
     return nil, "UNKNOWN"
 end
 
+local function Failed(reason, retry)
+    return nil, { reason = "Forever 70245 " .. reason, retry = retry, stale = true }
+end
+
 S.collectors.bags = function()
     local api = type(C_Container) == "table" and C_Container or {}
     if type(api.GetContainerNumSlots) ~= "function" or type(api.GetContainerItemInfo) ~= "function" then
-        return nil, { reason = "Forever 70245 carried-container APIs unavailable" }
+        return Failed("carried-container APIs unavailable", false)
     end
     local issues, containers, observedSlots = {}, {}, {}
     -- The probe observed the carried range 0..5, capacities for each index,
@@ -47,7 +51,7 @@ S.collectors.bags = function()
     for bag = 0, 5 do
         local capacity = F.Number("Carried bag " .. bag .. " capacity", api.GetContainerNumSlots, issues, bag)
         if capacity == nil or capacity > 120 then
-            return nil, { reason = "Forever 70245 carried-container capacity unknown or changed" }
+            return Failed("carried-container capacity unknown or changed", false)
         end
         local container = { id = bag, capacity = capacity, slots = {} }
         observedSlots[bag] = {}
@@ -56,19 +60,19 @@ S.collectors.bags = function()
             local result = F.Read("Carried bag " .. bag .. " slot " .. slot, function()
                 return { api.GetContainerItemInfo(bag, slot) }
             end, 1, "table", issues)
-            if not result then return nil, { reason = "Forever 70245 carried-container slot unavailable" } end
+            if not result then return Failed("carried-container slot unavailable", true) end
             if result[1] ~= nil then
                 local info = F.Read("Carried bag item", Field(result, 1), 1, "table", issues)
-                if not info then return nil, { reason = "Forever 70245 carried item restricted or malformed" } end
+                if not info then return Failed("carried item restricted or malformed", true) end
                 local locked = F.Read("Carried item lock", Field(info, "isLocked"), 1, "boolean", issues)
-                if locked ~= false then return nil, { reason = "Forever 70245 carried item lock state unknown" } end
+                if locked ~= false then return Failed("carried item lock state unknown", true) end
                 local id = F.Number("Carried item ID", Field(info, "itemID"), issues)
                 if id == 0 then id = nil end
                 local link = F.Read("Carried item hyperlink", Field(info, "hyperlink"), 1, "string", issues)
                 local ref, linkID = ItemReference(link, id)
-                if not ref then return nil, { reason = "Forever 70245 exact carried item identity unknown" } end
+                if not ref then return Failed("exact carried item identity unknown", true) end
                 local count = F.Number("Carried item stack count", Field(info, "stackCount"), issues)
-                if not count or count == 0 then return nil, { reason = "Forever 70245 carried item quantity unknown" } end
+                if not count or count == 0 then return Failed("carried item quantity unknown", true) end
                 local item = { itemID = id or linkID, itemString = ref, count = count }
                 item.name = F.Read("Carried item name", Field(info, "itemName"), 1, "string", issues)
                 item.bound, item.bindingState = BindingFacet(info, issues)
@@ -82,7 +86,7 @@ S.collectors.bags = function()
         end
         container.free = capacity - occupied
         local finalCapacity = F.Number("Carried bag " .. bag .. " final capacity", api.GetContainerNumSlots, issues, bag)
-        if finalCapacity ~= capacity then return nil, { reason = "Forever 70245 carried-container changed during capture" } end
+        if finalCapacity ~= capacity then return Failed("carried-container changed during capture", true) end
         containers[#containers + 1] = container
     end
     -- Re-read the observed range so a slot mutation during the scan cannot
@@ -92,13 +96,13 @@ S.collectors.bags = function()
             local result = F.Read("Carried bag " .. bag .. " slot " .. slot .. " verification", function()
                 return { api.GetContainerItemInfo(bag, slot) }
             end, 1, "table", issues)
-            if not result then return nil, { reason = "Forever 70245 carried-container verification unavailable" } end
+            if not result then return Failed("carried-container verification unavailable", true) end
             local expected = observedSlots[bag][slot]
             if result[1] == nil then
-                if expected ~= false then return nil, { reason = "Forever 70245 carried-container changed during capture" } end
+                if expected ~= false then return Failed("carried-container changed during capture", true) end
             else
                 if expected == false or type(result[1]) ~= "table" then
-                    return nil, { reason = "Forever 70245 carried-container changed during capture" }
+                    return Failed("carried-container changed during capture", true)
                 end
                 local info = result[1]
                 local id = F.Number("Carried item verification ID", Field(info, "itemID"), issues)
@@ -111,7 +115,7 @@ S.collectors.bags = function()
                 if not ref or (id or linkID) ~= expected.itemID or ref ~= expected.itemString
                     or count ~= expected.count or locked ~= false
                     or bindingState ~= expected.bindingState or bound ~= expected.bound then
-                    return nil, { reason = "Forever 70245 carried-container changed during capture" }
+                    return Failed("carried-container changed during capture", true)
                 end
             end
         end

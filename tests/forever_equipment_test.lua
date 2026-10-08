@@ -75,6 +75,8 @@ return function(S, check, equal, advance)
     equal(S.collectors.equipment(), nil, "changed slot mapping is UNKNOWN")
     C_PaperDollInfo = nil
     equal(S.collectors.equipment(), nil, "missing slot API is UNKNOWN")
+    local _, unavailableMeta = S.collectors.equipment()
+    equal(unavailableMeta.stale, true, "failed 70245 equipment capture marks prior evidence stale")
     -- Replay the user's real level-6 equipment values. The API wrappers are
     -- mocks; the item references/metadata and empty slots are real evidence.
     local real = assert(loadfile("tests/fixtures/forever/hallo-level6-equipment.lua"))()

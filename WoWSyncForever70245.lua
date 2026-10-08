@@ -4,6 +4,7 @@
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 local CAPTURE_PROFILE = "Forever:1.60.1:70245:16001"
+local equipmentCollector = S.collectors.equipment
 
 function addon.PrepareCaptureProfile(record)
     if record.captureProfile == CAPTURE_PROFILE then return end
@@ -44,6 +45,13 @@ S.collectors = {
             reason = "Forever 70245 capture limited to runtime-observed character and build fields"
                 .. (#issues > 0 and ("; " .. table.concat(issues, "; ")) or "") }
     end,
-    equipment = S.collectors.equipment,
+    equipment = function()
+        local data, meta = equipmentCollector()
+        if not data then
+            meta = type(meta) == "table" and meta or {}
+            meta.stale = true
+        end
+        return data, meta
+    end,
     bags = S.collectors.bags,
 }
