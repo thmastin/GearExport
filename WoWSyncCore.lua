@@ -81,6 +81,7 @@ function S.Initialize()
     else S.account, S.guilds, S.guild = nil, nil, nil end
     local record = db.characters[guid]
     if type(record) ~= "table" then record = {}; db.characters[guid] = record end
+    if addon.PrepareCaptureProfile then addon.PrepareCaptureProfile(record) end
     if not addon.ReadIdentity then name, realm = UnitName("player"), GetRealmName() end
     record.identity = { guid = guid, name = name, realm = realm }
     record.sections = type(record.sections) == "table" and record.sections or {}

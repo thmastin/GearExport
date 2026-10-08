@@ -35,6 +35,7 @@ local renderers = {}
 renderers.character = function(out, data)
     Field(out, "Name", data.name); Field(out, "Realm", data.realm)
     Field(out, "Class", data.class); Field(out, "Level", data.level)
+    if data.clientFamily == "Forever" then Field(out, "Race", data.race) end
     Field(out, "Faction", data.faction); Field(out, "MoneyCopper", data.moneyCopper)
     Field(out, "PlayedSeconds", data.playedSeconds)
     Field(out, "LevelPlayedSeconds", data.levelPlayedSeconds)

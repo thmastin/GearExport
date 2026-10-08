@@ -12,14 +12,14 @@ and targets `_classic_beta_/Interface/AddOns`. It excludes BankCleanup and the
 legacy exporter. See [Forever current limits and validation](FOREVER_REMAINING.md)
 for the remaining live validation details.
 
-The current Forever build includes live-validated equipment, conservative
-effective-stat mappings, bags, playtime, known spells, Character Bank, and
-trainers. See [Forever current limits and validation](FOREVER_REMAINING.md).
-The character/location pipeline is live-validated at levels 1 and 4. Equipment
-slot presence, references, names and levels are live-validated on Hallo.
-The current package guard accepts only Forever `1.60.1` build `70009`, with
-interface `16001` confirmed in-game. Earlier captures retain their original
-build `69893` metadata.
+Earlier Forever builds have historical observations for the character,
+equipment, banks, professions, spells and trainers; those observations do not
+validate every API on a later build. For Forever 1.60.1.70245, the package is
+limited to the build-matched character/location, equipment and carried-item
+contracts documented in [Phase 3](FOREVER_PHASE3.md). The guard requires exact
+version, build `70245`, interface `16001`, and the Forever TOC marker. Item
+binding, eligibility and effective stats remain unknown where the 70245
+runtime evidence does not establish their semantics.
 
 The separate [Forever bags validation build](FOREVER_BAGS.md) records the
 carried-bag implementation and live validation evidence.
@@ -28,7 +28,10 @@ The [Forever professions validation record](FOREVER_PROFESSIONS.md) documents
 the build-70009 trade-skill hydration finding and its live-validated guard.
 
 The [Forever Known Spells validation record](FOREVER_SPELLS.md) documents the
-build-70009 player spellbook APIs and live validation.
+build-70009 player spellbook APIs and live validation. Build 70245 uses the
+scoped runtime evidence contract in `FOREVER_PHASE3.md`; older bank, trainer,
+profession and spell collectors are not enabled on that build without a
+separate API audit.
 
 ## Installation
 

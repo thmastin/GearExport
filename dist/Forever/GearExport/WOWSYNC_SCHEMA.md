@@ -54,6 +54,19 @@ for persistence; session scheduling uses `GetTime()` only in memory.
   Visible legacy skill lines are used without expanding/collapsing the UI.
 - `spells`: player spellbook entries with spellID/name/rank/kind and scope text.
   This is not a crafting-recipe database or pet spellbook.
+- Retail `professionRecipes`: compact, structured-only profession/tier caches.
+  Each successful natural profession initialization records the base profession,
+  active child `skillLineID`, per-profession `observedAt`, client identity, its
+  own coverage counts, and the recipe IDs
+  returned by `C_TradeSkillUI.GetAllRecipeIDs()`. A recipe's `learnedState` is
+  `OBSERVED_TRUE`, `OBSERVED_FALSE`, or `UNKNOWN`; explicit false is never inferred
+  from recipe visibility, craftability, or omission. `coverage.state` is always
+  `PARTIAL` and `candidateCompleteness` is `UNKNOWN`: this is the observed active
+  profession enumeration, not a complete historical or expansion recipe catalogue.
+  Caches are keyed independently by base profession and child skill line. Failed,
+  cold, empty, or other-profession captures preserve prior rows as `LAST_SEEN`;
+  uninitialized professions are never stored as empty. This section is omitted
+  from the human-readable `WOWSYNC v1` text export.
 - `trainer`: `snapshots[category]`, where each observed category retains its visit,
   name, trainerType, services, filters, collapsed, moneyAtVisit, coverage,
   observedAt, completeness, and optional reason. Service fields: name/rank/status/

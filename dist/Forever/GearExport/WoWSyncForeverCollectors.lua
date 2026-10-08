@@ -7,37 +7,6 @@ local function Meta(issues)
         reason = #issues > 0 and table.concat(issues, "; ") or nil }
 end
 
--- Only mappings corroborated against Hallo's equipped-item tooltip belong
--- here. C_Item.GetItemStats remains an untyped variant, so unknown keys are
--- not exported merely because their values are numeric.
-local FOREVER_EFFECTIVE_STATS = {
-    RESISTANCE0_NAME = "Armor",
-    ITEM_MOD_DAMAGE_PER_SECOND_SHORT = "Damage Per Second",
-}
-
-local function ForeverEffectiveStats(link, itemAPI, issues, label)
-    local values = F.Read(label .. " effective stats", itemAPI.GetItemStats, 1, "table", issues, link)
-    if not values then return nil, true end -- an item-data load may still resolve this
-    local output, recognized = {}, 0
-    for key, value in pairs(values) do
-        local name = FOREVER_EFFECTIVE_STATS[key]
-        if name then
-            if type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
-                and not (type(issecretvalue) == "function" and issecretvalue(value)) then
-                output[#output + 1] = { name = name, value = value }
-                recognized = recognized + 1
-            else
-                issues[#issues + 1] = label .. " effective stat " .. key .. " malformed"
-            end
-        else
-            issues[#issues + 1] = label .. " effective stat " .. tostring(key) .. " unsupported"
-        end
-    end
-    if recognized == 0 then issues[#issues + 1] = label .. " effective stats have no supported values" end
-    table.sort(output, function(a, b) return a.name < b.name end)
-    return recognized > 0 and output or nil, false
-end
-
 S.collectors.character = function()
     local issues = {}
     local data = {
@@ -89,7 +58,8 @@ S.collectors.location = function()
     return data, Meta(issues)
 end
 
--- Build 70009 uses ItemLocation/C_Item and C_PaperDollInfo. Do not route
+-- Forever 70245 uses ItemLocation/C_Item and C_PaperDollInfo as runtime-observed.
+-- Do not route
 -- through the Classic legacy readers merely because IsRetail() is false.
 S.collectors.equipment = function()
     local data, issues, observed, pending = { slots = {} }, {}, 0, false
@@ -135,9 +105,10 @@ S.collectors.equipment = function()
                     else issues[#issues + 1] = label .. " required level unknown" end
                 end
                 if #issues > before then pending = true end
-                local stats, statPending = ForeverEffectiveStats(link, itemAPI, issues, label)
-                item.stats = stats
-                if statPending then pending = true end
+                -- A stats table was observed on 70245, but no build-matched
+                -- tooltip comparison established effective-value semantics.
+                issues[#issues + 1] = label .. " effective stat semantics unverified for Forever 70245"
+                item.stats = nil
             end
         else
             issues[#issues + 1] = label .. " mapping unknown"
