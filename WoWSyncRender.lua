@@ -4,7 +4,7 @@ local _, addon = ...
 local S = addon.Sync
 local labels = { character = "CHARACTER", location = "LOCATION", equipment = "EQUIPMENT",
     bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", guildBank = "GUILD BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS", itemMetadata = "ITEM METADATA" }
-labels.forever70245Evidence = "FOREVER 70245 EVIDENCE"
+labels.forever70291Evidence = "FOREVER 70291 EVIDENCE"
 
 local function Text(value)
     if value == nil then return "?" end
@@ -62,7 +62,7 @@ local function RenderRawCall(out, prefix, call)
     end
 end
 
-renderers.forever70245Evidence = function(out, data)
+renderers.forever70291Evidence = function(out, data)
     RawField(out, "Provenance", data.provenance)
     RawField(out, "CapturedAt", data.capturedAt)
     RawField(out, "Client", (data.client and data.client.version or "?") .. " build " .. (data.client and data.client.build or "?"))
@@ -126,9 +126,10 @@ renderers.character = function(out, data)
     Field(out, "Name", data.name); Field(out, "Realm", data.realm)
     Field(out, "Class", data.class); Field(out, "Level", data.level)
     -- WOWSYNC v1's strict CHARACTER parser has no Race field. Keep the
-    -- observation in structured SavedVariables, but omit it from the 70245
-    -- v1 text projection so existing Dashboard imports remain compatible.
-    if data.clientFamily == "Forever" and data.clientBuild and data.clientBuild ~= "70245" then
+    -- observation in structured SavedVariables, but omit it from the strict
+    -- v1 text projection on builds verified to use that schema.
+    if data.clientFamily == "Forever" and data.clientBuild
+        and data.clientBuild ~= "70245" and data.clientBuild ~= "70291" then
         Field(out, "Race", data.race)
     end
     Field(out, "Faction", data.faction); Field(out, "MoneyCopper", data.moneyCopper)

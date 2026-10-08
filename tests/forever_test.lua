@@ -23,7 +23,7 @@ function GetTime() return seconds end
 function GetServerTime() return 1789670000 + math.floor(seconds) end
 -- Synthetic environment values match the observed client version/build/interface;
 -- the surrounding mocked APIs are test fixtures, not additional live evidence.
-local version, build, interface = "1.60.1", "70245", 16001
+local version, build, interface = "1.60.1", "70291", 16001
 function GetBuildInfo() return version, build, "test", interface end
 local target = "Forever"
 C_AddOns = { GetAddOnMetadata = function(name, field)
@@ -50,8 +50,8 @@ local function action() actions = actions + 1; error("Unexpected gameplay call")
 BuyTrainerService, UseContainerItem, PickupContainerItem = action, action, action
 local addon = {}
 for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.lua",
-    "WoWSyncForeverCollectors.lua", "WoWSyncForever70245.lua", "WoWSyncForeverBags70245.lua",
-    "WoWSyncForeverEvidence70245.lua",
+    "WoWSyncForeverCollectors.lua", "WoWSyncForever70291.lua", "WoWSyncForeverBags70291.lua",
+    "WoWSyncForeverEvidence70291.lua",
     "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
@@ -77,7 +77,7 @@ for _, other in ipairs({ "69893", "70009", "69914", "different" }) do
     equal(S.error, "The installed WoWSync build is not verified for the running Forever client.",
         "rejection describes verification rather than a package phase")
 end
-build = "70245"
+build = "70291"
 interface = 16000; check(not C.IsForever(), "wrong interface rejected"); interface = 16001
 local realGUID = UnitGUID
 UnitGUID = nil; check(not S.Initialize(), "missing GUID cannot fabricate character")
@@ -96,7 +96,7 @@ WoWSyncDB = { schemaVersion = 1, settings = { preserve = true }, characters = {
 S.eventFrame.scripts.OnEvent(S.eventFrame, "PLAYER_LOGIN")
 advance(1)
 equal(S.record.identity.name, "Hallo", "identity captured")
-equal(S.record.captureProfile, "Forever:1.60.1:70245:16001", "active saved-data profile is build scoped")
+equal(S.record.captureProfile, "Forever:1.60.1:70291:16001", "active saved-data profile is build scoped")
 equal(S.record.sections.professions, nil, "legacy unsupported section is not current evidence")
 equal(S.record.archivedCaptures[1].sections, legacySections, "legacy sections remain preserved in archive")
 equal(S.record.archivedCaptures[1].itemMetadata, legacyItems, "legacy item metadata remains preserved")
@@ -136,16 +136,16 @@ check(S.RenderSection("character", legacyBuildSnapshot):find("Race: Dwarf", 1, t
 check(output:find("PlayedSeconds: ?\nLevelPlayedSeconds: ?", 1, true), "deferred playtime unknown")
 check(output:find("XP: ?/?", 1, true), "unprobed XP stays unknown")
 check(output:find("[BANK]\nState: UNKNOWN", 1, true), "bank not observed")
-check(output:find("capture limited to runtime-observed", 1, true), "unprobed fields remain explicitly limited")
+check(output:find("capture limited to fields supported by the carried-forward 70245 contract", 1, true), "unprobed fields remain explicitly limited")
 local frozen = S.GetSnapshot()
 local frozenText = S.Render(frozen)
 advance(1); equal(S.Render(frozen), frozenText, "deterministic without clock reads")
 assert(loadfile("tests/forever_equipment_test.lua"))()(S, check, equal, advance)
 assert(S.collectors.bags and not S.collectors.bank and not S.collectors.trainer
     and not S.collectors.professions and not S.collectors.spells,
-    "70245 exposes only live-observed Forever collectors")
-assert(loadfile("tests/forever_bags_70245_test.lua"))()(S, check, equal)
-assert(loadfile("tests/forever_evidence_70245_test.lua"))()(S, check, equal)
+    "70291 exposes only the carried-forward Forever collectors")
+assert(loadfile("tests/forever_bags_70291_test.lua"))()(S, check, equal)
+assert(loadfile("tests/forever_evidence_70291_test.lua"))()(S, check, equal)
 for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitRace", "UnitLevel" }) do
     _G[key] = function() error("API changed") end
 end
@@ -156,7 +156,7 @@ for _, field in ipairs({ "Name", "Realm", "Class", "Level" }) do
 end
 check(not unknown:find("Race:", 1, true), "70245 race is not added to the strict v1 text schema")
 check(unknown:find("XP: ?/?", 1, true), "unavailable XP explicit")
-check(unknown:find("capture limited to runtime-observed", 1, true), "scope diagnostic retained")
+check(unknown:find("capture limited to fields supported by the carried-forward 70245 contract", 1, true), "scope diagnostic retained")
 local secret = {}
 issecretvalue = function(value) return value == secret end
 UnitLevel = function() return "10" end

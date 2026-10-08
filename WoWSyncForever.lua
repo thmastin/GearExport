@@ -1,7 +1,7 @@
 -- Loaded only by the Forever package. No legacy exporter or gameplay modules.
 local ADDON_NAME, addon = ...
 local C = WoWSyncCompat
-local F = { version = "1.60.1", build = "70245", interface = 16001 }
+local F = { version = "1.60.1", build = "70291", interface = 16001 }
 addon.Forever = F
 addon.Readers = { SlotNames = {} }
 -- This package selects its own adapters even if Blizzard reuses a project ID.

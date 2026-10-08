@@ -1,11 +1,11 @@
 -- Synthetic contract fixtures only; never evidence from a live client.
 return function(S, check, equal)
-    check(S.collectors.forever70245Evidence ~= nil, "70245 raw evidence collector enabled")
+    check(S.collectors.forever70291Evidence ~= nil, "70291 raw evidence collector enabled")
     check(not S.collectors.trainer, "unvalidated older trainer collector remains disabled")
     local found = false
-    for _, key in ipairs(S.order) do if key == "forever70245Evidence" then found = true end end
-    check(found, "70245 evidence included in normal export refresh")
-    check(S.structuredOnly.forever70245Evidence, "new evidence stays out of strict WOWSYNC v1 text for parser compatibility")
+    for _, key in ipairs(S.order) do if key == "forever70291Evidence" then found = true end end
+    check(found, "70291 evidence included in normal export refresh")
+    check(S.structuredOnly.forever70291Evidence, "new evidence stays out of strict WOWSYNC v1 text for parser compatibility")
 
     local oldSkill, oldFrame = C_SkillInfo, ClassTrainerFrame
     local oldTrainerFrame, oldTrainerStep = TrainerFrame, ClassTrainerFrameSkillStep
@@ -38,12 +38,12 @@ return function(S, check, equal)
     GetTrainerServiceNumAbilityReq = function() error("unvalidated count API must not be called") end
     GetTrainerServiceType, IsTrainerServiceLearnable = nil, nil
 
-    local closed, closedMeta = S.collectors.forever70245Evidence()
+    local closed, closedMeta = S.collectors.forever70291Evidence()
     equal(closed.trainer.state, "NOT_OBSERVED_WINDOW_CLOSED", "closed trainer is explicit unknown")
     equal(countApiCalls, 0, "closed trainer invokes no service APIs")
     equal(calls, 3, "each skill index called once per capture")
     ClassTrainerFrame, TrainerFrame, ClassTrainerFrameSkillStep = nil, nil, nil
-    local unavailable = S.collectors.forever70245Evidence()
+    local unavailable = S.collectors.forever70291Evidence()
     equal(unavailable.trainer.state, "NOT_OBSERVED_FRAME_UNAVAILABLE", "missing trainer UI frame is explicit not-observed")
     equal(countApiCalls, 0, "unavailable trainer frame invokes no service APIs")
     ClassTrainerFrame = { IsShown = function() return false end }
@@ -62,20 +62,20 @@ return function(S, check, equal)
     equal(closed.skillLines[2].provenance, "IN_GAME_RUNTIME_CALL", "skill provenance retained")
 
     C_SkillInfo = {}
-    local missingSkill = S.collectors.forever70245Evidence()
+    local missingSkill = S.collectors.forever70291Evidence()
     equal(missingSkill.skillLineCount.state, "API_MISSING", "missing count API explicit")
     equal(missingSkill.skillLineCoverage, "UNKNOWN_COUNT", "missing count does not create an empty-complete skill list")
     C_SkillInfo = { GetNumSkillLines = function() error("synthetic count failure") end }
-    local failedCount = S.collectors.forever70245Evidence()
+    local failedCount = S.collectors.forever70291Evidence()
     equal(failedCount.skillLineCount.state, "API_ERROR", "throwing count API captured as error")
     equal(failedCount.skillLineCoverage, "UNKNOWN_COUNT", "throwing count remains unknown")
     C_SkillInfo = { GetNumSkillLines = function() return 2 end,
         GetSkillLineInfo = function(index) if index == 1 then return { name = "Known", skillID = 1 } end error("synthetic row failure") end }
-    local partialSkills = S.collectors.forever70245Evidence()
+    local partialSkills = S.collectors.forever70291Evidence()
     equal(partialSkills.skillLines[2].state, "API_ERROR", "indexed API error remains row error")
     equal(partialSkills.skillLineCoverage, "PARTIAL_INDEXED_ROWS", "partial row cannot claim complete coverage")
     C_SkillInfo.GetSkillLineInfo = function(index) if index == 1 then return { name = "Known", skillID = 1 } end return nil end
-    local nilSkill = S.collectors.forever70245Evidence()
+    local nilSkill = S.collectors.forever70291Evidence()
     equal(nilSkill.skillLines[2].state, "NIL_RESULT", "nil indexed result remains explicit")
 
     C_SkillInfo = {
@@ -88,18 +88,18 @@ return function(S, check, equal)
     }
     ClassTrainerFrame.IsShown = function() return true end
     GetNumTrainerServices = function() error("synthetic trainer count failure") end
-    local failedTrainerCount = S.collectors.forever70245Evidence().trainer
+    local failedTrainerCount = S.collectors.forever70291Evidence().trainer
     equal(failedTrainerCount.state, "PARTIAL_INVALID_SERVICE_COUNT", "throwing trainer count remains partial")
     equal(failedTrainerCount.attempted.serviceCountResult.state, "API_ERROR", "trainer count error retained")
     GetNumTrainerServices = function() countApiCalls = countApiCalls + 1; ClassTrainerFrame.shown = false; return 2 end
     ClassTrainerFrame.IsShown = function(self) return self.shown ~= false end
-    local closedMidCapture = S.collectors.forever70245Evidence().trainer
+    local closedMidCapture = S.collectors.forever70291Evidence().trainer
     equal(closedMidCapture.state, "PARTIAL_WINDOW_CLOSED", "closing trainer during capture is explicit partial")
     equal(infoCalls, 0, "closed window prevents service calls")
     ClassTrainerFrame.shown = true
     ClassTrainerFrame.IsShown = function() return true end
     GetNumTrainerServices = function() countApiCalls = countApiCalls + 1; return 2 end
-    local open = S.collectors.forever70245Evidence()
+    local open = S.collectors.forever70291Evidence()
     local trainer = open.trainer.lastObserved
     equal(trainer.state, "OBSERVED_OPEN_WINDOW", "trainer captured only in open context")
     equal(trainer.serviceCount, 2, "service count captured")
@@ -129,7 +129,7 @@ return function(S, check, equal)
     GetNumTrainerServices = function() return 1 end
     GetTrainerServiceInfo = function() error("synthetic service info failure") end
     GetTrainerServiceCost = function() return nil end
-    local failedService = S.collectors.forever70245Evidence().trainer.lastObserved.services[1]
+    local failedService = S.collectors.forever70291Evidence().trainer.lastObserved.services[1]
     equal(failedService.calls.info.state, "API_ERROR", "trainer info error captured")
     equal(failedService.calls.cost.state, "OBSERVED_VALUE", "nil cost call keeps its return tuple")
     equal(failedService.calls.cost.returns[1].observation.state, "NIL", "nil cost is not zero")
@@ -137,16 +137,16 @@ return function(S, check, equal)
     GetTrainerServiceInfo = function(index) return "Synthetic " .. index, "raw-status", 123, 10, "Rank", "" end
     GetTrainerServiceCost = function() return 0 end
     GetTrainerServiceAbilityReq = function() return "Requirement", true end
-    local limited = S.collectors.forever70245Evidence().trainer.lastObserved.services[1]
+    local limited = S.collectors.forever70291Evidence().trainer.lastObserved.services[1]
     equal(#limited.calls.abilityRequirements, 20, "requirement probing is bounded")
     equal(limited.requirementsTruncated, true, "safety limit is explicitly partial")
 
     local snapshot = S.GetSnapshot()
-    snapshot.sections.forever70245Evidence = { data = open, completeness = "partial", observedAt = 123 }
+    snapshot.sections.forever70291Evidence = { data = open, completeness = "partial", observedAt = 123 }
     local export = S.Render(snapshot)
-    check(not export:find("[FOREVER 70245 EVIDENCE]", 1, true), "legacy v1 export omits new raw section")
+    check(not export:find("[FOREVER 70291 EVIDENCE]", 1, true), "legacy v1 export omits new raw section")
     check(export:find("[END]", 1, true), "legacy v1 export remains well formed")
-    local rawSection = S.RenderSection("forever70245Evidence", snapshot)
+    local rawSection = S.RenderSection("forever70291Evidence", snapshot)
     check(rawSection:find("skillLine\t2\t46\t6\tAxes\t22\t40\tfalse", 1, true),
         "structured evidence renderer retains skill index/id/name/rank/max/header: " .. (rawSection:match("skillLine\t2[^\n]*") or "no index-2 row"))
     check(rawSection:find("unavailable", 1, true), "structured evidence retains raw status text")

@@ -1,9 +1,9 @@
--- Expose only collectors whose input contracts were observed on 70245.
+-- Expose only the existing collectors carried forward from the documented 70245 contracts.
 -- The other Forever modules remain available for their older package history,
 -- but must not run under this build without a separate live audit.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
-local CAPTURE_PROFILE = "Forever:1.60.1:70245:16001"
+local CAPTURE_PROFILE = "Forever:1.60.1:70291:16001"
 local equipmentCollector = S.collectors.equipment
 
 function addon.PrepareCaptureProfile(record)
@@ -23,7 +23,7 @@ function addon.PrepareCaptureProfile(record)
             latestExport = priorExport,
         }
     end
-    -- Data captured by another client build must not appear as current 70245
+    -- Data captured by another client build must not appear as current 70291
     -- evidence. Keep it archived and start a fresh active observation record.
     record.sections, record.itemMetadata, record.visits = {}, {}, {}
     record.latestExport = nil
@@ -46,7 +46,7 @@ S.collectors = {
         }
         table.sort(issues)
         return data, { completeness = "partial",
-            reason = "Forever 70245 capture limited to runtime-observed character and build fields"
+            reason = "Forever 70291 capture limited to fields supported by the carried-forward 70245 contract"
                 .. (#issues > 0 and ("; " .. table.concat(issues, "; ")) or "") }
     end,
     equipment = function()
@@ -60,10 +60,10 @@ S.collectors = {
     bags = S.collectors.bags,
 }
 
--- This section is isolated to the exact Forever 70245 package. The older
+-- This section is isolated to the exact Forever 70291 package. The older
 -- Forever trainer tuple adapter is intentionally not activated here.
-S.order[#S.order + 1] = "forever70245Evidence"
+S.order[#S.order + 1] = "forever70291Evidence"
 -- Keep WOWSYNC v1 text parse-compatible with the currently deployed Dashboard.
 -- The version-specific raw section is persisted alongside the export and is
 -- consumed by the separate Forever parser integration handoff.
-S.structuredOnly.forever70245Evidence = true
+S.structuredOnly.forever70291Evidence = true

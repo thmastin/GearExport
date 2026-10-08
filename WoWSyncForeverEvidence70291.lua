@@ -1,4 +1,4 @@
--- Raw, read-only skill-line and trainer observations for Forever 1.60.1.70245.
+-- Raw, read-only skill-line and trainer observations for Forever 1.60.1.70291.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 local MAX_TRAINER_SERVICES, MAX_ABILITY_REQUIREMENTS = 200, 20
@@ -222,7 +222,7 @@ local function observeTrainer(previous, issues)
         provenance = "IN_GAME_RUNTIME_CONTEXT" }
 end
 
-S.collectors.forever70245Evidence = function()
+S.collectors.forever70291Evidence = function()
     local issues = {}
     local data = { client = { family = "Forever", version = F.version, build = F.build,
         interface = F.interface }, capturedAt = S.Now(), provenance = "IN_GAME_RUNTIME_CALL",
@@ -236,7 +236,7 @@ S.collectors.forever70245Evidence = function()
             weaponReadiness = "UNKNOWN_UNVALIDATED",
         } }
     readSkillLines(data, issues)
-    local oldSection = S.record and S.record.sections and S.record.sections.forever70245Evidence
+    local oldSection = S.record and S.record.sections and S.record.sections.forever70291Evidence
     local priorTrainer = oldSection and oldSection.data and oldSection.data.trainer
     data.trainer = observeTrainer(priorTrainer, issues)
     if data.trainer.state ~= "OBSERVED_OPEN_WINDOW" then
@@ -245,7 +245,7 @@ S.collectors.forever70245Evidence = function()
     table.sort(issues)
     return data, { completeness = #issues == 0 and "complete" or "partial",
         reason = #issues > 0 and table.concat(issues, "; ") or nil,
-        source = "Forever 70245 read-only runtime evidence" }
+        source = "Forever 70291 read-only runtime evidence; API tuple contracts carried forward from 70245 pending live comparison" }
 end
 
 -- Collector refreshes on API change events and trainer-window events. It does
@@ -256,7 +256,7 @@ for _, event in ipairs({ "SKILL_LINES_CHANGED", "TRAINER_SHOW", "TRAINER_UPDATE"
     eventFrame:RegisterEvent(event)
 end
 eventFrame:SetScript("OnEvent", function(_, event)
-    if F and WoWSyncCompat and WoWSyncCompat.IsForever() and S.collectors.forever70245Evidence then
-        S.Mark("forever70245Evidence")
+    if F and WoWSyncCompat and WoWSyncCompat.IsForever() and S.collectors.forever70291Evidence then
+        S.Mark("forever70291Evidence")
     end
 end)
