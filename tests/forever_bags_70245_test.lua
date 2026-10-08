@@ -92,6 +92,13 @@ return function(S, check, equal)
     C_Container.GetContainerItemInfo = oldInfo
     local observed, observedMeta = S.collectors.bags()
     S.Commit("bags", observed, observedMeta)
+    local persisted = S.record.sections.bags.data
+    equal(persisted.containers[1].id, 0, "structured SavedVariables retain the container identity")
+    equal(persisted.containers[1].slots[1].itemString, "item:6948::::::::8:1485::75:::::::",
+        "structured SavedVariables retain the exact variant at its physical slot")
+    equal(persisted.containers[1].slots[1].count, 1, "structured slot keeps its own stack quantity")
+    equal(persisted.containers[1].slots[1].bindingState, "OBSERVED_TRUE",
+        "structured slot retains binding provenance independently")
     C_Container.GetContainerNumSlots = nil
     local failed, failedMeta = S.collectors.bags()
     equal(failed, nil, "missing carried API fails the new capture")

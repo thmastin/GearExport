@@ -31,7 +31,7 @@ per-event disk writing. A copied export needs no reload.
 Root: `schemaVersion=1`, `settings`, `characters[UnitGUID("player")]`.
 Settings: `showButton` (defaults false), `buttonPosition` (optional).
 Character: `identity`, `sections`, `visits`, `itemMetadata`, `latestExport` (at
-most one text block).
+most one text block), and optional `captureProfile` / `archivedCaptures`.
 
 Each section has `data`, `observedAt`, `changedAt`, `revision`, `completeness`,
 `source`, `capture`, and optional `reason`. An unsuccessful read adds
@@ -47,7 +47,16 @@ for persistence; session scheduling uses `GetTime()` only in memory.
 - `bags`, `bank`: ordered `containers`, each with id, capacity, free, family,
   optional equipped bag identity, and sparse `slots[slot]` item records. Items
   retain itemID, full itemString, name/quality/levels/vendorCopper when available,
-  stack count, and optional bound flag. No economic filtering. Bank also has
+  stack count, and optional bound flag. Forever 70245 also retains
+  `bindingState` (`OBSERVED_TRUE`, `OBSERVED_FALSE`, `UNKNOWN`, or `API_ERROR`)
+  separately from the optional boolean `bound` value. For Forever, exact physical
+  location is `sections.bags.data.containers[].id` plus the numeric key in
+  `containers[].slots[slot]`; the item record in that key is the instance observed
+  there. This is the structured source of bag location evidence.
+  The compatible WOWSYNC v1 text `[BAGS]` rows remain aggregated by item variant
+  and do not encode physical slot locations. Consumers requiring source slots
+  must read the structured capture or use a future explicit text-schema extension;
+  they must not infer slot location from aggregated text rows. No economic filtering. Bank also has
   purchasedBagSlots and a copy of the visit context associated with that snapshot.
   `bank` is always character-owned; Retail Warband storage is not folded into it.
 - `professions`: entries with name/rank/maxRank and identification method.
@@ -78,6 +87,12 @@ for persistence; session scheduling uses `GetTime()` only in memory.
 - `itemMetadata`: a separate cache of static base-item facets encountered while
   collecting the current character's equipment or storage. It is not nested into
   an item observation and never affects a section's observation/revision/hash.
+
+Forever 70245's `captureProfile` is `Forever:1.60.1:70245:16001`. When an existing
+character record comes from another profile, its sections, item metadata, visits,
+and prior `latestExport` are preserved together in `archivedCaptures`; the active
+profile starts with fresh sections and no cached text export. This prevents an
+older-build observation from being presented as current 70245 evidence.
 
 `visits.bank` records the most recent bank visit. `visits.trainers[category]` records
 the latest visit for each observed trainer category, including openedAt, closedAt,

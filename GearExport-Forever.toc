@@ -10,12 +10,7 @@ WoWSyncCompat.lua
 WoWSyncForever.lua
 WoWSyncCore.lua
 WoWSyncForeverCollectors.lua
-WoWSyncForeverBags.lua
-WoWSyncForeverProfessions.lua
-WoWSyncForeverSpells.lua
-WoWSyncForeverBank.lua
-WoWSyncForeverTrainers.lua
-WoWSyncForeverBags70245.lua
 WoWSyncForever70245.lua
+WoWSyncForeverBags70245.lua
 WoWSyncRender.lua
 WoWSyncUI.lua

@@ -50,7 +50,8 @@ local function action() actions = actions + 1; error("Unexpected gameplay call")
 BuyTrainerService, UseContainerItem, PickupContainerItem = action, action, action
 local addon = {}
 for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.lua",
-    "WoWSyncForeverCollectors.lua", "WoWSyncForeverBags.lua", "WoWSyncForeverProfessions.lua", "WoWSyncForeverSpells.lua", "WoWSyncForeverBank.lua", "WoWSyncForeverTrainers.lua", "WoWSyncForeverBags70245.lua", "WoWSyncForever70245.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
+    "WoWSyncForeverCollectors.lua", "WoWSyncForever70245.lua", "WoWSyncForeverBags70245.lua",
+    "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
 local S, C = addon.Sync, WoWSyncCompat
@@ -85,9 +86,11 @@ local legacySections = { professions = { data = { entries = { { name = "Stale pr
     bank = { data = { containers = { { id = 6 } } } } }
 local legacyItems = { [6948] = { bindType = 1 } }
 local legacyVisits = { bank = { openedAt = 123 } }
+local legacyExport = { text = "old 70009 WOWSYNC export", generatedAt = 123 }
 WoWSyncDB = { schemaVersion = 1, settings = { preserve = true }, characters = {
     ["Player-Forever-Test"] = { captureProfile = "Forever:1.60.1:70009:16001",
-        sections = legacySections, itemMetadata = legacyItems, visits = legacyVisits },
+        sections = legacySections, itemMetadata = legacyItems, visits = legacyVisits,
+        latestExport = legacyExport },
 } }
 S.eventFrame.scripts.OnEvent(S.eventFrame, "PLAYER_LOGIN")
 advance(1)
@@ -97,6 +100,9 @@ equal(S.record.sections.professions, nil, "legacy unsupported section is not cur
 equal(S.record.archivedCaptures[1].sections, legacySections, "legacy sections remain preserved in archive")
 equal(S.record.archivedCaptures[1].itemMetadata, legacyItems, "legacy item metadata remains preserved")
 equal(S.record.archivedCaptures[1].visits, legacyVisits, "legacy visits remain preserved")
+equal(S.record.archivedCaptures[1].latestExport, legacyExport, "legacy export remains preserved in archive")
+check(S.record.latestExport ~= legacyExport and S.record.latestExport.text ~= legacyExport.text,
+    "legacy export is invalidated before a fresh build-scoped export")
 equal(WoWSyncDB.settings.preserve, true, "existing global settings remain intact")
 local data = S.record.sections.character.data
 equal(data.name, "Hallo", "name")

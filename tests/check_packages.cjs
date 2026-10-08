@@ -27,18 +27,17 @@ for (const [target, version] of selected) {
         assert(manifest.hashes['FOREVER_PHASE2.md']);
         assert(manifest.hashes['FOREVER_PHASE3.md']);
         assert(manifest.hashes['FOREVER_BAGS.md']);
-        assert(manifest.hashes['WoWSyncForeverBags.lua']);
         assert(manifest.hashes['WoWSyncForeverBags70245.lua']);
         assert(manifest.hashes['WoWSyncForever70245.lua']);
         assert(manifest.hashes['FOREVER_PROFESSIONS.md']);
-        assert(manifest.hashes['WoWSyncForeverProfessions.lua']);
         assert(manifest.hashes['FOREVER_SPELLS.md']);
-        assert(manifest.hashes['WoWSyncForeverSpells.lua']);
         assert(manifest.hashes['FOREVER_REMAINING.md']);
-        assert(manifest.hashes['WoWSyncForeverBank.lua']);
-        assert(manifest.hashes['WoWSyncForeverTrainers.lua']);
         for (const file of ['GearExport.lua', 'BankCleanup.lua', 'WoWSyncCollectors.lua']) {
             assert(!fs.existsSync(path.join(directory, file)), 'Forever excludes ' + file);
+        }
+        for (const file of ['WoWSyncForeverBags.lua', 'WoWSyncForeverProfessions.lua', 'WoWSyncForeverSpells.lua',
+            'WoWSyncForeverBank.lua', 'WoWSyncForeverTrainers.lua']) {
+            assert(!fs.existsSync(path.join(directory, file)), 'Forever package excludes unvalidated 70009 collector ' + file);
         }
     }
     for (const [file, hash] of Object.entries(manifest.hashes)) {

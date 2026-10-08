@@ -90,6 +90,17 @@ The package keeps the existing WOWSYNC v1 text shape and SavedVariables
 names. Retail, TBC and Classic Era TOCs and behavior are unchanged. BankCleanup
 is not loaded by the Forever package and was not edited.
 
+The v1 `[BAGS]` text table remains aggregated by exact item variant for parser
+compatibility; it does not claim physical slot locations. The production
+collector's structured `WoWSyncDB` snapshot is the location contract:
+`sections.bags.data.containers[].id` identifies the observed carried container,
+and each numeric key in `containers[].slots` identifies the slot. Its item row
+preserves `itemString`, item ID, stack quantity, and separate binding value and
+evidence state. A future Dashboard parser requiring source locations must
+consume this structured contract or a separately versioned text extension.
+The contract is covered by synthetic API tests; live validation of the committed
+structured snapshot remains pending installation approval.
+
 ## Live validation remaining
 
 Local tests and static review do not validate a production addon on the live

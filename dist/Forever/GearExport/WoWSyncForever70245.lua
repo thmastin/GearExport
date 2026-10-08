@@ -11,18 +11,22 @@ function addon.PrepareCaptureProfile(record)
     local priorSections = type(record.sections) == "table" and record.sections or nil
     local priorItems = type(record.itemMetadata) == "table" and record.itemMetadata or nil
     local priorVisits = type(record.visits) == "table" and record.visits or nil
-    if priorSections and next(priorSections) or priorItems and next(priorItems) or priorVisits and next(priorVisits) then
+    local priorExport = type(record.latestExport) == "table" and record.latestExport or nil
+    if priorSections and next(priorSections) or priorItems and next(priorItems)
+        or priorVisits and next(priorVisits) or priorExport then
         record.archivedCaptures = type(record.archivedCaptures) == "table" and record.archivedCaptures or {}
         record.archivedCaptures[#record.archivedCaptures + 1] = {
             profile = record.captureProfile or "UNVERSIONED",
             sections = priorSections,
             itemMetadata = priorItems,
             visits = priorVisits,
+            latestExport = priorExport,
         }
     end
     -- Data captured by another client build must not appear as current 70245
     -- evidence. Keep it archived and start a fresh active observation record.
     record.sections, record.itemMetadata, record.visits = {}, {}, {}
+    record.latestExport = nil
     record.captureProfile = CAPTURE_PROFILE
 end
 
