@@ -124,6 +124,7 @@ local output
 check(S.Export(function(text) output = text end), "export accepted")
 advance(0.2) -- unprobed playtime is not requested
 check(output and output:find("WOWSYNC v1", 1, true), "shared canonical export")
+check(not output:find("Race: Dwarf", 1, true), "70245 race remains structured-only for strict v1 parser compatibility")
 check(output:find("PlayedSeconds: ?\nLevelPlayedSeconds: ?", 1, true), "deferred playtime unknown")
 check(output:find("XP: ?/?", 1, true), "unprobed XP stays unknown")
 check(output:find("[BANK]\nState: UNKNOWN", 1, true), "bank not observed")
@@ -142,9 +143,10 @@ for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitRace", "Uni
 end
 S.RequestSync(); advance(1)
 local unknown = S.RenderSection("character", S.GetSnapshot())
-for _, field in ipairs({ "Name", "Realm", "Class", "Race", "Level" }) do
+for _, field in ipairs({ "Name", "Realm", "Class", "Level" }) do
     check(unknown:find(field .. ": ?", 1, true), "failed field unknown: " .. field)
 end
+check(not unknown:find("Race:", 1, true), "70245 race is not added to the strict v1 text schema")
 check(unknown:find("XP: ?/?", 1, true), "unavailable XP explicit")
 check(unknown:find("capture limited to runtime-observed", 1, true), "scope diagnostic retained")
 local secret = {}
