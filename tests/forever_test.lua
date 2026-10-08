@@ -125,6 +125,14 @@ check(S.Export(function(text) output = text end), "export accepted")
 advance(0.2) -- unprobed playtime is not requested
 check(output and output:find("WOWSYNC v1", 1, true), "shared canonical export")
 check(not output:find("Race: Dwarf", 1, true), "70245 race remains structured-only for strict v1 parser compatibility")
+local unknownBuildSnapshot = S.GetSnapshot()
+unknownBuildSnapshot.sections.character.data.clientBuild = nil
+check(not S.RenderSection("character", unknownBuildSnapshot):find("Race:", 1, true),
+    "unknown Forever build cannot add an unsupported v1 race field")
+local legacyBuildSnapshot = S.GetSnapshot()
+legacyBuildSnapshot.sections.character.data.clientBuild = "70009"
+check(S.RenderSection("character", legacyBuildSnapshot):find("Race: Dwarf", 1, true),
+    "explicit legacy build retains its existing race text behavior")
 check(output:find("PlayedSeconds: ?\nLevelPlayedSeconds: ?", 1, true), "deferred playtime unknown")
 check(output:find("XP: ?/?", 1, true), "unprobed XP stays unknown")
 check(output:find("[BANK]\nState: UNKNOWN", 1, true), "bank not observed")

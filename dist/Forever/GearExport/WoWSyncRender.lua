@@ -128,7 +128,7 @@ renderers.character = function(out, data)
     -- WOWSYNC v1's strict CHARACTER parser has no Race field. Keep the
     -- observation in structured SavedVariables, but omit it from the 70245
     -- v1 text projection so existing Dashboard imports remain compatible.
-    if data.clientFamily == "Forever" and data.clientBuild ~= "70245" then
+    if data.clientFamily == "Forever" and data.clientBuild and data.clientBuild ~= "70245" then
         Field(out, "Race", data.race)
     end
     Field(out, "Faction", data.faction); Field(out, "MoneyCopper", data.moneyCopper)
