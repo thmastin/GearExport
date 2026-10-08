@@ -120,7 +120,7 @@ local function trainerFrame()
     end
     if visibilityError then return nil, "UNKNOWN_FRAME_VISIBILITY" end
     if sawFrame then return nil, "NOT_OBSERVED_WINDOW_CLOSED" end
-    return nil, "UNKNOWN_FRAME_UNAVAILABLE"
+    return nil, "NOT_OBSERVED_FRAME_UNAVAILABLE"
 end
 
 local function observeTrainer(previous, issues)
@@ -240,7 +240,7 @@ S.collectors.forever70245Evidence = function()
     local priorTrainer = oldSection and oldSection.data and oldSection.data.trainer
     data.trainer = observeTrainer(priorTrainer, issues)
     if data.trainer.state ~= "OBSERVED_OPEN_WINDOW" then
-        issues[#issues + 1] = "Trainer service observations not refreshed; trainer window is not open"
+        issues[#issues + 1] = "Trainer service observations not refreshed; no supported trainer window was observed open"
     end
     table.sort(issues)
     return data, { completeness = #issues == 0 and "complete" or "partial",

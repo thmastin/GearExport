@@ -10,7 +10,7 @@ The collector calls `C_SkillInfo.GetNumSkillLines()` and, when the count is a va
 
 Trainer service APIs are called only if a supported trainer frame's `IsShown()` returns true at capture start. Service count is bounded at 200 and ability requirement probes at 20 indexes per service. Each call stores the API, input/context, provenance, return count, every tuple position including nil, and errors. Service ordering follows the runtime index. The service requirement count API is recorded as present/missing but not called because its return semantics were not validated. A nil terminator is preserved; reaching a safety limit is labeled partial. A trainer close during enumeration stops further calls and marks the attempted observation partial. No service purchase, learning, selection, or frame-opening API is called.
 
-Raw tuple strings such as `unavailable` remain uninterpreted. They do not imply learnability, eligibility, cost meaning, or complete prerequisites. When the frame is closed, the current capture says `NOT_OBSERVED_WINDOW_CLOSED`; the last observed sample, if any, stays explicitly nested as `lastObserved` with its own timestamp and context.
+Raw tuple strings such as `unavailable` remain uninterpreted. They do not imply learnability, eligibility, cost meaning, or complete prerequisites. When a supported frame exists and is hidden, the current capture says `NOT_OBSERVED_WINDOW_CLOSED`. If no supported frame object is available, it says `NOT_OBSERVED_FRAME_UNAVAILABLE`; this does not assert that the frame was positively observed closed. Both states retain any prior sample explicitly nested as `lastObserved` with its own timestamp and context.
 
 ## Export compatibility and integration
 

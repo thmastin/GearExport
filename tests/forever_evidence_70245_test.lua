@@ -8,6 +8,7 @@ return function(S, check, equal)
     check(S.structuredOnly.forever70245Evidence, "new evidence stays out of strict WOWSYNC v1 text for parser compatibility")
 
     local oldSkill, oldFrame = C_SkillInfo, ClassTrainerFrame
+    local oldTrainerFrame, oldTrainerStep = TrainerFrame, ClassTrainerFrameSkillStep
     local oldCount, oldInfo, oldCost = GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost
     local oldSkillReq, oldAbilityReq, oldAbilityCount = GetTrainerServiceSkillReq, GetTrainerServiceAbilityReq, GetTrainerServiceNumAbilityReq
     local oldServiceType, oldLearnable = GetTrainerServiceType, IsTrainerServiceLearnable
@@ -40,8 +41,13 @@ return function(S, check, equal)
     local closed, closedMeta = S.collectors.forever70245Evidence()
     equal(closed.trainer.state, "NOT_OBSERVED_WINDOW_CLOSED", "closed trainer is explicit unknown")
     equal(countApiCalls, 0, "closed trainer invokes no service APIs")
+    equal(calls, 3, "each skill index called once per capture")
+    ClassTrainerFrame, TrainerFrame, ClassTrainerFrameSkillStep = nil, nil, nil
+    local unavailable = S.collectors.forever70245Evidence()
+    equal(unavailable.trainer.state, "NOT_OBSERVED_FRAME_UNAVAILABLE", "missing trainer UI frame is explicit not-observed")
+    equal(countApiCalls, 0, "unavailable trainer frame invokes no service APIs")
+    ClassTrainerFrame = { IsShown = function() return false end }
     equal(closed.skillLineCountValue, 3, "skill count captured")
-    equal(calls, 3, "each skill index called once")
     equal(closed.skillLines[2].name, "Axes", "raw skill name retained")
     equal(closed.skillLines[2].skillID, 46, "skill id retained separately for duplicate names")
     equal(closed.skillLines[2].index, 2, "skill index retained")
@@ -150,6 +156,7 @@ return function(S, check, equal)
     check(rawSection:find("Raw runtime observations only", 1, true), "structured evidence disclaims unvalidated interpretation")
 
     C_SkillInfo, ClassTrainerFrame = oldSkill, oldFrame
+    TrainerFrame, ClassTrainerFrameSkillStep = oldTrainerFrame, oldTrainerStep
     GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost = oldCount, oldInfo, oldCost
     GetTrainerServiceSkillReq, GetTrainerServiceAbilityReq, GetTrainerServiceNumAbilityReq = oldSkillReq, oldAbilityReq, oldAbilityCount
     GetTrainerServiceType, IsTrainerServiceLearnable = oldServiceType, oldLearnable
