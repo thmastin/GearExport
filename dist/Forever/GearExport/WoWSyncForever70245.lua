@@ -59,3 +59,11 @@ S.collectors = {
     end,
     bags = S.collectors.bags,
 }
+
+-- This section is isolated to the exact Forever 70245 package. The older
+-- Forever trainer tuple adapter is intentionally not activated here.
+S.order[#S.order + 1] = "forever70245Evidence"
+-- Keep WOWSYNC v1 text parse-compatible with the currently deployed Dashboard.
+-- The version-specific raw section is persisted alongside the export and is
+-- consumed by the separate Forever parser integration handoff.
+S.structuredOnly.forever70245Evidence = true

@@ -51,6 +51,7 @@ BuyTrainerService, UseContainerItem, PickupContainerItem = action, action, actio
 local addon = {}
 for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.lua",
     "WoWSyncForeverCollectors.lua", "WoWSyncForever70245.lua", "WoWSyncForeverBags70245.lua",
+    "WoWSyncForeverEvidence70245.lua",
     "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
@@ -135,6 +136,7 @@ assert(S.collectors.bags and not S.collectors.bank and not S.collectors.trainer
     and not S.collectors.professions and not S.collectors.spells,
     "70245 exposes only live-observed Forever collectors")
 assert(loadfile("tests/forever_bags_70245_test.lua"))()(S, check, equal)
+assert(loadfile("tests/forever_evidence_70245_test.lua"))()(S, check, equal)
 for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitRace", "UnitLevel" }) do
     _G[key] = function() error("API changed") end
 end
