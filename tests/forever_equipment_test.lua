@@ -15,7 +15,7 @@ return function(S, check, equal, advance)
             equal(link, "|Hitem:900001:7:0:0|h[Synthetic tunic]|h", "metadata uses equipped variant")
             return "Synthetic tunic", link, 1, 99, 0
         end,
-        GetItemStats = function() error("70245 effective stat semantics are not verified") end,
+        GetItemStats = function() error("70291 effective stat semantics are not verified") end,
     }
     local data, meta = S.collectors.equipment()
     equal(data.slots[5].itemID, 900001, "equipped identity")
@@ -23,7 +23,7 @@ return function(S, check, equal, advance)
     equal(data.slots[5].name, "Synthetic tunic", "equipped name")
     equal(data.slots[5].itemLevel, 12, "location level, not generic level 99")
     equal(data.slots[5].requiredLevel, 0, "known zero required level")
-    equal(data.slots[5].stats, nil, "70245 effective stat semantics remain unknown")
+    equal(data.slots[5].stats, nil, "70291 effective stat semantics remain unknown")
     equal(data.slots[1], nil, "explicit false presence is empty")
     equal(meta.completeness, "partial", "unverified effective stats keep the section partial")
     check(not meta.retry, "semantic unknown does not cause a retry loop")
@@ -103,7 +103,7 @@ return function(S, check, equal, advance)
         local expected = slot .. ":\tEMPTY"
         if row then
             expected = slot .. ":\t" .. table.concat(row, "\t") .. "\t?"
-            equal(data.slots[slot].stats, nil, "real 70245 effective stats remain unknown")
+            equal(data.slots[slot].stats, nil, "equipped effective stats remain unknown")
         end
         check(("\n" .. actual .. "\n"):find("\n" .. expected .. "\n", 1, true),
             "real level-6 equipment row matches: " .. slot)
