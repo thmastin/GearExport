@@ -187,6 +187,7 @@ local function readItemFacts(data, issues)
     if not currentComplete(bagsSection) then itemIssues[#itemIssues + 1] = "Carried source is incomplete or older than the recent-evidence window" end
     table.sort(links)
     local itemAPI = type(C_Item) == "table" and C_Item or {}
+    local playerInfoAPI = type(C_PlayerInfo) == "table" and C_PlayerInfo or {}
     data.itemFacts = { state = "OBSERVED_ITEM_SAMPLES", observedAt = sourceNow,
         source = "Forever C_Item item APIs on exact observed itemStrings; each call is raw runtime evidence",
         completeness = #itemIssues == 0 and "complete" or "partial", items = {},
@@ -203,6 +204,9 @@ local function readItemFacts(data, issues)
         ["C_Item.GetItemStats"] = apiStatus(itemAPI.GetItemStats),
         ["C_Item.GetItemStatDelta"] = apiStatus(itemAPI.GetItemStatDelta),
         ["C_Item.GetItemSpecInfo"] = apiStatus(itemAPI.GetItemSpecInfo),
+        ["C_Item.IsItemBindToAccount"] = apiStatus(itemAPI.IsItemBindToAccount),
+        ["C_Item.IsItemBindToAccountUntilEquip"] = apiStatus(itemAPI.IsItemBindToAccountUntilEquip),
+        ["C_PlayerInfo.CanUseItem"] = apiStatus(playerInfoAPI.CanUseItem),
     }
     local specializationAPI = type(C_SpecializationInfo) == "table" and C_SpecializationInfo or {}
     data.specialization = {
@@ -231,6 +235,8 @@ local function readItemFacts(data, issues)
         fact.itemInfoInstant.api, fact.itemInfoInstant.input = "C_Item.GetItemInfoInstant", { itemString = link }
         fact.isEquippableItem = call(itemAPI.IsEquippableItem, { n = 1, link })
         fact.isEquippableItem.api, fact.isEquippableItem.input = "C_Item.IsEquippableItem", { itemString = link }
+        fact.playerCanUseItem = call(playerInfoAPI.CanUseItem, { n = 1, fact.itemID })
+        fact.playerCanUseItem.api, fact.playerCanUseItem.input = "C_PlayerInfo.CanUseItem", { itemID = fact.itemID, itemString = link, scope = "CURRENT_PLAYER_ONLY" }
         fact.itemInfo = call(itemAPI.GetItemInfo, { n = 1, link })
         fact.itemInfo.api, fact.itemInfo.input = "C_Item.GetItemInfo", { itemString = link }
         fact.itemStats = call(itemAPI.GetItemStats, { n = 1, link })
@@ -239,6 +245,18 @@ local function readItemFacts(data, issues)
         fact.itemSpecInfo = call(itemAPI.GetItemSpecInfo, { n = 1, link })
         fact.itemSpecInfo.api, fact.itemSpecInfo.input = "C_Item.GetItemSpecInfo", { itemString = link }
         fact.itemSpecInfo.table = tableResult(fact.itemSpecInfo)
+        fact.bindingEvidence = {
+            state = "OBSERVED_RAW_API_CALLS", provenance = "IN_GAME_RUNTIME_CALL",
+            observedAt = sourceNow, semanticInterpretation = "UNKNOWN_UNVALIDATED",
+            itemInfoBindType = fact.itemInfo.returns and fact.itemInfo.returns[14]
+                or { index = 14, observation = { state = "UNKNOWN", reason = "GetItemInfo bindType return unavailable" } },
+            isItemBindToAccount = call(itemAPI.IsItemBindToAccount, { n = 1, link }),
+            isItemBindToAccountUntilEquip = call(itemAPI.IsItemBindToAccountUntilEquip, { n = 1, link }),
+        }
+        fact.bindingEvidence.isItemBindToAccount.api = "C_Item.IsItemBindToAccount"
+        fact.bindingEvidence.isItemBindToAccount.input = { itemString = link }
+        fact.bindingEvidence.isItemBindToAccountUntilEquip.api = "C_Item.IsItemBindToAccountUntilEquip"
+        fact.bindingEvidence.isItemBindToAccountUntilEquip.input = { itemString = link }
         local instantID = fact.itemInfoInstant.returns and fact.itemInfoInstant.returns[1]
             and fact.itemInfoInstant.returns[1].observation
         local equippable = fact.isEquippableItem.returns and fact.isEquippableItem.returns[1]
@@ -252,6 +270,9 @@ local function readItemFacts(data, issues)
         fact.itemInfoInstant._rawReturns, fact.isEquippableItem._rawReturns = nil, nil
         fact.itemInfo._rawReturns, fact.itemStats._rawReturns = nil, nil
         fact.itemSpecInfo._rawReturns = nil
+        fact.playerCanUseItem._rawReturns = nil
+        fact.bindingEvidence.isItemBindToAccount._rawReturns = nil
+        fact.bindingEvidence.isItemBindToAccountUntilEquip._rawReturns = nil
         data.itemFacts.items[#data.itemFacts.items + 1] = fact
     end
     local candidates, equipped = {}, {}

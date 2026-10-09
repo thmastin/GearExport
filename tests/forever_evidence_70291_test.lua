@@ -7,7 +7,7 @@ return function(S, check, equal)
     check(found, "70291 evidence included in normal export refresh")
     check(S.structuredOnly.forever70291Evidence, "new evidence stays out of strict WOWSYNC v1 text for parser compatibility")
 
-    local oldSkill, oldFrame, oldItemAPI, oldSpecializationInfo = C_SkillInfo, ClassTrainerFrame, C_Item, C_SpecializationInfo
+    local oldSkill, oldFrame, oldItemAPI, oldSpecializationInfo, oldPlayerInfo = C_SkillInfo, ClassTrainerFrame, C_Item, C_SpecializationInfo, C_PlayerInfo
     local oldTrainerFrame, oldTrainerStep = TrainerFrame, ClassTrainerFrameSkillStep
     local oldCount, oldInfo, oldCost = GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost
     local oldSkillReq, oldAbilityReq, oldAbilityCount = GetTrainerServiceSkillReq, GetTrainerServiceAbilityReq, GetTrainerServiceNumAbilityReq
@@ -56,7 +56,11 @@ return function(S, check, equal)
             equippableCalls[#equippableCalls + 1] = reference
             return true
         end,
+        IsItemBindToAccount = function(reference) check(reference == exactArmor or reference == exactVariant, "account-binding API receives exact item string"); return false end,
+        IsItemBindToAccountUntilEquip = function(reference) check(reference == exactArmor or reference == exactVariant, "account-bound-until-equip API receives exact item string"); return false end,
     }
+    local canUseIDs = {}
+    C_PlayerInfo = { CanUseItem = function(itemID) canUseIDs[#canUseIDs + 1] = itemID; return itemID == 123 end }
     C_SpecializationInfo = {
         GetSpecialization = function() return 1 end,
         GetSpecializationInfo = function(index)
@@ -87,6 +91,13 @@ return function(S, check, equal)
     equal(#closed.itemFacts.items, 2, "item facts are captured per exact itemString variant")
     equal(instantCalls[1], exactArmor, "item metadata API receives an exact observed itemString")
     equal(equippableCalls[2], exactVariant, "equippability API receives each exact variant")
+    equal(canUseIDs[1], 123, "CanUseItem receives observed base item ID")
+    equal(closed.itemFacts.items[1].playerCanUseItem.api, "C_PlayerInfo.CanUseItem", "player use API is separately labeled")
+    equal(closed.itemFacts.items[1].playerCanUseItem.input.scope, "CURRENT_PLAYER_ONLY", "player-scoped API cannot be generalized to other characters")
+    equal(closed.itemFacts.items[1].playerCanUseItem.returns[1].observation.value, true, "player CanUseItem result remains raw")
+    equal(closed.itemFacts.items[1].bindingEvidence.semanticInterpretation, "UNKNOWN_UNVALIDATED", "binding semantics stay gated pending Forever capture")
+    equal(closed.itemFacts.items[1].bindingEvidence.isItemBindToAccount.returns[1].observation.value, false, "account binding raw result retained")
+    equal(closed.itemFacts.items[1].bindingEvidence.itemInfoBindType.observation.value, 1, "GetItemInfo bindType position retained raw")
     equal(closed.itemFacts.items[1].itemInfoInstant.returns[4].observation.value, "INVTYPE_CHEST",
         "raw inventory-type evidence is retained without an eligibility claim")
     equal(closed.itemFacts.items[1].isEquippableItem.returns[1].observation.value, true,
@@ -138,11 +149,14 @@ return function(S, check, equal)
     equal(missingSkill.skillLineCount.state, "API_MISSING", "missing count API explicit")
     equal(missingSkill.skillLineCoverage, "UNKNOWN_COUNT", "missing count does not create an empty-complete skill list")
     C_Item = {}
+    C_PlayerInfo = {}
     C_SpecializationInfo = {}
     local missingItemAPIs = S.collectors.forever70291Evidence().itemFacts
     equal(missingItemAPIs.completeness, "partial", "missing item APIs cannot become complete metadata")
     equal(missingItemAPIs.items[1].itemInfoInstant.state, "API_MISSING", "missing item API remains explicit")
     equal(missingItemAPIs.items[1].itemSpecInfo.state, "API_MISSING", "missing item specialization API remains explicit")
+    equal(missingItemAPIs.items[1].playerCanUseItem.state, "API_MISSING", "missing player use API remains explicit")
+    equal(missingItemAPIs.items[1].bindingEvidence.isItemBindToAccount.state, "API_MISSING", "missing account binding API remains explicit")
     equal(missingItemAPIs.statDeltaComparisons.state, "API_MISSING", "missing stat delta API remains explicit")
     C_Item = { GetItemStatDelta = function() error("synthetic delta failure") end }
     local failedDelta = S.collectors.forever70291Evidence().itemFacts.statDeltaComparisons
@@ -259,6 +273,7 @@ return function(S, check, equal)
 
     S.record.sections.equipment, S.record.sections.bags = oldEquipment, oldBags
     C_Item = oldItemAPI
+    C_PlayerInfo = oldPlayerInfo
     C_SpecializationInfo = oldSpecializationInfo
     C_SkillInfo, ClassTrainerFrame = oldSkill, oldFrame
     TrainerFrame, ClassTrainerFrameSkillStep = oldTrainerFrame, oldTrainerStep
