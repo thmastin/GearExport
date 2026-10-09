@@ -23,14 +23,14 @@
     "WOWSYNC_ACCEPTANCE.md": "9f43241b572e5c66a31c743e33bcc7f21884c5d7680ffd2fd244a26f2a51b22d",
     "WOWSYNC_SCHEMA.md": "078dbe94d49f70ed599e016464113e9457069f4d54c36e21b7b09d662f520c5b",
     "WoWSyncCompat.lua": "d69aa661400288d3b5217e56b2bda1d64c1a463dd9a41d6d71323abee9817e2f",
-    "WoWSyncCore.lua": "29e1ed04328c327dd8867dc8da055d8c970f9037dc8d37c40f2321b2595610ab",
+    "WoWSyncCore.lua": "81824de0c566b69cbcff67360e14a2a9d8f0c59d770e2e0acf2bdc0a3b21f14f",
     "WoWSyncForever.lua": "845e028fb3f9a3e78b0e39d2c4ee8843b283c703ae583b3dff83030dc0437af8",
-    "WoWSyncForever70291.lua": "9d89cb505ed779f0830222268950689915f94df497ec92df0055c76c517fa872",
+    "WoWSyncForever70291.lua": "02c163f6f5068679d81d19169609dcf725050c65edabae02cf0344915c5a076a",
     "WoWSyncForeverBags70291.lua": "d787fada4322a29a2cdeaa12c48703bbf9d9ef97c8d94a85d3964263835b6e62",
-    "WoWSyncForeverCollectors.lua": "6ac555f766538c02a89970643ef6a6aac1cfe8faa2985de3e7cd3d58bd484179",
+    "WoWSyncForeverCollectors.lua": "50064dc82865e89ad4c8b5be94fbc0ea35be7673222108392be23e9665409638",
     "WoWSyncForeverEvidence70291.lua": "61b9de9149be88e27714aceeef28d35eca6f2094bc83c8e95bbc283ae8ced8ff",
     "WoWSyncIcon.tga": "c1a29652ad570c09653e98f8150ebfd99301c9980f6b3f60cd4df5e5bc7a2c23",
-    "WoWSyncRender.lua": "6f8f855047f81143107c4338b3c6e18d311fa6eae0ec24d65d4b50096cbdff1b",
+    "WoWSyncRender.lua": "a8af543dfaaf4b12d472ac177185f1324afbd689d919bc8d19b2a030fbd8ccd9",
     "WoWSyncUI.lua": "c507da9ff96bd693cf4e8f38a1b4b3c140784b56ba70d2190579b909b3647173"
   }
 }

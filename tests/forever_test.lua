@@ -32,7 +32,10 @@ C_AddOns = { GetAddOnMetadata = function(name, field)
     return target
 end }
 function UnitGUID() return "Player-Forever-Test" end
-function UnitName() return "Hallo" end
+function UnitName() return "Hallo", "Surname" end
+function GetUnitName() return "Hallo Surname" end
+function UnitFullName() return "Hallo", "Surname" end
+function UnitNameUnmodified() return "Hallo", "Surname" end
 function GetRealmName() return "Test Realm" end
 function UnitClass() return "Warrior", "WARRIOR" end
 function UnitRace() return "Dwarf", "Dwarf", 3 end
@@ -107,6 +110,11 @@ check(S.record.latestExport ~= legacyExport and S.record.latestExport.text ~= le
 equal(WoWSyncDB.settings.preserve, true, "existing global settings remain intact")
 local data = S.record.sections.character.data
 equal(data.name, "Hallo", "name")
+equal(data.surname, "Surname", "surname candidate captured from consistent name APIs")
+check(data.surnameSource:find("UnitName%[2%]", 1) ~= nil, "corroborating surname sources remain explicit")
+equal(data.nameApiEvidence.state, "CORROBORATED", "raw Forever API diagnostics recorded")
+equal(data.nameApiEvidence.calls.UnitName.returnCount, 2, "UnitName return count preserved")
+equal(S.record.identity.surname, "Surname", "SavedVariables identity carries display-only surname")
 equal(data.realm, "Test Realm", "realm")
 equal(data.class, "WARRIOR", "class")
 equal(data.level, 10, "level")
@@ -117,6 +125,50 @@ equal(data.xp, nil, "unprobed XP unknown")
 equal(data.xpMax, nil, "unprobed XP maximum unknown")
 equal(data.clientFamily, "Forever", "Forever never mislabeled Retail")
 equal(data.interface, interface, "interface comes from API, not version arithmetic")
+local renderedCharacter = S.RenderSection("character", S.GetSnapshot())
+check(renderedCharacter:find("Name: Hallo\nSurname: Surname\nSurnameSource: ", 1, true)
+    and renderedCharacter:find("Realm: Test Realm", 1, true), "Forever export includes optional surname without changing first-name field")
+check(renderedCharacter:find("SurnameSource: UnitName%[2%]", 1) ~= nil, "export preserves the unverified runtime API candidate provenance")
+UnitName = function() return "Hallo", "Test Realm" end
+GetUnitName = function() return "Hallo" end
+UnitFullName = function() return "Hallo", "Test Realm" end
+UnitNameUnmodified = function() return "Hallo", "Test Realm" end
+S.RequestSync(); advance(1)
+equal(S.record.sections.character.data.surname, nil, "realm return is not misclassified as surname")
+UnitName = function() return "Hallo", "OnlyCandidate" end
+GetUnitName = function() return "Hallo" end
+UnitFullName = nil
+UnitNameUnmodified = function() return "Hallo" end
+S.RequestSync(); advance(1)
+equal(S.record.sections.character.data.surname, nil, "single uncorroborated API candidate remains unknown")
+check(#S.record.sections.character.data.nameApiEvidence.candidates == 1, "unverified candidate preserved for live diagnosis")
+UnitName = function() return "Hallo", "Surname" end
+GetUnitName = function() return "Hallo Surname" end
+UnitFullName = function() return "Hallo", "Surname" end
+UnitNameUnmodified = function() return "Hallo", "Surname" end
+S.RequestSync(); advance(1)
+equal(S.record.sections.character.data.surname, "Surname", "corroborated API evidence restores display surname")
+UnitName = function() return nil, "OrphanCandidate" end
+GetUnitName = function() return nil end
+UnitFullName = function() return nil, "OrphanCandidate" end
+UnitNameUnmodified = function() return nil, "OrphanCandidate" end
+S.RequestSync(); advance(1)
+equal(S.record.sections.character.data.name, nil, "missing first-name observation stays unknown")
+equal(S.record.sections.character.data.surname, nil, "surname is not inferred without an observed first name")
+local secretName = {}
+issecretvalue = function(value) return value == secretName end
+UnitName = function() return secretName, "SecretSurname" end
+GetUnitName = function() return secretName end
+UnitFullName = function() return secretName, "SecretSurname" end
+UnitNameUnmodified = function() return secretName, "SecretSurname" end
+S.RequestSync(); advance(1)
+equal(S.record.sections.character.data.surname, nil, "restricted name API values do not become a surname")
+equal(S.record.sections.character.data.nameApiEvidence.calls.UnitName.returns[1].type, "RESTRICTED", "restricted name return is not type-inspected or serialized")
+UnitName = function() return "Hallo", "Surname" end
+GetUnitName = function() return "Hallo Surname" end
+UnitFullName = function() return "Hallo", "Surname" end
+UnitNameUnmodified = function() return "Hallo", "Surname" end
+issecretvalue = nil
 equal(S.record.sections.location, nil, "unprobed location collector disabled")
 equal(requests, 0, "unverified 70245 playtime request is not sent")
 for _, event in ipairs({ "TIME_PLAYED_MSG", "BANKFRAME_OPENED", "TRAINER_SHOW" }) do check(S.eventFrame.events[event], "Forever event registered: " .. event) end
@@ -149,12 +201,16 @@ assert(loadfile("tests/forever_evidence_70291_test.lua"))()(S, check, equal)
 for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitRace", "UnitLevel" }) do
     _G[key] = function() error("API changed") end
 end
+for _, key in ipairs({ "GetUnitName", "UnitFullName", "UnitNameUnmodified" }) do
+    _G[key] = function() error("API changed") end
+end
 S.RequestSync(); advance(1)
 local unknown = S.RenderSection("character", S.GetSnapshot())
 for _, field in ipairs({ "Name", "Realm", "Class", "Level" }) do
     check(unknown:find(field .. ": ?", 1, true), "failed field unknown: " .. field)
 end
 check(not unknown:find("Race:", 1, true), "70245 race is not added to the strict v1 text schema")
+check(unknown:find("Surname: ?", 1, true), "surname unavailable is explicit UNKNOWN in text")
 check(unknown:find("XP: ?/?", 1, true), "unavailable XP explicit")
 check(unknown:find("capture limited to fields supported by the carried-forward 70245 contract", 1, true), "scope diagnostic retained")
 local secret = {}
@@ -165,6 +221,8 @@ C_Map, GetRealZoneText, GetSubZoneText = nil, nil, nil
 S.RequestSync(); advance(1)
 equal(S.record.sections.character.data.level, nil, "changed type unknown")
 equal(S.record.sections.character.data.race, nil, "restricted race unknown")
+equal(S.record.sections.character.data.surname, nil, "failed name APIs leave surname unknown")
+equal(S.record.identity.surname, nil, "failed current capture clears stale display surname")
 equal(S.record.sections.location, nil, "location remains unobserved")
 equal(SLASH_WOWSYNC1, "/wowsync", "command preserved")
 check(not SlashCmdList.GEAREXPORT and not SlashCmdList.BANKCLEANUP, "no legacy/action commands loaded")

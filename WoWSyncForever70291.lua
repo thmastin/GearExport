@@ -6,6 +6,79 @@ local S, F = addon.Sync, addon.Forever
 local CAPTURE_PROFILE = "Forever:1.60.1:70291:16001"
 local equipmentCollector = S.collectors.equipment
 
+local function publicName(value)
+    if type(issecretvalue) == "function" then
+        local ok, secret = pcall(issecretvalue, value)
+        if not ok or secret then return nil, false end
+    end
+    if type(value) ~= "string" or value == "" then return nil, true end
+    return value, true
+end
+
+local function captureNameEvidence(firstName, realm)
+    local safeFirstName = publicName(firstName)
+    local safeRealm = publicName(realm)
+    local calls = {}
+    local candidates = {}
+    local function record(apiName, fn)
+        if type(fn) ~= "function" then
+            calls[apiName] = { state = "API_MISSING" }
+            return
+        end
+        local values
+        local function pack(...) return { n = select("#", ...), ... } end
+        local ok, result = pcall(function() return pack(fn("player")) end)
+        if not ok then
+            calls[apiName] = { state = "API_ERROR", error = tostring(result) }
+            return
+        end
+        local returns = {}
+        for i = 1, result.n do
+            local value = result[i]
+            local safe, isPublic = publicName(value)
+            returns[i] = { index = i, type = isPublic and type(value) or "RESTRICTED", state = isPublic and value == nil and "NIL" or safe and "OBSERVED" or "UNAVAILABLE", value = safe }
+        end
+        calls[apiName] = { state = result.n > 0 and "OBSERVED" or "ZERO_RETURNS", returnCount = result.n, returns = returns }
+
+        local first = publicName(result[1])
+        local second = publicName(result[2])
+        if safeFirstName and first == safeFirstName and apiName == "UnitName" and second and second ~= safeFirstName and second ~= safeRealm then
+            candidates[#candidates + 1] = { value = second, source = "UnitName[2]" }
+        elseif safeFirstName and first == safeFirstName and apiName == "GetUnitName" and first:sub(1, #safeFirstName + 1) == safeFirstName .. " " then
+            local suffix = first:sub(#safeFirstName + 2)
+            if suffix ~= "" and suffix ~= safeRealm then candidates[#candidates + 1] = { value = suffix, source = "GetUnitName suffix" } end
+        elseif safeFirstName and first == safeFirstName and (apiName == "UnitFullName" or apiName == "UnitNameUnmodified")
+            and second and second ~= safeFirstName and second ~= safeRealm then
+            candidates[#candidates + 1] = { value = second, source = apiName .. "[2]" }
+        end
+    end
+
+    record("UnitName", UnitName)
+    record("GetUnitName", GetUnitName)
+    record("UnitFullName", UnitFullName)
+    record("UnitNameUnmodified", UnitNameUnmodified)
+    local values, selected, sources, conflict = {}, nil, {}, false
+    for _, candidate in ipairs(candidates) do
+        local entry = values[candidate.value]
+        if not entry then entry = { count = 0, sources = {} }; values[candidate.value] = entry end
+        if not entry.sources[candidate.source] then
+            entry.sources[candidate.source] = true
+            entry.count = entry.count + 1
+            entry.sourcesList = entry.sourcesList or {}
+            entry.sourcesList[#entry.sourcesList + 1] = candidate.source
+        end
+    end
+    local distinct = 0
+    for value, entry in pairs(values) do
+        distinct = distinct + 1
+        if entry.count >= 2 then selected, sources = value, entry.sourcesList end
+    end
+    conflict = distinct > 1 or (distinct == 1 and selected == nil)
+    if conflict or distinct > 1 then selected, sources = nil, nil end
+    return selected, sources and table.concat(sources, "+") or nil, { state = conflict and "CONFLICTING_OR_UNCORROBORATED_CANDIDATES" or selected and "CORROBORATED" or "UNKNOWN",
+        candidates = candidates, calls = calls, interpretation = "API semantics require live verification on Forever 1.60.1 build 70291" }
+end
+
 function addon.PrepareCaptureProfile(record)
     if record.captureProfile == CAPTURE_PROFILE then return end
     local priorSections = type(record.sections) == "table" and record.sections or nil
@@ -33,9 +106,15 @@ end
 S.collectors = {
     character = function()
         local issues = {}
+        local firstName = F.Read("Name", UnitName, 1, "string", issues, "player")
+        local realm = F.Read("Realm", GetRealmName, 1, "string", issues)
+        local surname, surnameSource, nameApiEvidence = captureNameEvidence(firstName, realm)
         local data = {
-            name = F.Read("Name", UnitName, 1, "string", issues, "player"),
-            realm = F.Read("Realm", GetRealmName, 1, "string", issues),
+            name = firstName,
+            surname = surname,
+            surnameSource = surnameSource,
+            nameApiEvidence = nameApiEvidence,
+            realm = realm,
             class = F.Read("Class", UnitClass, 2, "string", issues, "player"),
             race = F.Read("Race", UnitRace, 1, "string", issues, "player"),
             level = F.Number("Level", UnitLevel, issues, "player"),

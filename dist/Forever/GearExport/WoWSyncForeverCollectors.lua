@@ -105,9 +105,9 @@ S.collectors.equipment = function()
                     else issues[#issues + 1] = label .. " required level unknown" end
                 end
                 if #issues > before then pending = true end
-                -- A stats table was observed on 70245, but no build-matched
-                -- tooltip comparison established effective-value semantics.
-                issues[#issues + 1] = label .. " effective stat semantics unverified for Forever 70245"
+                -- GetItemStats is collected separately for exact item variants, but this equipped-slot
+                -- collector has no validated build-70291 tooltip comparison for effective values.
+                issues[#issues + 1] = label .. " effective stat semantics unverified for Forever 1.60.1 build 70291"
                 item.stats = nil
             end
         else

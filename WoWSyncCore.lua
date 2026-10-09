@@ -198,6 +198,12 @@ function S.Commit(key, data, meta)
         data = merged
     end
     local changed = not old or not Equal(old.data, data)
+    if key == "character" and type(data) == "table" and type(S.record.identity) == "table" then
+        -- Surname is display metadata only. Keep the first-name identity key
+        -- and GUID stable, and clear an earlier value when the current API
+        -- observation cannot establish a surname.
+        S.record.identity.surname = type(data.surname) == "string" and data.surname ~= "" and data.surname or nil
+    end
     owner.sections[storedKey] = { data = data, observedAt = now,
         changedAt = changed and now or old.changedAt,
         revision = ((old and old.revision) or 0) + (changed and 1 or 0),

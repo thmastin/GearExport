@@ -137,7 +137,12 @@ renderers.forever70291Evidence = function(out, data)
 end
 
 renderers.character = function(out, data)
-    Field(out, "Name", data.name); Field(out, "Realm", data.realm)
+    Field(out, "Name", data.name)
+    if data.clientFamily == "Forever" and data.clientBuild == "70291" then
+        Field(out, "Surname", data.surname)
+        if data.surname then Field(out, "SurnameSource", data.surnameSource) end
+    end
+    Field(out, "Realm", data.realm)
     Field(out, "Class", data.class); Field(out, "Level", data.level)
     -- WOWSYNC v1's strict CHARACTER parser has no Race field. Keep the
     -- observation in structured SavedVariables, but omit it from the strict
