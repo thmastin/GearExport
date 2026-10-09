@@ -31,6 +31,8 @@ The current candidate adds optional, read-only calls to `C_Item.GetItemInfo` and
 
 Hallo's 2026-10-09 live capture on Forever 1.60.1 build 70291 returned 18 GetItemInfo values and a populated GetItemStats table for all 30 exact itemString variants. No calls failed. Returned hyperlinks retained the exact input variants; item name, item class/subclass, equip-location, class/subclass IDs agreed with GetItemInfoInstant; equipped item and required levels agreed with structured equipment where both were observed. These cross-checks validate the selected GetItemInfo tuple positions on this build. They do not validate every field for every possible item or cache state.
 
+The source now also captures `C_Item.GetItemStatDelta(candidateItemString, equippedItemString)` for distinct carried/equipped exact-item pairs, bounded to 256 pairs. It records the ordered inputs, API errors, and bounded raw result table. The Forever 1.60.1 API reference lists this API, but its result shape, direction, and agreement with GetItemStats are not yet live-validated. The field is raw comparison evidence only and does not state that the candidate is an upgrade.
+
 GetItemStats table keys and numeric values remain raw client output. They are not translated into effective stats, primary/secondary stat meaning, weapon upgrades, build suitability, or an upgrade score. IsEquippableItem returned true for ammunition in the capture, so it must not be used alone as an equipment eligibility rule. The capture validates API response shape and exact-variant handling, not all Forever gameplay semantics.
 
 ## Trainer window

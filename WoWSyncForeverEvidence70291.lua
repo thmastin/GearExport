@@ -3,6 +3,7 @@ local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 local MAX_TRAINER_SERVICES, MAX_ABILITY_REQUIREMENTS = 200, 20
 local MAX_ITEM_STAT_ROWS = 100
+local MAX_ITEM_STAT_DELTA_PAIRS = 256
 local unpackValues = unpack or table.unpack
 
 local function public(value)
@@ -139,9 +140,9 @@ end
 -- the item only; they do not establish that this character can equip it.
 -- Inputs are exact itemStrings from the just-collected equipment/bags sections.
 local function readItemFacts(data, issues)
-    local itemsByLink, links = {}, {}
+    local itemsByLink, links, carriedLinks, equipmentLinks = {}, {}, {}, {}
     local itemIssues = {}
-    local function add(item)
+    local function add(item, scope)
         if type(item) ~= "table" or type(item.itemString) ~= "string" then return end
         local itemID = tonumber(item.itemString:match("^item:(%d+)"))
         if not itemID or itemID < 1 or itemID % 1 ~= 0 then
@@ -154,6 +155,8 @@ local function readItemFacts(data, issues)
             itemsByLink[item.itemString] = fact
             links[#links + 1] = item.itemString
         end
+        if scope == "carried" then carriedLinks[item.itemString] = true
+        elseif scope == "equipment" then equipmentLinks[item.itemString] = true end
     end
     local sections = S.record and S.record.sections or {}
     local equipmentSection, bagsSection = sections.equipment, sections.bags
@@ -168,7 +171,7 @@ local function readItemFacts(data, issues)
     local equipment = equipmentSection and equipmentSection.data
     local slots = type(equipment) == "table" and equipment.slots or nil
     if equipmentSection and equipmentSection.lastAttemptStale then itemIssues[#itemIssues + 1] = "Equipment source is LAST_SEEN; item facts not sampled from it"
-    elseif type(slots) == "table" then for _, item in pairs(slots) do add(item) end
+    elseif type(slots) == "table" then for _, item in pairs(slots) do add(item, "equipment") end
     else itemIssues[#itemIssues + 1] = "Equipment item classification source unavailable" end
     local bags = bagsSection and bagsSection.data
     local containers = type(bags) == "table" and bags.containers or nil
@@ -176,7 +179,7 @@ local function readItemFacts(data, issues)
     elseif type(containers) == "table" then
         for _, container in pairs(containers) do
             if type(container) == "table" and type(container.slots) == "table" then
-                for _, item in pairs(container.slots) do add(item) end
+                for _, item in pairs(container.slots) do add(item, "carried") end
             end
         end
     else itemIssues[#itemIssues + 1] = "Carried item classification source unavailable" end
@@ -198,6 +201,7 @@ local function readItemFacts(data, issues)
         ["C_Item.IsEquippableItem"] = apiStatus(itemAPI.IsEquippableItem),
         ["C_Item.GetItemInfo"] = apiStatus(itemAPI.GetItemInfo),
         ["C_Item.GetItemStats"] = apiStatus(itemAPI.GetItemStats),
+        ["C_Item.GetItemStatDelta"] = apiStatus(itemAPI.GetItemStatDelta),
     }
     for _, link in ipairs(links) do
         local fact = itemsByLink[link]
@@ -224,6 +228,39 @@ local function readItemFacts(data, issues)
         fact.itemInfo._rawReturns, fact.itemStats._rawReturns = nil, nil
         data.itemFacts.items[#data.itemFacts.items + 1] = fact
     end
+    local candidates, equipped = {}, {}
+    for link in pairs(carriedLinks) do candidates[#candidates + 1] = link end
+    for link in pairs(equipmentLinks) do equipped[#equipped + 1] = link end
+    table.sort(candidates); table.sort(equipped)
+    local comparisons, attempted, possible, comparisonIssues = {}, 0, 0, {}
+    for _, candidateLink in ipairs(candidates) do
+        for _, equippedLink in ipairs(equipped) do
+            if candidateLink ~= equippedLink then
+                possible = possible + 1
+                if type(itemAPI.GetItemStatDelta) == "function" and #comparisons < MAX_ITEM_STAT_DELTA_PAIRS then
+                    attempted = attempted + 1
+                    local result = call(itemAPI.GetItemStatDelta, { n = 2, candidateLink, equippedLink })
+                    result.api = "C_Item.GetItemStatDelta"
+                    result.input = { candidateItemString = candidateLink, equippedItemString = equippedLink }
+                    result.table = tableResult(result)
+                    result._rawReturns = nil
+                    if result.state ~= "OBSERVED_VALUE" or result.table.state ~= "OBSERVED_TABLE" or result.table.complete ~= true then
+                        comparisonIssues[#comparisonIssues + 1] = "Raw item stat delta unavailable or incomplete for one exact candidate/equipment pair"
+                    end
+                    comparisons[#comparisons + 1] = result
+                end
+            end
+        end
+    end
+    data.itemFacts.statDeltaComparisons = {
+        state = type(itemAPI.GetItemStatDelta) == "function" and "OBSERVED_RAW_COMPARISONS" or "API_MISSING",
+        observedAt = sourceNow, attemptedPairCount = attempted, possiblePairCount = possible,
+        completeness = type(itemAPI.GetItemStatDelta) == "function" and #comparisonIssues == 0 and possible <= MAX_ITEM_STAT_DELTA_PAIRS and attempted == possible and "complete" or "partial",
+        comparisons = comparisons,
+        reason = "Raw C_Item.GetItemStatDelta calls preserve ordered exact itemStrings; return direction and upgrade meaning are not interpreted.",
+    }
+    if possible > MAX_ITEM_STAT_DELTA_PAIRS then comparisonIssues[#comparisonIssues + 1] = "Exact candidate/equipment pair count exceeded the safe item-stat-delta capture bound" end
+    for _, issue in ipairs(comparisonIssues) do data.itemFacts.statDeltaComparisons.issues = data.itemFacts.statDeltaComparisons.issues or {}; data.itemFacts.statDeltaComparisons.issues[#data.itemFacts.statDeltaComparisons.issues + 1] = issue end
     for _, issue in ipairs(itemIssues) do issues[#issues + 1] = issue end
 end
 

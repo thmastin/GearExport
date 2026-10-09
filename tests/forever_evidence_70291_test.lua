@@ -30,7 +30,7 @@ return function(S, check, equal)
         [1] = { itemID = 123, itemString = exactArmor, count = 1 },
         [2] = { itemID = 123, itemString = exactVariant, count = 2 },
     } } } } }
-    local instantCalls, equippableCalls = {}, {}
+    local instantCalls, equippableCalls, deltaCalls = {}, {}, {}
     C_Item = {
         GetItemInfoInstant = function(reference)
             instantCalls[#instantCalls + 1] = reference
@@ -43,6 +43,10 @@ return function(S, check, equal)
         GetItemStats = function(reference)
             check(reference == exactArmor or reference == exactVariant, "item-stats API receives an exact observed variant")
             return { ITEM_MOD_STAMINA_SHORT = 5, ITEM_MOD_ARMOR = 10 }
+        end,
+        GetItemStatDelta = function(candidate, equipped)
+            deltaCalls[#deltaCalls + 1] = { candidate, equipped }
+            return { ITEM_MOD_ARMOR = 1 }
         end,
         IsEquippableItem = function(reference)
             equippableCalls[#equippableCalls + 1] = reference
@@ -81,6 +85,12 @@ return function(S, check, equal)
         "full item-info return tuple retained without semantic interpretation")
     equal(closed.itemFacts.items[1].itemStats.table.state, "OBSERVED_TABLE", "item stats table captured as evidence")
     equal(closed.itemFacts.items[1].itemStats.table.entries[1].key, "ITEM_MOD_ARMOR", "item stat keys retained deterministically")
+    equal(#closed.itemFacts.statDeltaComparisons.comparisons, 1, "unique carried variant is compared with observed equipment")
+    equal(deltaCalls[1][1], exactVariant, "stat delta preserves candidate exact variant as first input")
+    equal(deltaCalls[1][2], exactArmor, "stat delta preserves equipped exact variant as second input")
+    equal(closed.itemFacts.statDeltaComparisons.comparisons[1].table.entries[1].key, "ITEM_MOD_ARMOR", "stat delta table remains raw")
+    equal(closed.itemFacts.statDeltaComparisons.comparisons[1].input.candidateItemString, exactVariant, "stat delta pair labels ordered exact links")
+    equal(closed.itemFacts.statDeltaComparisons.reason:find("not interpreted") ~= nil, true, "stat delta does not become an upgrade conclusion")
     equal(closed.itemFacts.completeness, "complete", "all item metadata API samples are present")
     S.record.sections.bags.completeness = "partial"
     local partialSource = S.collectors.forever70291Evidence().itemFacts
@@ -117,6 +127,15 @@ return function(S, check, equal)
     local missingItemAPIs = S.collectors.forever70291Evidence().itemFacts
     equal(missingItemAPIs.completeness, "partial", "missing item APIs cannot become complete metadata")
     equal(missingItemAPIs.items[1].itemInfoInstant.state, "API_MISSING", "missing item API remains explicit")
+    equal(missingItemAPIs.statDeltaComparisons.state, "API_MISSING", "missing stat delta API remains explicit")
+    C_Item = { GetItemStatDelta = function() error("synthetic delta failure") end }
+    local failedDelta = S.collectors.forever70291Evidence().itemFacts.statDeltaComparisons
+    equal(failedDelta.comparisons[1].state, "API_ERROR", "stat delta API errors remain explicit raw evidence")
+    equal(failedDelta.completeness, "partial", "stat delta API error keeps pair coverage partial")
+    C_Item = { GetItemStatDelta = function() return nil end }
+    local nilDelta = S.collectors.forever70291Evidence().itemFacts.statDeltaComparisons
+    equal(nilDelta.comparisons[1].table.state, "NIL", "nil delta result shape remains explicit")
+    equal(nilDelta.completeness, "partial", "unknown nil delta shape cannot be marked complete")
     C_Item = {
         GetItemInfoInstant = function() return 999, "Armor", "Leather", "INVTYPE_CHEST" end,
         IsEquippableItem = function() return nil end,
