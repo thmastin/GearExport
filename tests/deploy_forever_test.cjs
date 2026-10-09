@@ -46,6 +46,9 @@ function deploy(args, hooks) {
 }
 
 try {
+    const powershellLauncher = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deploy-forever.ps1'), 'utf8');
+    check(/for\s*\(\$level\s*=\s*0;\s*\$level\s*-lt\s*3;\s*\$level\+\+\)/.test(powershellLauncher),
+        'PowerShell launcher resolves WowB.exe from the Forever installation root');
     const validPackage = makePackage('valid-package');
     const info = verifyPackage(validPackage);
     equal(info.build, { version: '1.60.1', build: '70291' }, 'Preserves the package runtime build guard');

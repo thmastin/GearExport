@@ -18,7 +18,7 @@ if (-not $node) {
 
 $script = Join-Path $PSScriptRoot 'deploy-forever.cjs'
 $clientRoot = $Destination
-for ($level = 0; $level -lt 4; $level++) { $clientRoot = Split-Path -Parent $clientRoot }
+for ($level = 0; $level -lt 3; $level++) { $clientRoot = Split-Path -Parent $clientRoot }
 $clientExecutable = Join-Path $clientRoot 'WowB.exe'
 if (-not (Test-Path -LiteralPath $clientExecutable -PathType Leaf)) {
     Write-Error "Forever executable was not found: $clientExecutable"
