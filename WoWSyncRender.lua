@@ -4,6 +4,7 @@ local _, addon = ...
 local S = addon.Sync
 local labels = { character = "CHARACTER", location = "LOCATION", equipment = "EQUIPMENT",
     bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", guildBank = "GUILD BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS", itemMetadata = "ITEM METADATA" }
+labels.forever70291Evidence = "FOREVER 70291 EVIDENCE"
 
 local function Text(value)
     if value == nil then return "?" end
@@ -17,6 +18,17 @@ local function Row(out, ...)
     for index = 1, select("#", ...) do row[index] = Text(select(index, ...)) end
     out[#out + 1] = table.concat(row, "\t")
 end
+local function RawText(value)
+    if value == nil then return "?" end
+    local text = tostring(value)
+    return text:gsub("\\", "\\\\"):gsub("\t", "\\t"):gsub("\r", "\\r"):gsub("\n", "\\n")
+end
+local function RawRow(out, ...)
+    local row = {}
+    for index = 1, select("#", ...) do row[index] = RawText(select(index, ...)) end
+    out[#out + 1] = table.concat(row, "\t")
+end
+local function RawField(out, key, value) out[#out + 1] = key .. ": " .. RawText(value) end
 local function Field(out, key, value) out[#out + 1] = key .. ": " .. Text(value) end
 local function SortedKeys(map)
     local keys = {}
@@ -32,9 +44,94 @@ local function Stats(item)
 end
 
 local renderers = {}
+local function RenderRawCall(out, prefix, call)
+    RawField(out, prefix .. ".state", call and call.state)
+    RawField(out, prefix .. ".api", call and call.api)
+    RawField(out, prefix .. ".returnCount", call and call.returnCount)
+    if call and call.error then RawField(out, prefix .. ".error", call.error) end
+    if call and call.input then
+        RawField(out, prefix .. ".argumentCount", call.input.argumentCount)
+        for index, value in ipairs(call.input.arguments or {}) do RawRow(out, prefix .. ".argument", index, value) end
+    end
+    if call and call.context then
+        for _, name in ipairs(SortedKeys(call.context)) do RawField(out, prefix .. ".context." .. name, call.context[name]) end
+    end
+    for _, returned in ipairs(call and call.returns or {}) do
+        local value = returned.observation or {}
+        RawRow(out, prefix .. ".return", returned.index, value.state, value.type, value.value)
+    end
+end
+
+renderers.forever70291Evidence = function(out, data)
+    RawField(out, "Provenance", data.provenance)
+    RawField(out, "CapturedAt", data.capturedAt)
+    RawField(out, "Client", (data.client and data.client.version or "?") .. " build " .. (data.client and data.client.build or "?"))
+    RawField(out, "Interface", data.client and data.client.interface)
+    RenderRawCall(out, "GetBuildInfo", data.clientBuildInfo)
+    RawField(out, "SkillLineCoverage", data.skillLineCoverage)
+    RawField(out, "SkillLineCount", data.skillLineCountValue)
+    RenderRawCall(out, "C_SkillInfo.GetNumSkillLines", data.skillLineCount)
+    Row(out, "skillLine", "index", "skillID", "categoryID", "name", "rank", "maxRank", "isHeader", "state", "returnCount", "returnType")
+    for _, line in ipairs(data.skillLines or {}) do
+        RawRow(out, "skillLine", line.index, line.skillID, line.skillLineCategoryID, line.name,
+            line.rank, line.maxRank, line.isHeader, line.state, line.returnCount,
+            line.returnShape and line.returnShape.types[1])
+        for _, field in ipairs(line.rawFields or {}) do
+            local value = field.observation or {}
+            RawRow(out, "skillField", line.index, field.key, field.keyType, value.state, value.type, value.value)
+        end
+        if line.error then RawRow(out, "skillError", line.index, line.error) end
+    end
+    local trainer = data.trainer or {}
+    RawField(out, "TrainerCaptureState", trainer.state)
+    local snapshot = trainer.lastObserved
+    if snapshot then
+        RawField(out, "TrainerObservationState", snapshot.state)
+        RawField(out, "TrainerFrame", snapshot.frame)
+        RawField(out, "TrainerCapturedAt", snapshot.capturedAt)
+        RawField(out, "TrainerServiceCoverage", snapshot.coverage)
+        RawField(out, "TrainerServiceCount", snapshot.serviceCount)
+        RenderRawCall(out, "GetNumTrainerServices", snapshot.serviceCountResult)
+        for _, name in ipairs(SortedKeys(snapshot.apiAvailability)) do
+            RawField(out, "TrainerAPI." .. name, snapshot.apiAvailability[name])
+        end
+        Row(out, "trainerService", "serviceIndex", "API", "state", "returnCount", "returnIndex", "valueState", "valueType", "value")
+        for _, service in ipairs(snapshot.services or {}) do
+            for _, callName in ipairs({ "info", "cost", "skillRequirement" }) do
+                local call = service.calls[callName]
+                RenderRawCall(out, "trainer." .. service.index .. "." .. callName, call)
+                for _, returned in ipairs(call and call.returns or {}) do
+                    local value = returned.observation or {}
+                    RawRow(out, "trainerService", service.index, call.api, call.state,
+                        call.returnCount, returned.index, value.state, value.type, value.value)
+                end
+            end
+            for _, reqCall in ipairs(service.calls.abilityRequirements or {}) do
+                RenderRawCall(out, "trainer." .. service.index .. ".abilityRequirement", reqCall)
+                for _, returned in ipairs(reqCall.returns or {}) do
+                    local value = returned.observation or {}
+                    RawRow(out, "trainerService", service.index, reqCall.api, reqCall.state,
+                        reqCall.returnCount, returned.index, value.state, value.type, value.value)
+                end
+            end
+        end
+    else
+        RawField(out, "TrainerServiceCoverage", "UNKNOWN")
+    end
+    RawField(out, "Interpretation", "Raw runtime observations only; no transferability, eligibility, learnability, or readiness inferred")
+    for _, name in ipairs(SortedKeys(data.unknowns)) do RawField(out, "UNKNOWN." .. name, data.unknowns[name]) end
+end
+
 renderers.character = function(out, data)
     Field(out, "Name", data.name); Field(out, "Realm", data.realm)
     Field(out, "Class", data.class); Field(out, "Level", data.level)
+    -- WOWSYNC v1's strict CHARACTER parser has no Race field. Keep the
+    -- observation in structured SavedVariables, but omit it from the strict
+    -- v1 text projection on builds verified to use that schema.
+    if data.clientFamily == "Forever" and data.clientBuild
+        and data.clientBuild ~= "70245" and data.clientBuild ~= "70291" then
+        Field(out, "Race", data.race)
+    end
     Field(out, "Faction", data.faction); Field(out, "MoneyCopper", data.moneyCopper)
     Field(out, "PlayedSeconds", data.playedSeconds)
     Field(out, "LevelPlayedSeconds", data.levelPlayedSeconds)

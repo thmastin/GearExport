@@ -4,31 +4,23 @@ GearExport includes WoWSync, a dependency-free World of Warcraft character expor
 
 TradeSkillMaster is optional. When it is installed, GearExport uses its public API to include market pricing and current-character inventory-location data.
 
-**Forever compatibility** provides a dedicated observational export. Identity,
-location, equipment, bags, playtime and known spells have live validation on
-Hallo; profession readiness has a final fresh-login regression pending. Build with
+**Forever compatibility** provides a dedicated observational export for client
+`1.60.1`, build `70291`, interface `16001`. The exact build and client-family
+guard is live-validated on Hallo. The supported capture path includes character
+identity/build, equipped items, carried bags, and structured raw skill/runtime
+evidence. The WOWSYNC v1 export and same-refresh `WoWSyncDB` were compared after
+the live `/wowsync` capture. Location, faction, currency, playtime, XP,
+professions, spells, banks and trainer services remain unknown or unobserved;
+equipment effective stats and skill/trainer interpretations are not inferred.
+See [70291 runtime evidence](FOREVER_EVIDENCE_70291.md) and the historical
+[70245 scoped capture record](FOREVER_PHASE3.md). Build with
 `node scripts/package.cjs Forever`; the package is `dist/Forever/GearExport`
 and targets `_classic_beta_/Interface/AddOns`. It excludes BankCleanup and the
-legacy exporter. See [Forever current limits and validation](FOREVER_REMAINING.md)
-for the remaining live validation details.
+legacy exporter.
 
-The current Forever build includes live-validated equipment, conservative
-effective-stat mappings, bags, playtime, known spells, Character Bank, and
-trainers. See [Forever current limits and validation](FOREVER_REMAINING.md).
-The character/location pipeline is live-validated at levels 1 and 4. Equipment
-slot presence, references, names and levels are live-validated on Hallo.
-The current package guard accepts only Forever `1.60.1` build `70009`, with
-interface `16001` confirmed in-game. Earlier captures retain their original
-build `69893` metadata.
-
-The separate [Forever bags validation build](FOREVER_BAGS.md) records the
-carried-bag implementation and live validation evidence.
-
-The [Forever professions validation record](FOREVER_PROFESSIONS.md) documents
-the build-70009 trade-skill hydration finding and its live-validated guard.
-
-The [Forever Known Spells validation record](FOREVER_SPELLS.md) documents the
-build-70009 player spellbook APIs and live validation.
+The older [Forever bags](FOREVER_BAGS.md), [professions](FOREVER_PROFESSIONS.md),
+and [known spells](FOREVER_SPELLS.md) reports describe earlier build-specific
+work. They are historical and do not enable those collectors on 70291.
 
 ## Installation
 
@@ -50,6 +42,57 @@ Forever's package is larger (~28 files) because it ships Forever adapter Lua and
 Forever docs and omits the legacy exporter, collectors, and BankCleanup. The
 other flavors are thinner TOC subsets of the same shared root (~18 files). See
 `scripts/package.cjs` for the exact file lists per target.
+
+### Deploying Forever on Windows
+
+Use this single command from a normal Windows session to build and deploy the
+Forever package:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\dev\wow-addons\GearExport\scripts\deploy-forever.ps1" -Destination "D:\World of Warcraft\_classic_beta_\Interface\AddOns\GearExport"
+```
+
+`-ExecutionPolicy Bypass` applies only to that PowerShell process; it does not
+change machine or user policy. The script calls the existing package builder,
+then checks the package manifest's target, interface, exact file set, SHA256
+hashes, Forever TOC marker, and literal version/build guard. It preserves the
+guard from the current package source and requires all tracked source changes
+to be committed. Untracked files are ignored and preserved. The backup record
+includes the source commit and package manifest hash. It rejects destinations
+that do not end in `_classic_beta_\Interface\AddOns\GearExport`, destinations
+inside this repository, redirected symlink/junction path components, a running
+`WowB.exe` Forever client, or a target executable whose version/build does not
+exactly match the package guard.
+
+The deployment workflow preserves the reviewed Forever runtime guard
+`1.60.1 / 70291 / interface 16001` and also compares it with the target
+`WowB.exe` FileVersion before changing the installation.
+
+Before changing the installation, deployment creates a complete copy of the
+existing `GearExport` directory under
+`%LOCALAPPDATA%\GearExport\ForeverDeploymentBackups` and writes a hash manifest
+for that copy. It stages and verifies the new package, replaces only the
+`GearExport` directory, then checks that the installed recursive file set and
+all manifest hashes exactly match the package. Obsolete files are removed by
+exact-set synchronization; there is no maintained obsolete-module list.
+SavedVariables and sibling addon directories are outside the deployment target.
+Historical backup directories are retained.
+
+If installation or post-install verification fails, deployment restores the
+previous directory from the backup and verifies its original file set and
+hashes. It reports both deployment and rollback status. If rollback cannot be
+verified, the backup, previous-install directory, or staging directory is left
+in place and its path is printed for recovery. Success is reported only after
+the installed package passes exact-set and SHA256 verification.
+
+If Codex command policy blocks deployment, do not retry with modified policy or
+another command form. Open a normal Windows PowerShell window and run the exact
+command above. For a different valid Forever installation path, change only
+the `-Destination` value while keeping the `_classic_beta_\Interface\AddOns\GearExport`
+suffix. If preflight reports a running client, close Forever and retry. If it
+reports an invalid destination, confirm the client flavor and folder layout.
+If package validation fails, keep the installation closed and resolve the
+reported source/package mismatch before retrying. Node.js must be on `PATH`.
 
 The following source-tree installation example is for Anniversary/Classic:
 

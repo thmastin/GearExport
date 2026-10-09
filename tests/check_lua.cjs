@@ -14,4 +14,4 @@ for (const file of files) {
     if (forbidden.test(text)) throw new Error(`${file}: gameplay/reload action in observer`);
   }
 }
-console.log(`PASS: ${files.length} files parse as Lua 5.1; no gameplay/reload calls in WoWSync`);
+console.log(`PASS: ${files.length} files parse as Lua 5.1; no gameplay-action calls in WoWSync`);

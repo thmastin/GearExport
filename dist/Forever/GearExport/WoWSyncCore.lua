@@ -7,10 +7,14 @@ if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
     table.insert(S.order, 6, "accountBank")
     table.insert(S.order, 7, "guildBank")
     S.order[#S.order + 1] = "currencies"
+    S.order[#S.order + 1] = "combatSpecialization"
+    S.order[#S.order + 1] = "professionSpecializations"
+    S.order[#S.order + 1] = "professionRecipes"
+    S.order[#S.order + 1] = "reputation"
 end
 -- Captured into SavedVariables only: the WOWSYNC v1 text omits these sections so
 -- existing importers, which reject unknown section headers, keep working.
-S.structuredOnly = { currencies = true }
+S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true }
 addon.Sync = S
 WoWSync = S
 
@@ -77,6 +81,7 @@ function S.Initialize()
     else S.account, S.guilds, S.guild = nil, nil, nil end
     local record = db.characters[guid]
     if type(record) ~= "table" then record = {}; db.characters[guid] = record end
+    if addon.PrepareCaptureProfile then addon.PrepareCaptureProfile(record) end
     if not addon.ReadIdentity then name, realm = UnitName("player"), GetRealmName() end
     record.identity = { guid = guid, name = name, realm = realm }
     record.sections = type(record.sections) == "table" and record.sections or {}
@@ -84,6 +89,7 @@ function S.Initialize()
     record.itemMetadata = type(record.itemMetadata) == "table" and record.itemMetadata or {}
     NormalizeTrainer(record)
     S.record = record
+    S.sessionStartedAt = S.Now()
     S.settings = db.settings
     S.error = nil
     return true
@@ -104,20 +110,93 @@ function S.RememberItemMetadata(itemID, metadata)
 end
 
 local function OwnerFor(key)
-    if key == "accountBank" then return S.account end
+    if key == "accountBank" or key == "accountReputation" then return S.account end
     if key == "guildBank" then return S.guild end
     return S.record
 end
 
 local function StoredKey(key)
-    return (key == "accountBank" or key == "guildBank") and "bank" or key
+    if key == "accountBank" or key == "guildBank" then return "bank" end
+    if key == "accountReputation" then return "reputation" end
+    return key
 end
 
 function S.Commit(key, data, meta)
     local owner, storedKey = OwnerFor(key), StoredKey(key)
     if not owner then return end
+    if key == "reputation" and S.account and type(data) == "table" then
+        local accountData, characterData = S.Copy(data), S.Copy(data)
+        accountData.ownerScope, characterData.ownerScope = "ACCOUNT_WARBAND", "CHARACTER_OR_UNKNOWN"
+        accountData.factions, characterData.factions = {}, {}
+        accountData.majorFactions, characterData.majorFactions = {}, {}
+        for _, faction in ipairs(data.factions or {}) do
+            if faction.ownerScope == "ACCOUNT_WARBAND" then accountData.factions[#accountData.factions + 1] = faction
+            else characterData.factions[#characterData.factions + 1] = faction end
+        end
+        for _, major in ipairs(data.majorFactions or {}) do
+            if major.ownerScope == "ACCOUNT_WARBAND" then accountData.majorFactions[#accountData.majorFactions + 1] = major
+            else characterData.majorFactions[#characterData.majorFactions + 1] = major end
+        end
+        S.Commit("accountReputation", accountData, meta)
+        data = characterData
+    end
     local old = owner.sections[storedKey]
     local now = S.Now()
+    -- A partial progression scan may add fresher facts, but omission is never
+    -- evidence of removal. Carry absent identities forward with explicit
+    -- LAST_SEEN provenance; a failed scan takes S.Attempt and leaves data intact.
+    if old and type(old.data) == "table" and type(data) == "table"
+        and (key == "professionSpecializations" or key == "reputation" or key == "accountReputation") then
+        local idField = (key == "reputation" or key == "accountReputation") and { factions = "factionID", majorFactions = "majorFactionID" }
+            or { professions = "baseSkillLineID", tiers = "skillLineID", trees = "treeID", nodes = "nodeID", currencies = "currencyID" }
+        local function merge(previous, current, field)
+            if type(previous) ~= "table" or type(current) ~= "table" then return current end
+            local result = S.Copy(current)
+            local handled = {}
+            for listKey, idKey in pairs(idField) do
+                if type(previous[listKey]) == "table" or type(current[listKey]) == "table" then
+                    handled[listKey] = true
+                    local byID, output = {}, {}
+                    for _, row in ipairs(current[listKey] or {}) do if type(row) == "table" and row[idKey] ~= nil then byID[row[idKey]] = row end end
+                    for _, prior in ipairs(previous[listKey] or {}) do
+                        if type(prior) == "table" and prior[idKey] ~= nil then
+                            local fresh = byID[prior[idKey]]
+                            if fresh then
+                                output[#output + 1] = merge(prior, fresh)
+                                byID[prior[idKey]] = nil
+                            else
+                                local last = S.Copy(prior); last.evidence = "LAST_SEEN"; last.lastSeenAt = old.observedAt or old.data.observedAt
+                                output[#output + 1] = last
+                            end
+                        end
+                    end
+                    for _, row in ipairs(current[listKey] or {}) do if type(row) == "table" and byID[row[idKey]] then output[#output + 1] = row end end
+                    result[listKey] = output
+                end
+            end
+            for k, prior in pairs(previous) do
+                if result[k] == nil and k ~= "observedAt" then
+                    local last = S.Copy(prior)
+                    if type(last) == "table" then last.evidence = "LAST_SEEN"; last.lastSeenAt = old.observedAt or old.data.observedAt end
+                    result[k] = last
+                elseif not handled[k] and type(prior) == "table" and type(result[k]) == "table" and not idField[k] then
+                    result[k] = merge(prior, result[k])
+                end
+            end
+            return result
+        end
+        data = merge(old.data, data)
+    elseif old and key == "combatSpecialization" and type(old.data) == "table" and type(data) == "table" then
+        local merged = S.Copy(data)
+        for _, field in ipairs({ "activeSpec", "talentConfig", "heroTalent" }) do
+            if type(merged[field]) ~= "table" or merged[field].evidence ~= "OBSERVED" then
+                local prior = S.Copy(old.data[field] or {})
+                if next(prior) then prior.evidence = "LAST_SEEN"; prior.lastSeenAt = old.observedAt or old.data.observedAt end
+                merged[field] = next(prior) and prior or merged[field]
+            end
+        end
+        data = merged
+    end
     local changed = not old or not Equal(old.data, data)
     owner.sections[storedKey] = { data = data, observedAt = now,
         changedAt = changed and now or old.changedAt,
@@ -144,6 +223,82 @@ function S.CommitTrainer(category, data, meta)
         source = meta.source or "client", capture = S.capture, lastCategory = category }
 end
 
+local function ProfessionRecipeKey(row)
+    if type(row) ~= "table" or type(row.baseSkillLineID) ~= "number" or type(row.skillLineID) ~= "number" then return nil end
+    return tostring(row.baseSkillLineID) .. ":" .. tostring(row.skillLineID)
+end
+
+function S.CommitProfessionRecipes(data, meta)
+    local owner = S.record
+    if not owner or type(data) ~= "table" or type(data.professions) ~= "table" or #data.professions ~= 1 then return end
+    local fresh = data.professions[1]
+    local key = ProfessionRecipeKey(fresh)
+    if not key or type(fresh.recipes) ~= "table" or #fresh.recipes == 0 then return end
+    local old = owner.sections.professionRecipes
+    local oldData = old and type(old.data) == "table" and old.data or {}
+    local rows, currentPrior = {}, nil
+    for _, prior in ipairs(oldData.professions or {}) do
+        if ProfessionRecipeKey(prior) == key then currentPrior = prior
+        else
+            local last = S.Copy(prior)
+            last.evidence = "LAST_SEEN"
+            last.lastSeenAt = last.lastSeenAt or last.observedAt or oldData.observedAt
+            for _, recipe in ipairs(last.recipes or {}) do
+                recipe.evidence = "LAST_SEEN"
+                recipe.lastSeenAt = recipe.lastSeenAt or recipe.observedAt or prior.observedAt or oldData.observedAt
+            end
+            rows[#rows + 1] = last
+        end
+    end
+
+    local priorByID = {}
+    for _, recipe in ipairs(currentPrior and currentPrior.recipes or {}) do
+        if type(recipe) == "table" and type(recipe.recipeID) == "number" then priorByID[recipe.recipeID] = recipe end
+    end
+    local currentByID, mergedRecipes = {}, {}
+    for _, recipe in ipairs(fresh.recipes) do
+        if type(recipe) == "table" and type(recipe.recipeID) == "number" then currentByID[recipe.recipeID] = recipe end
+    end
+    for _, prior in ipairs(currentPrior and currentPrior.recipes or {}) do
+        if not currentByID[prior.recipeID] then
+            local last = S.Copy(prior)
+            last.evidence = "LAST_SEEN"
+            last.lastSeenAt = last.lastSeenAt or last.observedAt or currentPrior.observedAt
+            mergedRecipes[#mergedRecipes + 1] = last
+        end
+    end
+    for _, recipe in ipairs(fresh.recipes) do
+        local row = S.Copy(recipe)
+        local prior = priorByID[row.recipeID]
+        if row.learnedState == "OBSERVED_TRUE" or row.learnedState == "OBSERVED_FALSE" then
+            row.evidence = "OBSERVED"
+            row.observedAt = fresh.observedAt
+        elseif prior and (prior.learnedState == "OBSERVED_TRUE" or prior.learnedState == "OBSERVED_FALSE") then
+            row.learned, row.learnedState = prior.learned, prior.learnedState
+            row.evidence = "LAST_SEEN"
+            row.lastSeenAt = prior.lastSeenAt or prior.observedAt or currentPrior.observedAt
+        else
+            row.learned = nil
+            row.learnedState = "UNKNOWN"
+            row.evidence = "UNKNOWN"
+        end
+        mergedRecipes[#mergedRecipes + 1] = row
+    end
+    fresh.recipes = mergedRecipes
+    fresh.evidence = "OBSERVED"
+    rows[#rows + 1] = fresh
+
+    local merged = S.Copy(data)
+    merged.professions = rows
+    local now = S.Now()
+    local changed = not old or not Equal(old.data, merged)
+    owner.sections.professionRecipes = { data = merged, observedAt = now,
+        changedAt = changed and now or old.changedAt,
+        revision = ((old and old.revision) or 0) + (changed and 1 or 0),
+        completeness = meta.completeness or "partial", reason = meta.reason,
+        source = meta.source or "client", capture = S.capture }
+end
+
 function S.Attempt(key, reason, stale)
     local owner, storedKey = OwnerFor(key), StoredKey(key)
     if not owner then return end
@@ -151,6 +306,19 @@ function S.Attempt(key, reason, stale)
     if not old then old = { completeness = "unknown", revision = 0 }; owner.sections[storedKey] = old end
     old.lastAttemptAt, old.lastAttemptError = S.Now(), reason
     if stale and old.data then old.lastAttemptStale = true end
+    if key == "professionRecipes" and old.data and type(old.data.professions) == "table" then
+        for _, profession in ipairs(old.data.professions) do
+            if profession.sessionObservedAt ~= S.sessionStartedAt then
+                profession.evidence = "LAST_SEEN"
+                profession.lastSeenAt = profession.lastSeenAt or profession.observedAt or old.data.observedAt
+                for _, recipe in ipairs(profession.recipes or {}) do
+                    recipe.evidence = "LAST_SEEN"
+                    recipe.lastSeenAt = recipe.lastSeenAt or recipe.observedAt or profession.observedAt or old.data.observedAt
+                end
+            end
+        end
+        old.lastAttemptStale = true
+    end
 end
 
 function S.Mark(key, delay)
@@ -246,6 +414,8 @@ local function Process(force)
             if ok and data then
                 if key == "trainer" and data.category and data.snapshot then
                     S.CommitTrainer(data.category, data.snapshot, meta)
+                elseif key == "professionRecipes" then
+                    S.CommitProfessionRecipes(data, meta)
                 else
                     S.Commit(key, data, meta)
                 end
@@ -399,6 +569,19 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         or event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELL_TEXT_UPDATE"
         or event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then
         S.Mark("professions"); S.Mark("spells"); S.Mark("trainer")
+        if event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then S.Mark("professionRecipes") end
+        if event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELLS_CHANGED" then S.Mark("combatSpecialization") end
+        if event == "SKILL_LINES_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE" then S.Mark("professionSpecializations") end
+    elseif event == "NEW_RECIPE_LEARNED" then
+        S.Mark("professionRecipes")
+    elseif event == "TRAIT_CONFIG_UPDATED" or event == "TRAIT_SUB_TREE_CHANGED" then
+        S.Mark("combatSpecialization"); S.Mark("professionSpecializations")
+    elseif event == "TRAIT_TREE_CURRENCY_INFO_UPDATED" or event == "SKILL_LINE_SPECS_RANKS_CHANGED"
+        or event == "SKILL_LINE_SPECS_UNLOCKED" then
+        S.Mark("professionSpecializations")
+    elseif event == "UPDATE_FACTION" or event == "FACTION_STANDING_CHANGED"
+        or event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" or event == "MAJOR_FACTION_UNLOCKED" then
+        S.Mark("reputation")
     elseif event == "GET_ITEM_INFO_RECEIVED" or event == "ITEM_DATA_LOAD_RESULT" then
         if S.record then
             local keys = { "bags", "bank", "equipment" }

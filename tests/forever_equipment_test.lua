@@ -15,7 +15,7 @@ return function(S, check, equal, advance)
             equal(link, "|Hitem:900001:7:0:0|h[Synthetic tunic]|h", "metadata uses equipped variant")
             return "Synthetic tunic", link, 1, 99, 0
         end,
-        GetItemStats = function() return { RESISTANCE0_NAME = 31 } end,
+        GetItemStats = function() error("70245 effective stat semantics are not verified") end,
     }
     local data, meta = S.collectors.equipment()
     equal(data.slots[5].itemID, 900001, "equipped identity")
@@ -23,34 +23,14 @@ return function(S, check, equal, advance)
     equal(data.slots[5].name, "Synthetic tunic", "equipped name")
     equal(data.slots[5].itemLevel, 12, "location level, not generic level 99")
     equal(data.slots[5].requiredLevel, 0, "known zero required level")
-    equal(data.slots[5].stats[1].name, "Armor", "live-validated armor key normalized")
-    equal(data.slots[5].stats[1].value, 31, "live-validated armor value retained")
+    equal(data.slots[5].stats, nil, "70245 effective stat semantics remain unknown")
     equal(data.slots[1], nil, "explicit false presence is empty")
-    equal(meta.completeness, "complete", "recognized effective stat completes synthetic item")
-    check(not meta.retry, "ready stat table does not require tooltip readiness")
-    C_Item.GetItemStats = function() return { malformed = "99" } end
-    data, meta = S.collectors.equipment()
-    equal(data.slots[5].stats, nil, "unknown stat key remains unrepresented")
-    equal(meta.completeness, "partial", "unknown stat key is partial")
-    C_Item.GetItemStats = function() return { RESISTANCE0_NAME = "31" } end
-    data, meta = S.collectors.equipment()
-    equal(data.slots[5].stats, nil, "non-numeric recognized stat remains unknown")
-    C_Item.GetItemStats = function() return {} end
-    data, meta = S.collectors.equipment()
-    equal(data.slots[5].stats, nil, "empty stat table remains unsupported")
-    C_Item.GetItemStats = function() return nil end
-    data, meta = S.collectors.equipment()
-    equal(data.slots[5].stats, nil, "pending stat variant remains unknown")
-    check(meta.retry, "nil stat table requests bounded cache retry")
-    C_Item.GetItemStats = function() return { RESISTANCE0_NAME = 31, ITEM_MOD_DAMAGE_PER_SECOND_SHORT = 1.875 } end
-    data, meta = S.collectors.equipment()
-    equal(#data.slots[5].stats, 2, "multiple demonstrated effective stats retained")
-    equal(data.slots[5].stats[1].name, "Armor", "multiple stats deterministic order")
-    equal(data.slots[5].stats[2].name, "Damage Per Second", "DPS mapping retained")
+    equal(meta.completeness, "partial", "unverified effective stats keep the section partial")
+    check(not meta.retry, "semantic unknown does not cause a retry loop")
     S.RequestSync(); advance(1)
     local text = S.RenderSection("equipment", S.GetSnapshot())
     check(text:find("slot\titemRef\tname\tilvl\trequiredLevel\teffectiveStats", 1, true), "shared contract header")
-    check(text:find("5:\titem:900001:7:0:0\tSynthetic tunic\t12\t0\tArmor=31; Damage Per Second=1.875", 1, true), "canonical effective-stat row")
+    check(text:find("5:\titem:900001:7:0:0\tSynthetic tunic\t12\t0\t?", 1, true), "unverified effective stats render unknown")
     check(S.eventFrame.events.PLAYER_EQUIPMENT_CHANGED, "equipment event registered")
     check(S.eventFrame.events.ITEM_DATA_LOAD_RESULT, "item cache event registered")
     pending = true
@@ -95,6 +75,8 @@ return function(S, check, equal, advance)
     equal(S.collectors.equipment(), nil, "changed slot mapping is UNKNOWN")
     C_PaperDollInfo = nil
     equal(S.collectors.equipment(), nil, "missing slot API is UNKNOWN")
+    local _, unavailableMeta = S.collectors.equipment()
+    equal(unavailableMeta.stale, true, "failed 70245 equipment capture marks prior evidence stale")
     -- Replay the user's real level-6 equipment values. The API wrappers are
     -- mocks; the item references/metadata and empty slots are real evidence.
     local real = assert(loadfile("tests/fixtures/forever/hallo-level6-equipment.lua"))()
@@ -109,7 +91,7 @@ return function(S, check, equal, advance)
                 if row[1] == link then return row[2], link, nil, nil, row[4] end
             end
             error("Unexpected reference")
-        end, GetItemStats = function() return nil end,
+        end, GetItemStats = function() error("must not query unverified stat semantics") end,
     }
     data, meta = S.collectors.equipment()
     local actual = S.RenderSection("equipment", { sections = { equipment = {
@@ -121,7 +103,7 @@ return function(S, check, equal, advance)
         local expected = slot .. ":\tEMPTY"
         if row then
             expected = slot .. ":\t" .. table.concat(row, "\t") .. "\t?"
-            equal(data.slots[slot].stats, nil, "real equipment stats remain unknown")
+            equal(data.slots[slot].stats, nil, "real 70245 effective stats remain unknown")
         end
         check(("\n" .. actual .. "\n"):find("\n" .. expected .. "\n", 1, true),
             "real level-6 equipment row matches: " .. slot)

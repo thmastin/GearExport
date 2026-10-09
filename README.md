@@ -4,31 +4,23 @@ GearExport includes WoWSync, a dependency-free World of Warcraft character expor
 
 TradeSkillMaster is optional. When it is installed, GearExport uses its public API to include market pricing and current-character inventory-location data.
 
-**Forever compatibility** provides a dedicated observational export. Identity,
-location, equipment, bags, playtime and known spells have live validation on
-Hallo; profession readiness has a final fresh-login regression pending. Build with
+**Forever compatibility** provides a dedicated observational export for client
+`1.60.1`, build `70291`, interface `16001`. The exact build and client-family
+guard is live-validated on Hallo. The supported capture path includes character
+identity/build, equipped items, carried bags, and structured raw skill/runtime
+evidence. The WOWSYNC v1 export and same-refresh `WoWSyncDB` were compared after
+the live `/wowsync` capture. Location, faction, currency, playtime, XP,
+professions, spells, banks and trainer services remain unknown or unobserved;
+equipment effective stats and skill/trainer interpretations are not inferred.
+See [70291 runtime evidence](FOREVER_EVIDENCE_70291.md) and the historical
+[70245 scoped capture record](FOREVER_PHASE3.md). Build with
 `node scripts/package.cjs Forever`; the package is `dist/Forever/GearExport`
 and targets `_classic_beta_/Interface/AddOns`. It excludes BankCleanup and the
-legacy exporter. See [Forever current limits and validation](FOREVER_REMAINING.md)
-for the remaining live validation details.
+legacy exporter.
 
-The current Forever build includes live-validated equipment, conservative
-effective-stat mappings, bags, playtime, known spells, Character Bank, and
-trainers. See [Forever current limits and validation](FOREVER_REMAINING.md).
-The character/location pipeline is live-validated at levels 1 and 4. Equipment
-slot presence, references, names and levels are live-validated on Hallo.
-The current package guard accepts only Forever `1.60.1` build `70009`, with
-interface `16001` confirmed in-game. Earlier captures retain their original
-build `69893` metadata.
-
-The separate [Forever bags validation build](FOREVER_BAGS.md) records the
-carried-bag implementation and live validation evidence.
-
-The [Forever professions validation record](FOREVER_PROFESSIONS.md) documents
-the build-70009 trade-skill hydration finding and its live-validated guard.
-
-The [Forever Known Spells validation record](FOREVER_SPELLS.md) documents the
-build-70009 player spellbook APIs and live validation.
+The older [Forever bags](FOREVER_BAGS.md), [professions](FOREVER_PROFESSIONS.md),
+and [known spells](FOREVER_SPELLS.md) reports describe earlier build-specific
+work. They are historical and do not enable those collectors on 70291.
 
 ## Installation
 
@@ -72,10 +64,9 @@ inside this repository, redirected symlink/junction path components, a running
 `WowB.exe` Forever client, or a target executable whose version/build does not
 exactly match the package guard.
 
-This repository branch currently carries a Forever runtime guard for
-`1.60.1 / 70009 / interface 16001`. The deployment workflow preserves and
-reports that source guard; it does not convert the package to build 70291. Do
-not use this branch's package as the reviewed 70291 candidate.
+The deployment workflow preserves the reviewed Forever runtime guard
+`1.60.1 / 70291 / interface 16001` and also compares it with the target
+`WowB.exe` FileVersion before changing the installation.
 
 Before changing the installation, deployment creates a complete copy of the
 existing `GearExport` directory under

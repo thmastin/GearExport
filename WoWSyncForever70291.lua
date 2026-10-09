@@ -1,0 +1,69 @@
+-- Expose only the existing collectors carried forward from the documented 70245 contracts.
+-- The other Forever modules remain available for their older package history,
+-- but must not run under this build without a separate live audit.
+local _, addon = ...
+local S, F = addon.Sync, addon.Forever
+local CAPTURE_PROFILE = "Forever:1.60.1:70291:16001"
+local equipmentCollector = S.collectors.equipment
+
+function addon.PrepareCaptureProfile(record)
+    if record.captureProfile == CAPTURE_PROFILE then return end
+    local priorSections = type(record.sections) == "table" and record.sections or nil
+    local priorItems = type(record.itemMetadata) == "table" and record.itemMetadata or nil
+    local priorVisits = type(record.visits) == "table" and record.visits or nil
+    local priorExport = type(record.latestExport) == "table" and record.latestExport or nil
+    if priorSections and next(priorSections) or priorItems and next(priorItems)
+        or priorVisits and next(priorVisits) or priorExport then
+        record.archivedCaptures = type(record.archivedCaptures) == "table" and record.archivedCaptures or {}
+        record.archivedCaptures[#record.archivedCaptures + 1] = {
+            profile = record.captureProfile or "UNVERSIONED",
+            sections = priorSections,
+            itemMetadata = priorItems,
+            visits = priorVisits,
+            latestExport = priorExport,
+        }
+    end
+    -- Data captured by another client build must not appear as current 70291
+    -- evidence. Keep it archived and start a fresh active observation record.
+    record.sections, record.itemMetadata, record.visits = {}, {}, {}
+    record.latestExport = nil
+    record.captureProfile = CAPTURE_PROFILE
+end
+
+S.collectors = {
+    character = function()
+        local issues = {}
+        local data = {
+            name = F.Read("Name", UnitName, 1, "string", issues, "player"),
+            realm = F.Read("Realm", GetRealmName, 1, "string", issues),
+            class = F.Read("Class", UnitClass, 2, "string", issues, "player"),
+            race = F.Read("Race", UnitRace, 1, "string", issues, "player"),
+            level = F.Number("Level", UnitLevel, issues, "player"),
+            clientVersion = F.Read("ClientVersion", GetBuildInfo, 1, "string", issues),
+            clientBuild = F.Read("ClientBuild", GetBuildInfo, 2, "string", issues),
+            interface = F.Read("Interface", GetBuildInfo, 4, "number", issues),
+            clientFamily = "Forever",
+        }
+        table.sort(issues)
+        return data, { completeness = "partial",
+            reason = "Forever 70291 capture limited to fields supported by the carried-forward 70245 contract"
+                .. (#issues > 0 and ("; " .. table.concat(issues, "; ")) or "") }
+    end,
+    equipment = function()
+        local data, meta = equipmentCollector()
+        if not data then
+            meta = type(meta) == "table" and meta or {}
+            meta.stale = true
+        end
+        return data, meta
+    end,
+    bags = S.collectors.bags,
+}
+
+-- This section is isolated to the exact Forever 70291 package. The older
+-- Forever trainer tuple adapter is intentionally not activated here.
+S.order[#S.order + 1] = "forever70291Evidence"
+-- Keep WOWSYNC v1 text parse-compatible with the currently deployed Dashboard.
+-- The version-specific raw section is persisted alongside the export and is
+-- consumed by the separate Forever parser integration handoff.
+S.structuredOnly.forever70291Evidence = true

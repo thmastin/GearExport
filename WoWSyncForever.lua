@@ -1,7 +1,7 @@
 -- Loaded only by the Forever package. No legacy exporter or gameplay modules.
 local ADDON_NAME, addon = ...
 local C = WoWSyncCompat
-local F = { version = "1.60.1", build = "70009" }
+local F = { version = "1.60.1", build = "70291", interface = 16001 }
 addon.Forever = F
 addon.Readers = { SlotNames = {} }
 -- This package selects its own adapters even if Blizzard reuses a project ID.
@@ -40,9 +40,10 @@ function C.IsForever()
     local issues = {}
     local version = F.Read("version", GetBuildInfo, 1, "string", issues)
     local build = F.Read("build", GetBuildInfo, 2, "string", issues)
+    local interface = F.Read("interface", GetBuildInfo, 4, "number", issues)
     local metadata = type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
     local target = F.Read("target", metadata, 1, "string", issues, ADDON_NAME, "X-WoWSync-Target")
-    return target == "Forever" and version == F.version and build == F.build
+    return target == "Forever" and version == F.version and build == F.build and interface == F.interface
 end
 
 function addon.ReadIdentity()
@@ -61,8 +62,9 @@ end
 -- Forever retains the documented asynchronous request/event contract.  Nothing
 -- is estimated while a response is outstanding or if either value is absent.
 function C.RequestPlayed()
-    if type(RequestTimePlayed) ~= "function" then return false end
-    return pcall(RequestTimePlayed)
+    -- RequestTimePlayed was not part of the 70245 runtime probe. Do not carry
+    -- its older-build contract forward; an unsolicited response is still read.
+    return false
 end
 
 function C.IsBankViewable()
