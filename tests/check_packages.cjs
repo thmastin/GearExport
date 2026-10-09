@@ -19,7 +19,7 @@ for (const [target, version] of selected) {
         .includes('## IconTexture: Interface\\AddOns\\GearExport\\WoWSyncIcon.tga'));
     assert.deepStrictEqual(fs.readdirSync(directory).filter(file => file.endsWith('.toc')), ['GearExport.toc']);
     assert.strictEqual(fs.existsSync(path.join(directory, 'BankCleanup.lua')), target === 'TBC' || target === 'ClassicEra');
-    const sourceToc = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport.toc', Forever: 'GearExport-Forever.toc' }[target];
+    const sourceToc = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport-BCC.toc', Forever: 'GearExport-Forever.toc' }[target];
     assert.deepStrictEqual(fs.readFileSync(path.join(directory, 'GearExport.toc')), fs.readFileSync(sourceToc));
     assert.deepStrictEqual(fs.readdirSync(directory).sort(), [...Object.keys(manifest.hashes), 'package-manifest.json'].sort());
     if (target === 'Forever') {

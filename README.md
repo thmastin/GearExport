@@ -51,6 +51,58 @@ Forever docs and omits the legacy exporter, collectors, and BankCleanup. The
 other flavors are thinner TOC subsets of the same shared root (~18 files). See
 `scripts/package.cjs` for the exact file lists per target.
 
+### Deploying Forever on Windows
+
+Use this single command from a normal Windows session to build and deploy the
+Forever package:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\dev\wow-addons\GearExport\scripts\deploy-forever.ps1" -Destination "D:\World of Warcraft\_classic_beta_\Interface\AddOns\GearExport"
+```
+
+`-ExecutionPolicy Bypass` applies only to that PowerShell process; it does not
+change machine or user policy. The script calls the existing package builder,
+then checks the package manifest's target, interface, exact file set, SHA256
+hashes, Forever TOC marker, and literal version/build guard. It preserves the
+guard from the current package source and requires all tracked source changes
+to be committed. Untracked files are ignored and preserved. The backup record
+includes the source commit and package manifest hash. It rejects destinations
+that do not end in `_classic_beta_\Interface\AddOns\GearExport`, destinations
+inside this repository, redirected symlink/junction path components, a running
+`WowB.exe` Forever client, or a target executable whose version/build does not
+exactly match the package guard.
+
+This repository branch currently carries a Forever runtime guard for
+`1.60.1 / 70009 / interface 16001`. The deployment workflow preserves and
+reports that source guard; it does not convert the package to build 70291. Do
+not use this branch's package as the reviewed 70291 candidate.
+
+Before changing the installation, deployment creates a complete copy of the
+existing `GearExport` directory under
+`%LOCALAPPDATA%\GearExport\ForeverDeploymentBackups` and writes a hash manifest
+for that copy. It stages and verifies the new package, replaces only the
+`GearExport` directory, then checks that the installed recursive file set and
+all manifest hashes exactly match the package. Obsolete files are removed by
+exact-set synchronization; there is no maintained obsolete-module list.
+SavedVariables and sibling addon directories are outside the deployment target.
+Historical backup directories are retained.
+
+If installation or post-install verification fails, deployment restores the
+previous directory from the backup and verifies its original file set and
+hashes. It reports both deployment and rollback status. If rollback cannot be
+verified, the backup, previous-install directory, or staging directory is left
+in place and its path is printed for recovery. Success is reported only after
+the installed package passes exact-set and SHA256 verification.
+
+If Codex command policy blocks deployment, do not retry with modified policy or
+another command form. Open a normal Windows PowerShell window and run the exact
+command above. For a different valid Forever installation path, change only
+the `-Destination` value while keeping the `_classic_beta_\Interface\AddOns\GearExport`
+suffix. If preflight reports a running client, close Forever and retry. If it
+reports an invalid destination, confirm the client flavor and folder layout.
+If package validation fails, keep the installation closed and resolve the
+reported source/package mismatch before retrying. Node.js must be on `PATH`.
+
 The following source-tree installation example is for Anniversary/Classic:
 
 Copy the `GearExport` directory into:

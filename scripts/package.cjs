@@ -2,7 +2,7 @@
 // Build a single-client folder from the shared source; no game installation writes.
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
+const { hashFile, verifyPackage } = require('./package-utils.cjs');
 const root = path.resolve(__dirname, '..');
 const target = process.argv[2];
 const targets = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport-BCC.toc', Forever: 'GearExport-Forever.toc' };
@@ -22,21 +22,36 @@ const docs = ['README.md', 'LICENSE', 'WOWSYNC_SCHEMA.md', 'WOWSYNC_ACCEPTANCE.m
     'RETAIL_COMPATIBILITY.md', 'RETAIL_TEST_PLAN.md', 'BANK_CLEANUP_TESTS.md', 'PLAYTIME_API_AUDIT.md'];
 if (target === 'Forever') docs.push('FOREVER_PHASE1.md', 'FOREVER_PHASE2.md', 'FOREVER_BAGS.md', 'FOREVER_PROFESSIONS.md', 'FOREVER_SPELLS.md', 'FOREVER_REMAINING.md');
 const assets = ['WoWSyncIcon.tga'];
-const expected = [...luaFiles, ...docs, ...assets, 'GearExport.toc', 'package-manifest.json'];
-// Reject stale/foreign files rather than silently shipping an obsolete flavor TOC.
-if (fs.existsSync(output)) {
-    const extra = fs.readdirSync(output).filter(file => !expected.includes(file));
-    if (extra.length) throw new Error('Unexpected files in output: ' + extra.join(', '));
+const parent = path.dirname(output);
+fs.mkdirSync(parent, { recursive: true });
+const stage = fs.mkdtempSync(path.join(parent, '.GearExport-build-'));
+const previous = output + '.previous-' + path.basename(stage).slice('.GearExport-build-'.length);
+let previousMoved = false;
+try {
+    for (const file of [...luaFiles, ...docs, ...assets]) fs.copyFileSync(path.join(root, file), path.join(stage, file));
+    fs.writeFileSync(path.join(stage, 'GearExport.toc'), toc);
+    const hashes = {};
+    for (const file of [...luaFiles, ...docs, ...assets, 'GearExport.toc'].sort()) {
+        hashes[file] = hashFile(path.join(stage, file));
+    }
+    fs.writeFileSync(path.join(stage, 'package-manifest.json'), JSON.stringify({
+        target, interface: Number(toc.match(/^## Interface:\s*(\d+)/m)[1]),
+        schema: 'WOWSYNC v1', liveRetailValidation: 'pending', hashes,
+    }, null, 2) + '\n');
+    verifyPackage(stage, target);
+    if (fs.existsSync(output)) {
+        if (fs.existsSync(previous)) fs.rmSync(previous, { recursive: true, force: true });
+        fs.renameSync(output, previous);
+        previousMoved = true;
+    }
+    fs.renameSync(stage, output);
+    if (previousMoved) {
+        try { fs.rmSync(previous, { recursive: true, force: true }); }
+        catch (error) { console.warn('Built package is valid; previous package cleanup remains at ' + previous + ': ' + error.message); }
+    }
+    console.log('Built ' + target + ': ' + output);
+} catch (error) {
+    if (previousMoved && !fs.existsSync(output) && fs.existsSync(previous)) fs.renameSync(previous, output);
+    if (fs.existsSync(stage)) fs.rmSync(stage, { recursive: true, force: true });
+    throw error;
 }
-fs.mkdirSync(output, { recursive: true });
-for (const file of [...luaFiles, ...docs, ...assets]) fs.copyFileSync(path.join(root, file), path.join(output, file));
-fs.writeFileSync(path.join(output, 'GearExport.toc'), toc);
-const hashes = {};
-for (const file of [...luaFiles, ...docs, ...assets, 'GearExport.toc'].sort()) {
-    hashes[file] = crypto.createHash('sha256').update(fs.readFileSync(path.join(output, file))).digest('hex');
-}
-fs.writeFileSync(path.join(output, 'package-manifest.json'), JSON.stringify({
-    target, interface: Number(toc.match(/^## Interface:\s*(\d+)/m)[1]),
-    schema: 'WOWSYNC v1', liveRetailValidation: 'pending', hashes,
-}, null, 2) + '\n');
-console.log('Built ' + target + ': ' + output);

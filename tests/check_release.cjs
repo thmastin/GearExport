@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const assert = require('assert');
 const bankHash = crypto.createHash('sha256').update(fs.readFileSync('BankCleanup.lua')).digest('hex');
 assert.strictEqual(bankHash, '54cbbd5ea9f8ac6b0307a475b270220bd7ea190e2ec6755950df34f50b67a6ba', 'BankCleanup must remain byte-for-byte unchanged');
-const readme = fs.readFileSync('README.md', 'utf8');
+const readme = fs.readFileSync('README.md', 'utf8').replace(/\r\n/g, '\n');
 const marker = '# Using WoWSync with an LLM';
 assert(readme.includes(marker), 'Missing README LLM section');
 const prompts = readme.slice(readme.indexOf(marker));

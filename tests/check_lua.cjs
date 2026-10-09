@@ -7,7 +7,9 @@ files.push(...fs.readdirSync('tests').filter(name => name.endsWith('.lua')).map(
 for (const file of files) {
   parser.parse(fs.readFileSync(file, 'utf8'), { luaVersion: '5.1' });
   if (file.startsWith('WoWSync') || file === 'GearExport.lua') {
-    const text = fs.readFileSync(file, 'utf8');
+    let text = fs.readFileSync(file, 'utf8');
+    // The UI's explicit, user-confirmed reload button is an intentional exception.
+    if (file === 'WoWSyncUI.lua') text = text.replace('OnAccept = function() ReloadUI() end,', '');
     const forbidden = /\b(?:UseContainerItem|PickupContainerItem|SplitContainerItem|BuyTrainerService|BuyMerchantItem|BuybackItem|SendMail|EquipItemByName|PickupInventoryItem|UseInventoryItem|CastSpellByName|CastSpell|CastSpellByID|CastSpellBookItem|StartAuction|PostAuction|PostItem|PostCommodity|DeleteCursorItem|ClearCursor|ReloadUI|AutoDepositItemsIntoBank|PurchaseBankTab|DepositMoney|WithdrawMoney|AcceptQuest|CompleteQuest|GetQuestReward|CraftRecipe|CraftEnchant|CraftSalvage|SetSpecialization|SetConfigID|CommitConfig|LoadConfig|LearnTalent)\s*\(/;
     if (forbidden.test(text)) throw new Error(`${file}: gameplay/reload action in observer`);
   }

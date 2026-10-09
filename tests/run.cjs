@@ -7,6 +7,7 @@ require('./check_classic.cjs');
 require('./check_retail.cjs');
 require('./check_forever.cjs');
 require('./check_icon.cjs');
+require('./deploy_forever_test.cjs');
 const cli = path.join(process.argv[2], 'fengari-node-cli', 'src', 'lua-cli.js');
 const args = [cli, 'tests/wowsync_test.lua'];
 if (process.argv[3]) args.push(process.argv[3]);
