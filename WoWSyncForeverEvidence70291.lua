@@ -202,7 +202,29 @@ local function readItemFacts(data, issues)
         ["C_Item.GetItemInfo"] = apiStatus(itemAPI.GetItemInfo),
         ["C_Item.GetItemStats"] = apiStatus(itemAPI.GetItemStats),
         ["C_Item.GetItemStatDelta"] = apiStatus(itemAPI.GetItemStatDelta),
+        ["C_Item.GetItemSpecInfo"] = apiStatus(itemAPI.GetItemSpecInfo),
     }
+    local specializationAPI = type(C_SpecializationInfo) == "table" and C_SpecializationInfo or {}
+    data.specialization = {
+        apiAvailability = {
+            ["C_SpecializationInfo.GetSpecialization"] = apiStatus(specializationAPI.GetSpecialization),
+            ["C_SpecializationInfo.GetSpecializationInfo"] = apiStatus(specializationAPI.GetSpecializationInfo),
+        },
+        capturedAt = sourceNow,
+        activeIndex = call(specializationAPI.GetSpecialization, { n = 0 }),
+    }
+    data.specialization.activeIndex.api = "C_SpecializationInfo.GetSpecialization"
+    local activeIndex = data.specialization.activeIndex.returns and data.specialization.activeIndex.returns[1]
+        and data.specialization.activeIndex.returns[1].observation
+    if activeIndex and activeIndex.state == "OBSERVED" and activeIndex.type == "number"
+        and activeIndex.value > 0 and activeIndex.value % 1 == 0 and activeIndex.value <= 10 then
+        data.specialization.activeInfo = call(specializationAPI.GetSpecializationInfo, { n = 1, activeIndex.value })
+        data.specialization.activeInfo.api = "C_SpecializationInfo.GetSpecializationInfo"
+        data.specialization.activeInfo.input = { index = activeIndex.value }
+    else
+        data.specialization.activeInfo = { state = "UNKNOWN", provenance = "IN_GAME_RUNTIME_CALL",
+            reason = "No bounded positive active specialization index was returned." }
+    end
     for _, link in ipairs(links) do
         local fact = itemsByLink[link]
         fact.itemInfoInstant = call(itemAPI.GetItemInfoInstant, { n = 1, link })
@@ -214,6 +236,9 @@ local function readItemFacts(data, issues)
         fact.itemStats = call(itemAPI.GetItemStats, { n = 1, link })
         fact.itemStats.api, fact.itemStats.input = "C_Item.GetItemStats", { itemString = link }
         fact.itemStats.table = tableResult(fact.itemStats)
+        fact.itemSpecInfo = call(itemAPI.GetItemSpecInfo, { n = 1, link })
+        fact.itemSpecInfo.api, fact.itemSpecInfo.input = "C_Item.GetItemSpecInfo", { itemString = link }
+        fact.itemSpecInfo.table = tableResult(fact.itemSpecInfo)
         local instantID = fact.itemInfoInstant.returns and fact.itemInfoInstant.returns[1]
             and fact.itemInfoInstant.returns[1].observation
         local equippable = fact.isEquippableItem.returns and fact.isEquippableItem.returns[1]
@@ -226,6 +251,7 @@ local function readItemFacts(data, issues)
         end
         fact.itemInfoInstant._rawReturns, fact.isEquippableItem._rawReturns = nil, nil
         fact.itemInfo._rawReturns, fact.itemStats._rawReturns = nil, nil
+        fact.itemSpecInfo._rawReturns = nil
         data.itemFacts.items[#data.itemFacts.items + 1] = fact
     end
     local candidates, equipped = {}, {}

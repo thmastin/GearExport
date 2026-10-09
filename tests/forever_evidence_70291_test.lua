@@ -7,7 +7,7 @@ return function(S, check, equal)
     check(found, "70291 evidence included in normal export refresh")
     check(S.structuredOnly.forever70291Evidence, "new evidence stays out of strict WOWSYNC v1 text for parser compatibility")
 
-    local oldSkill, oldFrame, oldItemAPI = C_SkillInfo, ClassTrainerFrame, C_Item
+    local oldSkill, oldFrame, oldItemAPI, oldSpecializationInfo = C_SkillInfo, ClassTrainerFrame, C_Item, C_SpecializationInfo
     local oldTrainerFrame, oldTrainerStep = TrainerFrame, ClassTrainerFrameSkillStep
     local oldCount, oldInfo, oldCost = GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost
     local oldSkillReq, oldAbilityReq, oldAbilityCount = GetTrainerServiceSkillReq, GetTrainerServiceAbilityReq, GetTrainerServiceNumAbilityReq
@@ -44,6 +44,10 @@ return function(S, check, equal)
             check(reference == exactArmor or reference == exactVariant, "item-stats API receives an exact observed variant")
             return { ITEM_MOD_STAMINA_SHORT = 5, ITEM_MOD_ARMOR = 10 }
         end,
+        GetItemSpecInfo = function(reference)
+            check(reference == exactArmor or reference == exactVariant, "item specialization API receives the exact observed variant")
+            return { 71, 72 }
+        end,
         GetItemStatDelta = function(candidate, equipped)
             deltaCalls[#deltaCalls + 1] = { candidate, equipped }
             return { ITEM_MOD_ARMOR = 1 }
@@ -51,6 +55,13 @@ return function(S, check, equal)
         IsEquippableItem = function(reference)
             equippableCalls[#equippableCalls + 1] = reference
             return true
+        end,
+    }
+    C_SpecializationInfo = {
+        GetSpecialization = function() return 1 end,
+        GetSpecializationInfo = function(index)
+            equal(index, 1, "active specialization details use the observed active index")
+            return 71, "Synthetic Arms", "", 0, 0
         end,
     }
     ClassTrainerFrame = { IsShown = function() return false end }
@@ -85,6 +96,9 @@ return function(S, check, equal)
         "full item-info return tuple retained without semantic interpretation")
     equal(closed.itemFacts.items[1].itemStats.table.state, "OBSERVED_TABLE", "item stats table captured as evidence")
     equal(closed.itemFacts.items[1].itemStats.table.entries[1].key, "ITEM_MOD_ARMOR", "item stat keys retained deterministically")
+    equal(closed.itemFacts.items[1].itemSpecInfo.table.entries[1].observation.value, 71, "item specialization IDs retained as raw table entries")
+    equal(closed.specialization.activeIndex.returns[1].observation.value, 1, "active specialization index retained raw")
+    equal(closed.specialization.activeInfo.returns[1].observation.value, 71, "active specialization detail tuple retained raw")
     equal(#closed.itemFacts.statDeltaComparisons.comparisons, 1, "unique carried variant is compared with observed equipment")
     equal(deltaCalls[1][1], exactVariant, "stat delta preserves candidate exact variant as first input")
     equal(deltaCalls[1][2], exactArmor, "stat delta preserves equipped exact variant as second input")
@@ -124,9 +138,11 @@ return function(S, check, equal)
     equal(missingSkill.skillLineCount.state, "API_MISSING", "missing count API explicit")
     equal(missingSkill.skillLineCoverage, "UNKNOWN_COUNT", "missing count does not create an empty-complete skill list")
     C_Item = {}
+    C_SpecializationInfo = {}
     local missingItemAPIs = S.collectors.forever70291Evidence().itemFacts
     equal(missingItemAPIs.completeness, "partial", "missing item APIs cannot become complete metadata")
     equal(missingItemAPIs.items[1].itemInfoInstant.state, "API_MISSING", "missing item API remains explicit")
+    equal(missingItemAPIs.items[1].itemSpecInfo.state, "API_MISSING", "missing item specialization API remains explicit")
     equal(missingItemAPIs.statDeltaComparisons.state, "API_MISSING", "missing stat delta API remains explicit")
     C_Item = { GetItemStatDelta = function() error("synthetic delta failure") end }
     local failedDelta = S.collectors.forever70291Evidence().itemFacts.statDeltaComparisons
@@ -156,6 +172,9 @@ return function(S, check, equal)
     C_SkillInfo.GetSkillLineInfo = function(index) if index == 1 then return { name = "Known", skillID = 1 } end return nil end
     local nilSkill = S.collectors.forever70291Evidence()
     equal(nilSkill.skillLines[2].state, "NIL_RESULT", "nil indexed result remains explicit")
+    C_SpecializationInfo = { GetSpecialization = function() return nil end }
+    local absentSpec = S.collectors.forever70291Evidence().specialization
+    equal(absentSpec.activeInfo.state, "UNKNOWN", "nil active specialization does not produce an active specialization result")
 
     C_SkillInfo = {
         GetNumSkillLines = function() return 3 end,
@@ -240,6 +259,7 @@ return function(S, check, equal)
 
     S.record.sections.equipment, S.record.sections.bags = oldEquipment, oldBags
     C_Item = oldItemAPI
+    C_SpecializationInfo = oldSpecializationInfo
     C_SkillInfo, ClassTrainerFrame = oldSkill, oldFrame
     TrainerFrame, ClassTrainerFrameSkillStep = oldTrainerFrame, oldTrainerStep
     GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost = oldCount, oldInfo, oldCost
