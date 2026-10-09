@@ -7,7 +7,7 @@ return function(S, check, equal)
     check(found, "70291 evidence included in normal export refresh")
     check(S.structuredOnly.forever70291Evidence, "new evidence stays out of strict WOWSYNC v1 text for parser compatibility")
 
-    local oldSkill, oldFrame = C_SkillInfo, ClassTrainerFrame
+    local oldSkill, oldFrame, oldItemAPI = C_SkillInfo, ClassTrainerFrame, C_Item
     local oldTrainerFrame, oldTrainerStep = TrainerFrame, ClassTrainerFrameSkillStep
     local oldCount, oldInfo, oldCost = GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost
     local oldSkillReq, oldAbilityReq, oldAbilityCount = GetTrainerServiceSkillReq, GetTrainerServiceAbilityReq, GetTrainerServiceNumAbilityReq
@@ -20,6 +20,25 @@ return function(S, check, equal)
             if index == 1 then return { isHeader = true, name = "Weapon Skills", skillID = 6, rank = 0, maxRank = 0 } end
             return { isHeader = false, name = "Axes", skillID = 44 + index, skillLineCategoryID = 6,
                 rank = 20 + index, maxRank = 40 }
+        end,
+    }
+    local exactArmor = "item:123:4:5"
+    local exactVariant = "item:123:4:5:6"
+    local oldEquipment, oldBags = S.record.sections.equipment, S.record.sections.bags
+    S.record.sections.equipment = { completeness = "complete", observedAt = GetServerTime(), data = { slots = { [16] = { itemID = 123, itemString = exactArmor } } } }
+    S.record.sections.bags = { completeness = "complete", observedAt = GetServerTime(), data = { containers = { { id = 0, slots = {
+        [1] = { itemID = 123, itemString = exactArmor, count = 1 },
+        [2] = { itemID = 123, itemString = exactVariant, count = 2 },
+    } } } } }
+    local instantCalls, equippableCalls = {}, {}
+    C_Item = {
+        GetItemInfoInstant = function(reference)
+            instantCalls[#instantCalls + 1] = reference
+            return 123, "Armor", "Leather", "INVTYPE_CHEST", 999, 4, 2
+        end,
+        IsEquippableItem = function(reference)
+            equippableCalls[#equippableCalls + 1] = reference
+            return true
         end,
     }
     ClassTrainerFrame = { IsShown = function() return false end }
@@ -42,6 +61,22 @@ return function(S, check, equal)
     equal(closed.trainer.state, "NOT_OBSERVED_WINDOW_CLOSED", "closed trainer is explicit unknown")
     equal(countApiCalls, 0, "closed trainer invokes no service APIs")
     equal(calls, 3, "each skill index called once per capture")
+    equal(#closed.itemFacts.items, 2, "item facts are captured per exact itemString variant")
+    equal(instantCalls[1], exactArmor, "item metadata API receives an exact observed itemString")
+    equal(equippableCalls[2], exactVariant, "equippability API receives each exact variant")
+    equal(closed.itemFacts.items[1].itemInfoInstant.returns[4].observation.value, "INVTYPE_CHEST",
+        "raw inventory-type evidence is retained without an eligibility claim")
+    equal(closed.itemFacts.items[1].isEquippableItem.returns[1].observation.value, true,
+        "item-level equippability result is raw evidence only")
+    equal(closed.itemFacts.completeness, "complete", "all item metadata API samples are present")
+    S.record.sections.bags.completeness = "partial"
+    local partialSource = S.collectors.forever70291Evidence().itemFacts
+    equal(partialSource.completeness, "partial", "partial inventory source cannot be upgraded by fresh item API samples")
+    S.record.sections.bags.completeness = "complete"
+    S.record.sections.bags.observedAt = 1
+    local oldSource = S.collectors.forever70291Evidence().itemFacts
+    equal(oldSource.completeness, "partial", "old inventory source cannot be upgraded by fresh item API samples")
+    S.record.sections.bags.observedAt = GetServerTime()
     ClassTrainerFrame, TrainerFrame, ClassTrainerFrameSkillStep = nil, nil, nil
     local unavailable = S.collectors.forever70291Evidence()
     equal(unavailable.trainer.state, "NOT_OBSERVED_FRAME_UNAVAILABLE", "missing trainer UI frame is explicit not-observed")
@@ -65,6 +100,16 @@ return function(S, check, equal)
     local missingSkill = S.collectors.forever70291Evidence()
     equal(missingSkill.skillLineCount.state, "API_MISSING", "missing count API explicit")
     equal(missingSkill.skillLineCoverage, "UNKNOWN_COUNT", "missing count does not create an empty-complete skill list")
+    C_Item = {}
+    local missingItemAPIs = S.collectors.forever70291Evidence().itemFacts
+    equal(missingItemAPIs.completeness, "partial", "missing item APIs cannot become complete metadata")
+    equal(missingItemAPIs.items[1].itemInfoInstant.state, "API_MISSING", "missing item API remains explicit")
+    C_Item = {
+        GetItemInfoInstant = function() return 999, "Armor", "Leather", "INVTYPE_CHEST" end,
+        IsEquippableItem = function() return nil end,
+    }
+    local malformedItem = S.collectors.forever70291Evidence().itemFacts
+    equal(malformedItem.completeness, "partial", "mismatched identity and nil item verdict stay partial")
     C_SkillInfo = { GetNumSkillLines = function() error("synthetic count failure") end }
     local failedCount = S.collectors.forever70291Evidence()
     equal(failedCount.skillLineCount.state, "API_ERROR", "throwing count API captured as error")
@@ -141,6 +186,7 @@ return function(S, check, equal)
     equal(#limited.calls.abilityRequirements, 20, "requirement probing is bounded")
     equal(limited.requirementsTruncated, true, "safety limit is explicitly partial")
 
+    S.record.sections.equipment, S.record.sections.bags = oldEquipment, oldBags
     local snapshot = S.GetSnapshot()
     snapshot.sections.forever70291Evidence = { data = open, completeness = "partial", observedAt = 123 }
     local export = S.Render(snapshot)
@@ -153,8 +199,13 @@ return function(S, check, equal)
     check(rawSection:find("|cffff0000Prerequisite|r", 1, true), "raw rendering preserves exact color escape text")
     check(rawSection:find("trainer.1.abilityRequirement.argument\t2\t2", 1, true),
         "rendered requirement call retains service and requirement indices")
+    check(rawSection:find("itemFact\t123\t" .. exactArmor .. "\tOBSERVED_VALUE\tOBSERVED_VALUE", 1, true),
+        "rendered raw item evidence preserves exact item variant and API states")
+    check(rawSection:find("INVTYPE_CHEST", 1, true), "rendered item tuple remains available for audit")
     check(rawSection:find("Raw runtime observations only", 1, true), "structured evidence disclaims unvalidated interpretation")
 
+    S.record.sections.equipment, S.record.sections.bags = oldEquipment, oldBags
+    C_Item = oldItemAPI
     C_SkillInfo, ClassTrainerFrame = oldSkill, oldFrame
     TrainerFrame, ClassTrainerFrameSkillStep = oldTrainerFrame, oldTrainerStep
     GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost = oldCount, oldInfo, oldCost

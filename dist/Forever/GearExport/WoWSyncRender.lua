@@ -118,6 +118,20 @@ renderers.forever70291Evidence = function(out, data)
     else
         RawField(out, "TrainerServiceCoverage", "UNKNOWN")
     end
+    local itemFacts = data.itemFacts or {}
+    RawField(out, "ItemFactsState", itemFacts.state)
+    RawField(out, "ItemFactsCompleteness", itemFacts.completeness)
+    RawField(out, "ItemFactsObservedAt", itemFacts.observedAt)
+    RawField(out, "ItemFactsSource", itemFacts.source)
+    for _, name in ipairs(SortedKeys(itemFacts.apiAvailability)) do RawField(out, "ItemFactsAPI." .. name, itemFacts.apiAvailability[name]) end
+    Row(out, "itemFact", "itemID", "exactItemString", "instantState", "equippableState")
+    for index, fact in ipairs(itemFacts.items or {}) do
+        RawRow(out, "itemFact", fact.itemID, fact.itemString,
+            fact.itemInfoInstant and fact.itemInfoInstant.state,
+            fact.isEquippableItem and fact.isEquippableItem.state)
+        RenderRawCall(out, "itemFact." .. tostring(index) .. "." .. tostring(fact.itemID) .. ".GetItemInfoInstant", fact.itemInfoInstant)
+        RenderRawCall(out, "itemFact." .. tostring(index) .. "." .. tostring(fact.itemID) .. ".IsEquippableItem", fact.isEquippableItem)
+    end
     RawField(out, "Interpretation", "Raw runtime observations only; no transferability, eligibility, learnability, or readiness inferred")
     for _, name in ipairs(SortedKeys(data.unknowns)) do RawField(out, "UNKNOWN." .. name, data.unknowns[name]) end
 end

@@ -107,6 +107,90 @@ local function readSkillLines(data, issues)
     data.skillLineCoverage = rowsOK and "OBSERVED_INDEXED_ROWS" or "PARTIAL_INDEXED_ROWS"
 end
 
+-- Item classification for later allocation review. These API results describe
+-- the item only; they do not establish that this character can equip it.
+-- Inputs are exact itemStrings from the just-collected equipment/bags sections.
+local function readItemFacts(data, issues)
+    local itemsByLink, links = {}, {}
+    local itemIssues = {}
+    local function add(item)
+        if type(item) ~= "table" or type(item.itemString) ~= "string" then return end
+        local itemID = tonumber(item.itemString:match("^item:(%d+)"))
+        if not itemID or itemID < 1 or itemID % 1 ~= 0 then
+            itemIssues[#itemIssues + 1] = "Item classification skipped an invalid exact itemString"
+            return
+        end
+        if not itemsByLink[item.itemString] then
+            local fact = { itemID = itemID, itemString = item.itemString,
+                provenance = "IN_GAME_RUNTIME_CALL", inputKind = "EXACT_ITEM_STRING" }
+            itemsByLink[item.itemString] = fact
+            links[#links + 1] = item.itemString
+        end
+    end
+    local sections = S.record and S.record.sections or {}
+    local equipmentSection, bagsSection = sections.equipment, sections.bags
+    local sourceNow = S.Now()
+    local function currentComplete(section)
+        return section and not section.lastAttemptStale
+            and section.completeness == "complete"
+            and type(section.observedAt) == "number"
+            and sourceNow >= section.observedAt
+            and sourceNow - section.observedAt <= 259200
+    end
+    local equipment = equipmentSection and equipmentSection.data
+    local slots = type(equipment) == "table" and equipment.slots or nil
+    if equipmentSection and equipmentSection.lastAttemptStale then itemIssues[#itemIssues + 1] = "Equipment source is LAST_SEEN; item facts not sampled from it"
+    elseif type(slots) == "table" then for _, item in pairs(slots) do add(item) end
+    else itemIssues[#itemIssues + 1] = "Equipment item classification source unavailable" end
+    local bags = bagsSection and bagsSection.data
+    local containers = type(bags) == "table" and bags.containers or nil
+    if bagsSection and bagsSection.lastAttemptStale then itemIssues[#itemIssues + 1] = "Carried source is LAST_SEEN; item facts not sampled from it"
+    elseif type(containers) == "table" then
+        for _, container in pairs(containers) do
+            if type(container) == "table" and type(container.slots) == "table" then
+                for _, item in pairs(container.slots) do add(item) end
+            end
+        end
+    else itemIssues[#itemIssues + 1] = "Carried item classification source unavailable" end
+    if not currentComplete(equipmentSection) then itemIssues[#itemIssues + 1] = "Equipment source is incomplete or older than the recent-evidence window" end
+    if not currentComplete(bagsSection) then itemIssues[#itemIssues + 1] = "Carried source is incomplete or older than the recent-evidence window" end
+    table.sort(links)
+    local itemAPI = type(C_Item) == "table" and C_Item or {}
+    data.itemFacts = { state = "OBSERVED_ITEM_SAMPLES", observedAt = sourceNow,
+        source = "C_Item.GetItemInfoInstant and C_Item.IsEquippableItem on exact observed itemStrings",
+        completeness = #itemIssues == 0 and "complete" or "partial", items = {},
+        sourceSections = {
+            equipment = { observedAt = equipmentSection and equipmentSection.observedAt,
+                state = equipmentSection and (equipmentSection.lastAttemptStale and "LAST_SEEN" or equipmentSection.completeness) or "UNKNOWN" },
+            bags = { observedAt = bagsSection and bagsSection.observedAt,
+                state = bagsSection and (bagsSection.lastAttemptStale and "LAST_SEEN" or bagsSection.completeness) or "UNKNOWN" },
+        } }
+    data.itemFacts.apiAvailability = {
+        ["C_Item.GetItemInfoInstant"] = apiStatus(itemAPI.GetItemInfoInstant),
+        ["C_Item.IsEquippableItem"] = apiStatus(itemAPI.IsEquippableItem),
+    }
+    for _, link in ipairs(links) do
+        local fact = itemsByLink[link]
+        fact.itemInfoInstant = call(itemAPI.GetItemInfoInstant, { n = 1, link })
+        fact.itemInfoInstant.api, fact.itemInfoInstant.input = "C_Item.GetItemInfoInstant", { itemString = link }
+        fact.isEquippableItem = call(itemAPI.IsEquippableItem, { n = 1, link })
+        fact.isEquippableItem.api, fact.isEquippableItem.input = "C_Item.IsEquippableItem", { itemString = link }
+        local instantID = fact.itemInfoInstant.returns and fact.itemInfoInstant.returns[1]
+            and fact.itemInfoInstant.returns[1].observation
+        local equippable = fact.isEquippableItem.returns and fact.isEquippableItem.returns[1]
+            and fact.isEquippableItem.returns[1].observation
+        if not instantID or instantID.state ~= "OBSERVED" or instantID.type ~= "number"
+            or instantID.value ~= fact.itemID or not equippable or equippable.state ~= "OBSERVED"
+            or equippable.type ~= "boolean" then
+            data.itemFacts.completeness = "partial"
+            itemIssues[#itemIssues + 1] = "Item classification API result unavailable for item " .. fact.itemID
+        end
+        fact.itemInfoInstant._rawReturns, fact.isEquippableItem._rawReturns = nil, nil
+        data.itemFacts.items[#data.itemFacts.items + 1] = fact
+    end
+    for _, issue in ipairs(itemIssues) do issues[#issues + 1] = issue end
+end
+
 local function trainerFrame()
     local sawFrame, visibilityError = false, false
     for _, name in ipairs({ "ClassTrainerFrame", "TrainerFrame", "ClassTrainerFrameSkillStep" }) do
@@ -236,6 +320,7 @@ S.collectors.forever70291Evidence = function()
             weaponReadiness = "UNKNOWN_UNVALIDATED",
         } }
     readSkillLines(data, issues)
+    readItemFacts(data, issues)
     local oldSection = S.record and S.record.sections and S.record.sections.forever70291Evidence
     local priorTrainer = oldSection and oldSection.data and oldSection.data.trainer
     data.trainer = observeTrainer(priorTrainer, issues)
@@ -252,11 +337,15 @@ end
 -- not open UI or invoke trainer service interaction functions.
 local eventFrame = CreateFrame("Frame")
 for _, event in ipairs({ "SKILL_LINES_CHANGED", "TRAINER_SHOW", "TRAINER_UPDATE",
-    "TRAINER_DESCRIPTION_UPDATE", "TRAINER_SERVICE_INFO_NAME_UPDATE", "TRAINER_CLOSED" }) do
+    "TRAINER_DESCRIPTION_UPDATE", "TRAINER_SERVICE_INFO_NAME_UPDATE", "TRAINER_CLOSED",
+    "BAG_UPDATE_DELAYED", "UNIT_INVENTORY_CHANGED" }) do
     eventFrame:RegisterEvent(event)
 end
-eventFrame:SetScript("OnEvent", function(_, event)
+eventFrame:SetScript("OnEvent", function(_, event, unit)
     if F and WoWSyncCompat and WoWSyncCompat.IsForever() and S.collectors.forever70291Evidence then
+        if event == "UNIT_INVENTORY_CHANGED" and unit ~= "player" then return end
+        if event == "BAG_UPDATE_DELAYED" then S.Mark("bags")
+        elseif event == "UNIT_INVENTORY_CHANGED" then S.Mark("equipment") end
         S.Mark("forever70291Evidence")
     end
 end)
