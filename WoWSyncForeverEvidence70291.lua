@@ -2,6 +2,7 @@
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 local MAX_TRAINER_SERVICES, MAX_ABILITY_REQUIREMENTS = 200, 20
+local MAX_ITEM_STAT_ROWS = 100
 local unpackValues = unpack or table.unpack
 
 local function public(value)
@@ -41,6 +42,33 @@ local function call(fn, args)
     return { state = result.n > 0 and "OBSERVED_VALUE" or "ZERO_RETURNS",
         returnCount = result.n, returns = returns, _rawReturns = result,
         observedAt = S.Now(), provenance = "IN_GAME_RUNTIME_CALL" }
+end
+
+-- C_Item.GetItemStats returns a table. Copy only bounded public scalar entries
+-- into a JSON-safe array, preserving unknown/restricted values explicitly.
+local function tableResult(result)
+    local raw = result._rawReturns and result._rawReturns[1]
+    if type(raw) ~= "table" then
+        return { state = raw == nil and "NIL" or "UNSUPPORTED_VALUE_TYPE", type = type(raw) }
+    end
+    if not public(raw) then return { state = "RESTRICTED", type = "table" } end
+    local keyOK, keys = pcall(function()
+        local found = {}
+        for key in pairs(raw) do
+            if type(key) == "string" or type(key) == "number" then found[#found + 1] = key end
+        end
+        return found
+    end)
+    if not keyOK then return { state = "API_ERROR", type = "table" } end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    local entries, complete = {}, #keys <= MAX_ITEM_STAT_ROWS
+    for index = 1, math.min(#keys, MAX_ITEM_STAT_ROWS) do
+        local key = keys[index]
+        local ok, value = pcall(function() return raw[key] end)
+        entries[#entries + 1] = { key = tostring(key), keyType = type(key),
+            observation = ok and rawValue(value) or { state = "API_ERROR", type = "unknown" } }
+    end
+    return { state = "OBSERVED_TABLE", entryCount = #keys, complete = complete, entries = entries }
 end
 
 local function readSkillLines(data, issues)
@@ -157,7 +185,7 @@ local function readItemFacts(data, issues)
     table.sort(links)
     local itemAPI = type(C_Item) == "table" and C_Item or {}
     data.itemFacts = { state = "OBSERVED_ITEM_SAMPLES", observedAt = sourceNow,
-        source = "C_Item.GetItemInfoInstant and C_Item.IsEquippableItem on exact observed itemStrings",
+        source = "Forever C_Item item APIs on exact observed itemStrings; each call is raw runtime evidence",
         completeness = #itemIssues == 0 and "complete" or "partial", items = {},
         sourceSections = {
             equipment = { observedAt = equipmentSection and equipmentSection.observedAt,
@@ -168,6 +196,8 @@ local function readItemFacts(data, issues)
     data.itemFacts.apiAvailability = {
         ["C_Item.GetItemInfoInstant"] = apiStatus(itemAPI.GetItemInfoInstant),
         ["C_Item.IsEquippableItem"] = apiStatus(itemAPI.IsEquippableItem),
+        ["C_Item.GetItemInfo"] = apiStatus(itemAPI.GetItemInfo),
+        ["C_Item.GetItemStats"] = apiStatus(itemAPI.GetItemStats),
     }
     for _, link in ipairs(links) do
         local fact = itemsByLink[link]
@@ -175,6 +205,11 @@ local function readItemFacts(data, issues)
         fact.itemInfoInstant.api, fact.itemInfoInstant.input = "C_Item.GetItemInfoInstant", { itemString = link }
         fact.isEquippableItem = call(itemAPI.IsEquippableItem, { n = 1, link })
         fact.isEquippableItem.api, fact.isEquippableItem.input = "C_Item.IsEquippableItem", { itemString = link }
+        fact.itemInfo = call(itemAPI.GetItemInfo, { n = 1, link })
+        fact.itemInfo.api, fact.itemInfo.input = "C_Item.GetItemInfo", { itemString = link }
+        fact.itemStats = call(itemAPI.GetItemStats, { n = 1, link })
+        fact.itemStats.api, fact.itemStats.input = "C_Item.GetItemStats", { itemString = link }
+        fact.itemStats.table = tableResult(fact.itemStats)
         local instantID = fact.itemInfoInstant.returns and fact.itemInfoInstant.returns[1]
             and fact.itemInfoInstant.returns[1].observation
         local equippable = fact.isEquippableItem.returns and fact.isEquippableItem.returns[1]
@@ -186,6 +221,7 @@ local function readItemFacts(data, issues)
             itemIssues[#itemIssues + 1] = "Item classification API result unavailable for item " .. fact.itemID
         end
         fact.itemInfoInstant._rawReturns, fact.isEquippableItem._rawReturns = nil, nil
+        fact.itemInfo._rawReturns, fact.itemStats._rawReturns = nil, nil
         data.itemFacts.items[#data.itemFacts.items + 1] = fact
     end
     for _, issue in ipairs(itemIssues) do issues[#issues + 1] = issue end

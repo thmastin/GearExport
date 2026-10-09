@@ -36,6 +36,14 @@ return function(S, check, equal)
             instantCalls[#instantCalls + 1] = reference
             return 123, "Armor", "Leather", "INVTYPE_CHEST", 999, 4, 2
         end,
+        GetItemInfo = function(reference)
+            check(reference == exactArmor or reference == exactVariant, "full item-info API receives an exact observed variant")
+            return "Synthetic Armor", reference, 2, 3, 1, "Armor", "Leather", 1, "INVTYPE_CHEST", 0, 0, 4, 2, 1
+        end,
+        GetItemStats = function(reference)
+            check(reference == exactArmor or reference == exactVariant, "item-stats API receives an exact observed variant")
+            return { ITEM_MOD_STAMINA_SHORT = 5, ITEM_MOD_ARMOR = 10 }
+        end,
         IsEquippableItem = function(reference)
             equippableCalls[#equippableCalls + 1] = reference
             return true
@@ -68,6 +76,11 @@ return function(S, check, equal)
         "raw inventory-type evidence is retained without an eligibility claim")
     equal(closed.itemFacts.items[1].isEquippableItem.returns[1].observation.value, true,
         "item-level equippability result is raw evidence only")
+    equal(closed.itemFacts.items[1].itemInfo.api, "C_Item.GetItemInfo", "full item-info call name retained")
+    equal(closed.itemFacts.items[1].itemInfo.returns[5].observation.value, 1,
+        "full item-info return tuple retained without semantic interpretation")
+    equal(closed.itemFacts.items[1].itemStats.table.state, "OBSERVED_TABLE", "item stats table captured as evidence")
+    equal(closed.itemFacts.items[1].itemStats.table.entries[1].key, "ITEM_MOD_ARMOR", "item stat keys retained deterministically")
     equal(closed.itemFacts.completeness, "complete", "all item metadata API samples are present")
     S.record.sections.bags.completeness = "partial"
     local partialSource = S.collectors.forever70291Evidence().itemFacts
@@ -107,6 +120,8 @@ return function(S, check, equal)
     C_Item = {
         GetItemInfoInstant = function() return 999, "Armor", "Leather", "INVTYPE_CHEST" end,
         IsEquippableItem = function() return nil end,
+        GetItemInfo = function() error("uncached item data") end,
+        GetItemStats = function() return nil end,
     }
     local malformedItem = S.collectors.forever70291Evidence().itemFacts
     equal(malformedItem.completeness, "partial", "mismatched identity and nil item verdict stay partial")
