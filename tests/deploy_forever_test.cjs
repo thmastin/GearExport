@@ -53,7 +53,7 @@ try {
         'PowerShell launcher resolves WowB.exe from the Forever installation root');
     const futureInterfacePackage = makePackage('future-interface-package', {
         'GearExport.toc': '## Interface: 16002\n## X-WoWSync-Target: Forever\nWoWSyncForever.lua\n',
-        'WoWSyncForever.lua': 'local F = { version = "1.60.1", tocInterface = 16002 }\nfunction C.IsForeverVersion(version, family) return family == "Forever" and version == F.version end\n',
+        'WoWSyncForever.lua': 'local F = { version = "1.60.1", interface = "unknown" }\nfunction C.IsForeverVersion(version, family) return family == "Forever" and version == F.version end\n',
         'README.md': 'future TOC metadata fixture\n',
     });
     equal(verifyPackage(futureInterfacePackage).build, { version: '1.60.1', tocInterface: 16002 },
