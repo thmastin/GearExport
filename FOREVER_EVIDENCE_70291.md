@@ -1,6 +1,6 @@
 # Forever 70291 compatibility capture
 
-This candidate is pinned to Forever `1.60.1`, build `70291`, and interface `16001`. It carries forward only the production collectors selected from the build-70245 contracts. The exact earlier API evidence remains in `FOREVER_EVIDENCE_70245.md` and the historical production-validation report.
+The original compatibility candidate was pinned to Forever `1.60.1`, build `70291`, and interface `16001`. It carries forward only the production collectors selected from the build-70245 contracts. The current exact-build allowlist extension is recorded below. The earlier API evidence remains in `FOREVER_EVIDENCE_70245.md` and the historical production-validation report.
 
 ## Exact-build compatibility extension - 2026-10-10
 
@@ -11,8 +11,7 @@ The client flavor marker is `wow_classic_beta`. A same-session
 `16001` in its `HUNTER-12-trainer` record. Gethe's Blizzard UI-source mirror's
 `forever` branch is at commit
 [`943764493e6b16d63ded3ab304150d1f05e58b57`](https://github.com/Gethe/wow-ui-source/commit/943764493e6b16d63ded3ab304150d1f05e58b57),
-which identifies itself as `1.60.1 (70338)`; its Forever TOCs use interface
-`16001`. The corresponding generated API documentation directory is byte-for-
+which identifies itself as `1.60.1 (70338)`. The corresponding generated API documentation directory is byte-for-
 byte unchanged from the source revision identifying build 70291
 (`9465cb2`, `1.60.1 (70291)`). This includes the declarations for build
 detection, character/unit data, items and item stats, containers, banks, skills,
