@@ -133,6 +133,12 @@ local function recipeRow(api, recipeID)
     if type(infoLearned) ~= "boolean" then infoLearned = nil end
     if learned ~= nil and infoLearned ~= nil and learned ~= infoLearned then learned = nil end
 
+    -- GetRecipeInfo is optional on some Forever builds. Preserve only fields
+    -- whose exact primitive types are known; these API values are useful
+    -- progression evidence, but maxTrivialLevel is not a minimum skill
+    -- requirement and relativeDifficulty is not translated into a rank.
+    local infoName = type(recipeInfo) == "table" and publicString(recipeInfo.name) or nil
+
     local schematicState, schematic = safe(api.GetRecipeSchematic, recipeID, false)
     local row = {
         recipeID = recipeID,
@@ -149,7 +155,7 @@ local function recipeRow(api, recipeID)
     if type(schematic) == "table" then
         local schematicID = schematic.recipeID
         if schematicID ~= nil and schematicID ~= recipeID then return nil, "recipe schematic identity mismatch" end
-        row.name = publicString(schematic.name)
+        row.name = publicString(schematic.name) or infoName
         row.outputItemID = positive(schematic.outputItemID) and schematic.outputItemID or nil
         row.outputItemInfo = { state = "UNKNOWN", source = "C_Item.GetItemInfoInstant" }
         if row.outputItemID and type(C_Item) == "table" then
@@ -171,6 +177,16 @@ local function recipeRow(api, recipeID)
         end
         local reagents = captureReagents(schematic)
         if reagents and row.name then row.reagentSlots = reagents else row.schematicState = "UNKNOWN" end
+    end
+    if type(schematic) ~= "table" and infoName then row.name = infoName end
+    if infoState == "OBSERVED_VALUE" and type(recipeInfo) == "table" then
+        if nonnegative(recipeInfo.relativeDifficulty) then row.relativeDifficulty = recipeInfo.relativeDifficulty end
+        if nonnegative(recipeInfo.maxTrivialLevel) then row.maxTrivialLevel = recipeInfo.maxTrivialLevel end
+        if nonnegative(recipeInfo.numSkillUps) then row.numSkillUps = recipeInfo.numSkillUps end
+        if type(recipeInfo.canSkillUp) == "boolean" then row.canSkillUp = recipeInfo.canSkillUp end
+        row.recipeProgressionInfoState = "OBSERVED"
+    else
+        row.recipeProgressionInfoState = "UNKNOWN"
     end
     return { baseSkillLineID = parentSkillLineID, skillLineID = skillLineID,
         parentProfessionID = parentSkillLineID, professionName = professionName, recipe = row }

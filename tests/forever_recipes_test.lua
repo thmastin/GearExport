@@ -29,7 +29,8 @@ return function(S, check, equal)
             end,
             GetRecipeInfo = function(id)
                 if id == 61002 then return { learned = true } end -- conflicts with spellbook false
-                return { learned = id == 61001 }
+                if id == 61001 then return { learned = true, name = "Info name fallback", relativeDifficulty = 2, maxTrivialLevel = 25, numSkillUps = 1, canSkillUp = true } end
+                return { learned = false }
             end,
             CraftRecipe = function() craftCalls = craftCalls + 1; error("collector must never craft") end,
         }
@@ -67,6 +68,12 @@ return function(S, check, equal)
     local byID = {}
     for _, recipe in ipairs(data.professions[1].recipes) do byID[recipe.recipeID] = recipe end
     equal(byID[61001].learnedState, "OBSERVED_TRUE", "known recipe uses spellbook true")
+    equal(byID[61001].relativeDifficulty, 2, "Forever recipe difficulty API value captured without reinterpretation")
+    equal(byID[61001].maxTrivialLevel, 25, "Forever maximum trivial skill value captured as reported")
+    equal(byID[61001].numSkillUps, 1, "Forever recipe skill-up count captured")
+    equal(byID[61001].canSkillUp, true, "Forever can-skill-up boolean captured")
+    equal(byID[61001].recipeProgressionInfoState, "OBSERVED", "progression info has explicit API provenance")
+    equal(byID[61001].name, "Rough Sharpening Stone", "schematic name takes precedence over recipe info fallback")
     equal(byID[61002].learnedState, "UNKNOWN", "conflicting learned APIs fail closed")
     equal(byID[61003].learnedState, "UNKNOWN", "unavailable learned API result remains unknown")
     equal(byID[61001].outputItemID, 2862, "schematic output item ID captured")
@@ -95,6 +102,19 @@ return function(S, check, equal)
     C_TradeSkillUI.GetRecipeInfo = nil
     data = S.collectors.professionRecipes()
     equal(data.professions[1].recipes[1].learnedState, "OBSERVED_TRUE", "Forever does not require an unsupported GetRecipeInfo function")
+    equal(data.professions[1].recipes[1].recipeProgressionInfoState, "UNKNOWN", "missing optional progression API remains UNKNOWN")
+    setFixture({ 61001 })
+    C_TradeSkillUI.GetRecipeSchematic = function() return { recipeID = 61001 } end
+    data = S.collectors.professionRecipes()
+    equal(data.professions[1].recipes[1].name, "Info name fallback", "recipe name falls back to GetRecipeInfo")
+    setFixture({ 61001 })
+    C_TradeSkillUI.GetRecipeInfo = function() return { learned = true, relativeDifficulty = "2", maxTrivialLevel = -1, numSkillUps = true, canSkillUp = 1 } end
+    data = S.collectors.professionRecipes()
+    local malformed = data.professions[1].recipes[1]
+    equal(malformed.relativeDifficulty, nil, "string difficulty is not coerced")
+    equal(malformed.maxTrivialLevel, nil, "negative maximum trivial skill is omitted")
+    equal(malformed.numSkillUps, nil, "boolean skill-up count is omitted")
+    equal(malformed.canSkillUp, nil, "numeric can-skill-up value is omitted")
     C_TradeSkillUI.IsTradeSkillLinked = function() return true end
     equal(S.collectors.professionRecipes(), nil, "another character's linked profession is rejected")
     C_TradeSkillUI.IsTradeSkillLinked = function() return nil end
