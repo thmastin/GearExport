@@ -2,7 +2,7 @@
 
 ## Scope and evidence
 
-This checkpoint audits Forever 1.60.1 builds 70291 and 70338, interface 16001. Build acceptance remains an explicit allowlist; this change does not admit other builds. API names and call contracts below were checked against the version-matched Gethe UI-source Forever branch for 70338 and its generated API declarations (the declaration tree is unchanged from the 70291 source revision). This establishes documented API support, not that every live return value was observed after these changes. Real prior observations remain the source for the earlier 70291 live claims in `FOREVER_EVIDENCE_70291.md`.
+This historical checkpoint audits Forever 1.60.1 builds 70291 and 70338, interface 16001. Its build allowlist policy was superseded by `FOREVER_UPDATE_COMPATIBILITY.md`: the current addon does not reject an otherwise identified Forever client because its build/interface number is new. API names and call contracts below were checked against the version-matched Gethe UI-source Forever branch for 70338 and its generated API declarations (the declaration tree is unchanged from the 70291 source revision). This establishes documented API support, not that every live return value was observed after these changes. Real prior observations remain the source for the earlier 70291 live claims in `FOREVER_EVIDENCE_70291.md`.
 
 ## Changes
 
@@ -20,7 +20,7 @@ This checkpoint audits Forever 1.60.1 builds 70291 and 70338, interface 16001. B
 
 | Area | Capture path | State / limitation |
 |---|---|---|
-| Name, surname, realm, race, class, level | Forever character collector; v1 renderer/parser | API-backed; surname support pre-existed. Race now emits on allowlisted Forever profiles. Live confirmation of newly added fields is pending. |
+| Name, surname, realm, race, class, level | Forever character collector; v1 renderer/parser | API-backed; surname support pre-existed. Race emits for identified Forever 1.60.1 profiles when observed. Live confirmation of newly added fields is pending. |
 | Faction | `UnitFactionGroup("player")` | Captured when returned; otherwise absent/UNKNOWN. |
 | XP | `UnitXP("player")`, `UnitXPMax("player")` | Captured when returned; absent remains unknown. |
 | Money | `GetMoney()` copper | Captured with numeric precision; absent remains unknown, observed 0 remains 0. |
@@ -46,4 +46,11 @@ For equipped IDs 4237, 4239, and 4362, the collector already had the numeric ID 
 
 ## Validation and limits
 
-The Lua fixture suite, release/package guards, and deployment fixtures exercise both allowed builds, unknown-build rejection, field missing/error behavior, time-played events, item-ID fallback, delayed item-data retry, profession and spell rows, and unknown trainer semantics. Fixtures are not live-client proof. Do not deploy this candidate from this checkpoint. The next real capture must verify basic fields, the three item names, a bank visit, profession/spell capture, and trainer-window raw return shapes in one session.
+At the time of this historical checkpoint, the Lua fixture suite and deployment
+fixtures exercised the then-allowed builds and rejected unknown build numbers.
+The current fixture suite instead covers build-independent Forever identity,
+future build/interface metadata, optional API failures, and package/deployment
+gates. Fixtures are not live-client proof. Build 70338 remains unvalidated
+in-game with this package. A real capture must verify basic fields, the three
+item names, a bank visit, profession/spell capture, and trainer-window raw return
+shapes in one session.

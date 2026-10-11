@@ -1,5 +1,5 @@
--- Version-scoped observational collectors for the explicitly allowlisted
--- Forever builds. Raw trainer-window evidence remains in the evidence section;
+-- Version-scoped observational collectors for the identified Forever client.
+-- Raw trainer-window evidence remains in the evidence section;
 -- the legacy tuple adapter is deliberately not activated without verification.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
@@ -167,7 +167,7 @@ S.collectors = {
     end,
 }
 
--- This section is isolated to exact allowlisted Forever builds. The older
+-- This section is isolated to the Forever client/version. The older
 -- Forever trainer tuple adapter is intentionally not activated here.
 S.order[#S.order + 1] = "forever70291Evidence"
 -- Keep WOWSYNC v1 text parse-compatible with the currently deployed Dashboard.

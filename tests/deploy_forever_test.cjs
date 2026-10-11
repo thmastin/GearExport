@@ -21,7 +21,7 @@ function hash(file) { return crypto.createHash('sha256').update(fs.readFileSync(
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'forever-deploy-fixtures-'));
 function write(file, value) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, value); }
 function makePackage(name, files = { 'GearExport.toc': '## Interface: 16001\n## X-WoWSync-Target: Forever\nWoWSyncForever.lua\n',
-    'WoWSyncForever.lua': 'local F = { version = "1.60.1", interface = 16001, supportedBuilds = { ["70291"] = true, ["70338"] = true } }\n', 'README.md': 'fixture package\n' }) {
+    'WoWSyncForever.lua': 'local F = { version = "1.60.1", tocInterface = 16001 }\nfunction C.IsForeverVersion(version, family) return family == "Forever" and version == F.version end\n', 'README.md': 'fixture package\n' }) {
     const directory = path.join(temp, name);
     fs.mkdirSync(directory, { recursive: true });
     const hashes = {};
@@ -29,8 +29,9 @@ function makePackage(name, files = { 'GearExport.toc': '## Interface: 16001\n## 
         write(path.join(directory, file), contents);
         hashes[file] = hash(path.join(directory, file));
     }
-    write(path.join(directory, 'package-manifest.json'), JSON.stringify({ target: 'Forever', interface: 16001,
-        clientVersion: '1.60.1', clientBuilds: ['70291', '70338'], schema: 'WOWSYNC v1', hashes }, null, 2) + '\n');
+    const interfaceValue = Number(fs.readFileSync(path.join(directory, 'GearExport.toc'), 'utf8').match(/^## Interface: (\d+)$/m)[1]);
+    write(path.join(directory, 'package-manifest.json'), JSON.stringify({ target: 'Forever', interface: interfaceValue,
+        clientVersion: '1.60.1', schema: 'WOWSYNC v1', hashes }, null, 2) + '\n');
     return directory;
 }
 function fixture(name, packagePath) {
@@ -50,28 +51,39 @@ try {
     const powershellLauncher = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deploy-forever.ps1'), 'utf8');
     check(/for\s*\(\$level\s*=\s*0;\s*\$level\s*-lt\s*3;\s*\$level\+\+\)/.test(powershellLauncher),
         'PowerShell launcher resolves WowB.exe from the Forever installation root');
+    const futureInterfacePackage = makePackage('future-interface-package', {
+        'GearExport.toc': '## Interface: 16002\n## X-WoWSync-Target: Forever\nWoWSyncForever.lua\n',
+        'WoWSyncForever.lua': 'local F = { version = "1.60.1", tocInterface = 16002 }\nfunction C.IsForeverVersion(version, family) return family == "Forever" and version == F.version end\n',
+        'README.md': 'future TOC metadata fixture\n',
+    });
+    equal(verifyPackage(futureInterfacePackage).build, { version: '1.60.1', tocInterface: 16002 },
+        'Package verifier accepts updated numeric Forever TOC metadata without a code allowlist');
     const validPackage = makePackage('valid-package');
     const info = verifyPackage(validPackage);
-    equal(info.build, { version: '1.60.1', interface: 16001, builds: ['70291', '70338'] }, 'Preserves the exact package runtime build allowlist');
+    equal(info.build, { version: '1.60.1', tocInterface: 16001 }, 'Package records Forever version and TOC metadata without build allowlisting');
     const legacyGuardPackage = makePackage('legacy-single-build', {
         'GearExport.toc': '## Interface: 16001\n## X-WoWSync-Target: Forever\nWoWSyncForever.lua\n',
         'WoWSyncForever.lua': 'local F = { version = "1.60.1", build = "70291", interface = 16001 }\n',
-        'README.md': 'legacy verified package fixture\n',
+        'README.md': 'legacy exact-build package fixture\n',
     });
-    const legacyManifestPath = path.join(legacyGuardPackage, 'package-manifest.json');
-    const legacyManifest = JSON.parse(fs.readFileSync(legacyManifestPath, 'utf8'));
-    delete legacyManifest.clientVersion;
-    delete legacyManifest.clientBuilds;
-    write(legacyManifestPath, JSON.stringify(legacyManifest));
-    equal(verifyPackage(legacyGuardPackage).build.builds, ['70291'], 'Previously generated exact single-build packages remain verifiable');
-    const mismatchedManifest = makePackage('manifest-mismatch');
-    const manifestPath = path.join(mismatchedManifest, 'package-manifest.json');
+    throws(() => verifyPackage(legacyGuardPackage), /runtime identity\/version contract.*exact build allowlist/,
+        'Package verifier refuses to ship the old runtime exact-build gate');
+    const malformedLegacyManifest = makePackage('malformed-legacy-manifest');
+    const manifestPath = path.join(malformedLegacyManifest, 'package-manifest.json');
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    manifest.clientBuilds = ['70291', '70339'];
+    manifest.clientBuilds = ['next'];
     write(manifestPath, JSON.stringify(manifest));
-    throws(() => verifyPackage(mismatchedManifest), /manifest build allowlist does not match/, 'Manifest cannot broaden the runtime build allowlist');
-    const latestBuildInstall = fixture('latest-build', validPackage);
-    equal(deploy(latestBuildInstall, undefined, '70338').status, 'installed', 'Deployment accepts an exactly allowlisted Forever update');
+    throws(() => verifyPackage(malformedLegacyManifest), /must not contain a client build allowlist/, 'Any legacy build-list metadata is rejected');
+    const staleAllowlist = makePackage('stale-build-list');
+    const staleManifestPath = path.join(staleAllowlist, 'package-manifest.json');
+    const staleManifest = JSON.parse(fs.readFileSync(staleManifestPath, 'utf8'));
+    staleManifest.clientBuilds = ['70291', '70338'];
+    write(staleManifestPath, JSON.stringify(staleManifest));
+    throws(() => verifyPackage(staleAllowlist), /must not contain a client build allowlist/, 'A plausible stale allowlist cannot ship as package metadata');
+    for (const clientBuild of ['70291', '70338', '70412']) {
+        const buildInstall = fixture('build-' + clientBuild, validPackage);
+        equal(deploy(buildInstall, undefined, clientBuild).status, 'installed', 'Deployment accepts Forever build ' + clientBuild + ' when the version matches');
+    }
     const install = fixture('fresh', validPackage);
     const freshResult = deploy(install);
     equal(freshResult.status, 'installed', 'Fresh installation succeeds');
@@ -119,12 +131,14 @@ try {
     const running = fixture('running', validPackage);
     throws(() => deployForever({ ...running, clientRunning: true, buildPackage: false, validateSource: false, detectProcess: false, requireCommittedSource: false, repositoryRoot: path.join(temp, 'test-repository') }),
         /Forever client .* is running/, 'Running Forever client rejected');
-    const mismatch = fixture('guard-mismatch', validPackage);
-    throws(() => deployForever({ ...mismatch, clientVersion: '1.60.1', clientBuild: '70009', buildPackage: false,
+    const mismatch = fixture('version-mismatch', validPackage);
+    throws(() => deployForever({ ...mismatch, clientVersion: '1.61.0', clientBuild: '70412', buildPackage: false,
         validateSource: false, detectProcess: false, requireCommittedSource: false, repositoryRoot: path.join(temp, 'test-repository') }),
-        /refusing incompatible deployment/, 'Target executable build outside exact allowlist is refused');
-    const unknown = fixture('unknown-guard-build', validPackage);
-    throws(() => deploy(unknown, undefined, '70339'), /refusing incompatible deployment/, 'A future build is not accepted by the deployment allowlist');
+        /different WoW client version/, 'A different client version is rejected to preserve strict version isolation');
+    const malformedBuild = fixture('malformed-build', validPackage);
+    throws(() => deployForever({ ...malformedBuild, clientVersion: '1.60.1', clientBuild: 'next', buildPackage: false,
+        validateSource: false, detectProcess: false, requireCommittedSource: false, repositoryRoot: path.join(temp, 'test-repository') }),
+        /not a numeric build identifier/, 'Malformed executable build evidence is rejected without an allowlist');
 
     const broken = fixture('rollback', validPackage);
     write(path.join(broken.destination, 'old.lua'), 'preserve me');

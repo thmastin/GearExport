@@ -82,10 +82,11 @@ function deployForever({ destination, backupRoot, clientRunning = false, hooks =
     const packageInfo = verifyPackage(packageDirectory);
     if (validateSource) assertPackageMatchesSource(projectRoot, packageDirectory, packageInfo);
     if (requireCommittedSource && (!clientVersion || !clientBuild)) die('Target WowB.exe version/build evidence was not supplied by the PowerShell launcher.');
-    if (clientVersion && clientBuild && (clientVersion !== packageInfo.build.version || !packageInfo.build.builds.includes(String(clientBuild)))) {
-        die('Target Forever client is ' + clientVersion + '/' + clientBuild + ' but package guard allows ' +
-            packageInfo.build.version + '/' + packageInfo.build.builds.join(',') + '; refusing incompatible deployment.');
+    if (clientVersion && clientVersion !== packageInfo.build.version) {
+        die('Target Forever client version is ' + clientVersion + ' but this package requires ' +
+            packageInfo.build.version + '; refusing a different WoW client version.');
     }
+    if (clientBuild && !/^\d+$/.test(String(clientBuild))) die('Target Forever client build is not a numeric build identifier.');
     if (hooks.afterPreflight) hooks.afterPreflight({ packagePath: packageDirectory, install, packageInfo });
 
     fs.mkdirSync(backups, { recursive: true });

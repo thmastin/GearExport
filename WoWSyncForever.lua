@@ -1,7 +1,7 @@
 -- Loaded only by the Forever package. No legacy exporter or gameplay modules.
 local ADDON_NAME, addon = ...
 local C = WoWSyncCompat
-local F = { version = "1.60.1", interface = 16001, supportedBuilds = { ["70291"] = true, ["70338"] = true } }
+local F = { version = "1.60.1", tocInterface = 16001, interface = 16001, build = "unknown" }
 addon.Forever = F
 -- Forever uses the stable inventory slot IDs. Keep IDs in the export; these
 -- labels are presentation only and are checked against Blizzard's Forever UI
@@ -15,8 +15,8 @@ addon.Readers = { SlotNames = {
 -- This package selects its own adapters even if Blizzard reuses a project ID.
 function C.IsRetail() return false end
 
-function C.IsSupportedForeverBuild(build, interface)
-    return interface == F.interface and F.supportedBuilds[build] == true
+function C.IsForeverVersion(version, family)
+    return family == "Forever" and version == F.version
 end
 
 local function Public(value)
@@ -55,18 +55,30 @@ function C.IsForever()
     local interface = F.Read("interface", GetBuildInfo, 4, "number", issues)
     local metadata = type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
     local target = F.Read("target", metadata, 1, "string", issues, ADDON_NAME, "X-WoWSync-Target")
-    local supported = target == "Forever" and version == F.version and C.IsSupportedForeverBuild(build, interface)
+    local supported = C.IsForeverVersion(version, target)
     if supported then
-        -- Collectors and profiles use the actual allowlisted runtime build.
-        -- This keeps observations from distinct builds from sharing freshness.
-        F.build = build
+        -- Build and Interface are evidence/profile fields, not runtime
+        -- allowlists. WoW's Load Out of Date setting controls TOC mismatches;
+        -- section collectors capability-check the APIs they use.
+        F.build = build or "unknown"
+        F.interface = interface or "unknown"
+        C.foreverDiagnostic = nil
+    else
+        if target ~= "Forever" then
+            C.foreverDiagnostic = "The installed WoWSync package is not marked for the Forever client."
+        elseif version ~= F.version then
+            C.foreverDiagnostic = "This WoWSync Forever package supports client version " .. F.version
+                .. "; the running client reports " .. tostring(version or "UNKNOWN") .. "."
+        else
+            C.foreverDiagnostic = "Could not verify the Forever client identity. Check the client version and X-WoWSync-Target metadata."
+        end
     end
     return supported
 end
 
 function addon.ReadIdentity()
     if not C.IsForever() then
-        if addon.Sync then addon.Sync.error = "The installed WoWSync build is not verified for the running Forever client." end
+        if addon.Sync then addon.Sync.error = C.foreverDiagnostic or "Could not verify the running Forever client." end
         return nil
     end
     local issues = {}

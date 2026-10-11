@@ -1,7 +1,7 @@
 const fs = require('fs');
 const assert = require('assert');
 const toc = fs.readFileSync('GearExport-Forever.toc', 'utf8');
-assert(/^## Interface: 16001$/m.test(toc), 'Forever interface verified on Hallo');
+assert(/^## Interface: \d+$/m.test(toc), 'Forever TOC keeps a numeric Interface declaration for WoW load policy');
 assert(/^## X-WoWSync-Target: Forever$/m.test(toc), 'Explicit Forever routing');
 assert(/^## SavedVariables: GearExportDB, WoWSyncDB$/m.test(toc), 'Existing database names');
 const files = toc.split(/\r?\n/).filter(line => line && !line.startsWith('#'));
@@ -14,9 +14,10 @@ for (const file of ['WoWSyncForeverBags.lua']) assert(!files.includes(file), 'Ot
 for (const file of files) assert(fs.existsSync(file), 'Missing Forever source ' + file);
 const foreverGuard = fs.readFileSync('WoWSyncForever.lua', 'utf8');
 assert(/version\s*=\s*"1\.60\.1"/.test(foreverGuard)
-    && /interface\s*=\s*16001/.test(foreverGuard)
-    && /supportedBuilds\s*=\s*\{\s*\["70291"\]\s*=\s*true,\s*\["70338"\]\s*=\s*true\s*\}/.test(foreverGuard),
-    'Runtime guard accepts only the two verified exact Forever builds and interface');
+    && /function C\.IsForeverVersion\s*\(/.test(foreverGuard)
+    && !/supportedBuilds\s*=/.test(foreverGuard)
+    && !/IsSupportedForeverBuild/.test(foreverGuard),
+    'Runtime isolation uses the Forever target/version contract without an exact build allowlist');
 assert(/S\.structuredOnly\.forever70291Evidence\s*=\s*true/.test(fs.readFileSync('WoWSyncForever70291.lua', 'utf8')),
     'new raw evidence remains outside strict WOWSYNC v1 text');
-console.log('PASS: Forever interface 16001, build-matched guard, target marker, SavedVariables and isolated load order');
+console.log('PASS: Forever numeric TOC metadata, target/version guard without build allowlist, SavedVariables and isolated load order');

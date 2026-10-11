@@ -6,16 +6,11 @@ const crypto = require('crypto');
 const hashFile = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const tocSources = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport-BCC.toc', Forever: 'GearExport-Forever.toc' };
 
-function readForeverBuildGuard(source) {
-    const match = source.match(/local\s+F\s*=\s*\{[^\r\n]*\bversion\s*=\s*["']([^"']+)["'][^\r\n]*\binterface\s*=\s*(\d+)[^\r\n]*\bsupportedBuilds\s*=\s*\{([^}]*)\}/);
-    if (match) {
-        const builds = [...match[3].matchAll(/\["(\d+)"\]\s*=\s*true/g)].map(entry => entry[1]);
-        const remainder = match[3].replace(/\["\d+"\]\s*=\s*true/g, '').replace(/[\s,]/g, '');
-        if (!builds.length || remainder || new Set(builds).size !== builds.length) return null;
-        return { version: match[1], interface: Number(match[2]), builds: builds.sort() };
-    }
-    const legacy = source.match(/local\s+F\s*=\s*\{[^\r\n]*\bversion\s*=\s*["']([^"']+)["'][^\r\n]*\bbuild\s*=\s*["'](\d+)["'][^\r\n]*\binterface\s*=\s*(\d+)/);
-    return legacy ? { version: legacy[1], interface: Number(legacy[3]), builds: [legacy[2]] } : null;
+function readForeverRuntimeContract(source) {
+    const match = source.match(/local\s+F\s*=\s*\{[^\r\n]*\bversion\s*=\s*["']([^"']+)["']/);
+    if (!match || /\bsupportedBuilds\s*=/.test(source) || /IsSupportedForeverBuild/.test(source)
+        || !/function\s+C\.IsForeverVersion\s*\(/.test(source)) return null;
+    return { version: match[1] };
 }
 
 function listTree(directory) {
@@ -80,19 +75,17 @@ function verifyPackage(packagePath, target = 'Forever') {
     if (manifest.target === 'Forever') {
         const toc = fs.readFileSync(path.join(packagePath, 'GearExport.toc'), 'utf8');
         const guard = fs.readFileSync(path.join(packagePath, 'WoWSyncForever.lua'), 'utf8');
-        if (manifest.interface !== 16001 || !/^## Interface: 16001\r?$/m.test(toc) || !/^## X-WoWSync-Target: Forever\r?$/m.test(toc)) {
+        if (!/^## X-WoWSync-Target: Forever\r?$/m.test(toc)) {
             throw new Error('Package TOC does not carry the Forever interface/target markers');
         }
-        const runtime = readForeverBuildGuard(guard);
-        if (!runtime) throw new Error('Forever runtime guard is missing or does not contain an exact build allowlist');
-        if (runtime.interface !== manifest.interface) throw new Error('Forever manifest interface does not match the runtime guard');
-        if (manifest.clientVersion !== undefined && manifest.clientVersion !== runtime.version) throw new Error('Forever manifest version does not match the runtime guard');
-        if (manifest.clientBuilds !== undefined) {
-            if (!Array.isArray(manifest.clientBuilds) || manifest.clientBuilds.some(build => typeof build !== 'string')
-                || JSON.stringify([...manifest.clientBuilds].sort()) !== JSON.stringify(runtime.builds)) {
-                throw new Error('Forever manifest build allowlist does not match the runtime guard');
-            }
-        }
+        const interfaceMatch = toc.match(/^## Interface:\s*(\d+)\s*$/m);
+        const runtime = readForeverRuntimeContract(guard);
+        if (!interfaceMatch) throw new Error('Forever package TOC has no numeric Interface declaration');
+        if (!runtime) throw new Error('Forever runtime identity/version contract is missing or contains an exact build allowlist');
+        if (manifest.interface !== Number(interfaceMatch[1])) throw new Error('Forever manifest interface does not match its TOC');
+        if (manifest.clientVersion !== runtime.version) throw new Error('Forever manifest version does not match the runtime guard');
+        if (Object.hasOwn(manifest, 'clientBuilds')) throw new Error('Forever manifest must not contain a client build allowlist');
+        runtime.tocInterface = Number(interfaceMatch[1]);
         return { manifest, build: runtime, entries: expectedPackageEntries(manifest) };
     }
     return { manifest, build: null, entries: expectedPackageEntries(manifest) };
@@ -157,5 +150,5 @@ function validateForeverDestination(destination, repositoryRoot) {
 module.exports = {
     hashFile, listTree, readManifest, expectedPackageEntries, verifyPackage,
     verifyDirectoryAgainstPackage, assertPackageMatchesSource, validateForeverDestination,
-    tocSources, readForeverBuildGuard,
+    tocSources, readForeverRuntimeContract,
 };

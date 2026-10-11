@@ -1,6 +1,6 @@
 # Forever 70291 compatibility capture
 
-The original compatibility candidate was pinned to Forever `1.60.1`, build `70291`, and interface `16001`. It carries forward only the production collectors selected from the build-70245 contracts. The current exact-build allowlist extension is recorded below. The earlier API evidence remains in `FOREVER_EVIDENCE_70245.md` and the historical production-validation report.
+This historical evidence records the Forever `1.60.1`, build `70291`, interface `16001` compatibility candidate and its later exact-build allowlist extension. That allowlist policy has since been removed: current runtime authorization uses the Forever marker and version, while build/interface metadata scopes observations and WoW's TOC policy governs outdated-interface loading. See [current Forever update compatibility](FOREVER_UPDATE_COMPATIBILITY.md). Earlier API evidence remains in `FOREVER_EVIDENCE_70245.md` and the historical production-validation report.
 
 ## Exact-build compatibility extension - 2026-10-10
 
@@ -18,11 +18,13 @@ detection, character/unit data, items and item stats, containers, banks, skills,
 professions, and trainers. This is version-matched source evidence for unchanged
 API declarations, not proof of live runtime behavior or of every returned value.
 
-The runtime guard and deployment manifest now permit only exact client pairs
-`1.60.1 / 70291 / 16001` and `1.60.1 / 70338 / 16001`. Captures use the actual
-allowlisted build in `captureProfile`, so a 70338 refresh archives rather than
-mixes active 70291 observations. The package retains the same collectors,
-section shapes, and WOWSYNC v1 projection; unknown builds remain rejected.
+At the time of this historical extension, the runtime guard and deployment
+manifest permitted only exact client pairs `1.60.1 / 70291 / 16001` and
+`1.60.1 / 70338 / 16001`. Current captures retain actual build/interface in
+`captureProfile`, so a build transition archives rather than mixes active
+observations. The current policy is documented in
+`FOREVER_UPDATE_COMPATIBILITY.md`; new build numbers are no longer rejected
+solely for being unknown.
 Forever 70338 has not yet been run through `/wowsync` with this package, so its
 live collector compatibility remains pending one real capture. No bank,
 profession, or recipe collector was enabled by this change; those observations

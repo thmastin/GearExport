@@ -3,13 +3,16 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const assert = require('assert');
-const targets = [['Retail', 120100], ['ClassicEra', 11509], ['TBC', 20506], ['Forever', 16001]];
+const targets = [['Retail', 120100], ['ClassicEra', 11509], ['TBC', 20506], ['Forever', null]];
 const selected = process.argv[2] ? targets.filter(([target]) => target === process.argv[2]) : targets;
 assert(selected.length, 'Unknown package target');
 for (const [target, version] of selected) {
     const directory = path.join('dist', target, 'GearExport');
     const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'package-manifest.json')));
-    assert.strictEqual(manifest.interface, version);
+    const sourceToc = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport-BCC.toc', Forever: 'GearExport-Forever.toc' }[target];
+    const toc = fs.readFileSync(sourceToc, 'utf8');
+    const tocInterface = Number(toc.match(/^## Interface:\s*(\d+)/m)[1]);
+    assert.strictEqual(manifest.interface, version ?? tocInterface);
     assert.strictEqual(manifest.target, target);
     assert.strictEqual(manifest.schema, 'WOWSYNC v1');
     assert(manifest.hashes['WoWSyncIcon.tga'], 'Icon included in manifest');
@@ -19,7 +22,6 @@ for (const [target, version] of selected) {
         .includes('## IconTexture: Interface\\AddOns\\GearExport\\WoWSyncIcon.tga'));
     assert.deepStrictEqual(fs.readdirSync(directory).filter(file => file.endsWith('.toc')), ['GearExport.toc']);
     assert.strictEqual(fs.existsSync(path.join(directory, 'BankCleanup.lua')), target === 'TBC' || target === 'ClassicEra');
-    const sourceToc = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport-BCC.toc', Forever: 'GearExport-Forever.toc' }[target];
     assert.deepStrictEqual(fs.readFileSync(path.join(directory, 'GearExport.toc')), fs.readFileSync(sourceToc));
     assert.deepStrictEqual(fs.readdirSync(directory).sort(), [...Object.keys(manifest.hashes), 'package-manifest.json'].sort());
     if (target === 'Forever') {
@@ -34,12 +36,13 @@ for (const [target, version] of selected) {
         assert(manifest.hashes['FOREVER_SPELLS.md']);
         assert(manifest.hashes['FOREVER_REMAINING.md']);
         assert(manifest.hashes['FOREVER_EVIDENCE_70291.md']);
+        assert(manifest.clientVersion === '1.60.1');
+        assert(!Object.hasOwn(manifest, 'clientBuilds'), 'Forever manifest does not publish an exact build allowlist');
         for (const file of ['GearExport.lua', 'BankCleanup.lua', 'WoWSyncCollectors.lua']) {
             assert(!fs.existsSync(path.join(directory, file)), 'Forever excludes ' + file);
         }
-        for (const file of ['WoWSyncForeverBags.lua', 'WoWSyncForeverProfessions.lua', 'WoWSyncForeverSpells.lua',
-            'WoWSyncForeverBank.lua', 'WoWSyncForeverTrainers.lua']) {
-            assert(!fs.existsSync(path.join(directory, file)), 'Forever package excludes unvalidated 70009 collector ' + file);
+        for (const file of ['WoWSyncForeverBags.lua', 'WoWSyncForeverTrainers.lua']) {
+            assert(!fs.existsSync(path.join(directory, file)), 'Forever package excludes obsolete collector ' + file);
         }
     }
     for (const [file, hash] of Object.entries(manifest.hashes)) {

@@ -70,24 +70,24 @@ local function advance(duration)
         if S.eventFrame.scripts.OnUpdate then S.eventFrame.scripts.OnUpdate() end
     end
 end
-check(C.IsForever(), "explicit Forever package and newly supported exact version/build")
-build = "70291"; check(C.IsForever(), "previously live-validated build remains supported"); build = "70338"
+check(C.IsForever(), "explicit Forever package and version identity")
+build = "70291"; check(C.IsForever(), "previously supported build 70291 remains accepted")
+build = "70338"; check(C.IsForever(), "previously supported build 70338 remains accepted")
+build = "70412"; check(C.IsForever(), "future compatible Forever build is not rejected by a build allowlist")
+interface = 16002; check(C.IsForever(), "future Interface metadata is left to WoW's Load Out of Date policy")
+build = nil; check(C.IsForever(), "missing build metadata alone does not reject an otherwise identified Forever client")
+equal(addon.Forever.build, "unknown", "unavailable build metadata is represented as unknown")
+build = "70338"; interface = 16001; check(C.IsForever(), "observed build/interface restored")
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
 check(not C.IsRetail(), "Forever is not routed as Retail even with a shared project ID")
 target = "Retail"; check(not C.IsForever(), "wrong package rejected"); target = "Forever"
 for _, other in ipairs({ "1.15.9", "2.5.6", "12.1.0" }) do
     version = other; check(not C.IsForever(), "other clients rejected")
 end
+version = "1.61.0"
+check(not C.IsForever(), "a different WoW client version is rejected")
+check(C.foreverDiagnostic:find("supports client version 1.60.1", 1, true), "incompatible client version receives a clear diagnostic")
 version = "1.60.1"
-for _, other in ipairs({ "69893", "70009", "69914", "70334", "70339", "different" }) do
-    build = other
-    check(not S.Initialize(), "non-current build fails closed: " .. other)
-    equal(WoWSyncDB, nil, "wrong client does not create database")
-    equal(S.error, "The installed WoWSync build is not verified for the running Forever client.",
-        "rejection describes verification rather than a package phase")
-end
-build = "70338"
-interface = 16000; check(not C.IsForever(), "wrong interface rejected"); interface = 16001
 local realGUID = UnitGUID
 UnitGUID = nil; check(not S.Initialize(), "missing GUID cannot fabricate character")
 UnitGUID = function() error("Unavailable") end; check(not S.Initialize(), "throwing GUID handled")
@@ -197,16 +197,16 @@ check(S.Export(function(text) output = text end), "export accepted")
 advance(3.2) -- allow the bounded export timeout while optional sections are unavailable in this fixture
 check(output and output:find("WOWSYNC v1", 1, true), "shared canonical export")
 check(output:find("Client: 1.60.1 build 70338", 1, true)
-    and output:find("Interface: 16001", 1, true), "actual allowlisted client build and interface serialized")
-check(output:find("Race: Dwarf", 1, true), "supported Forever profile serializes observed race")
+    and output:find("Interface: 16001", 1, true), "actual Forever client build and interface serialized")
+check(output:find("Race: Dwarf", 1, true), "version-matched Forever profile serializes observed race")
 local unknownBuildSnapshot = S.GetSnapshot()
 unknownBuildSnapshot.sections.character.data.clientBuild = nil
-check(not S.RenderSection("character", unknownBuildSnapshot):find("Race:", 1, true),
-    "unknown Forever build cannot add an unsupported v1 race field")
+check(S.RenderSection("character", unknownBuildSnapshot):find("Race: Dwarf", 1, true),
+    "missing build metadata does not hide a capability-checked observed v1 race field")
 local legacyBuildSnapshot = S.GetSnapshot()
 legacyBuildSnapshot.sections.character.data.clientBuild = "70009"
-check(not S.RenderSection("character", legacyBuildSnapshot):find("Race:", 1, true),
-    "unallowlisted build cannot serialize the Forever race field")
+check(S.RenderSection("character", legacyBuildSnapshot):find("Race: Dwarf", 1, true),
+    "the build identifier does not gate a version-matched observed v1 race field")
 check(output:find("PlayedSeconds: 3600\nLevelPlayedSeconds: 1200", 1, true), "event-backed playtime serializes")
 check(output:find("XP: 413/72820", 1, true), "observed XP serializes")
 check(output:find("[BANK]\nState: UNKNOWN", 1, true), "bank not observed")
@@ -217,12 +217,34 @@ advance(1); equal(S.Render(frozen), frozenText, "deterministic without clock rea
 assert(loadfile("tests/forever_equipment_test.lua"))()(S, check, equal, advance)
 assert(S.collectors.bags and S.collectors.bank and S.collectors.trainer
     and S.collectors.professions and S.collectors.spells,
-    "allowlisted Forever profile wires bank, profession, spell, and fail-closed trainer collectors")
+    "Forever profile wires bank, profession, spell, and fail-closed trainer collectors")
 assert(loadfile("tests/forever_bags_70291_test.lua"))()(S, check, equal)
 assert(loadfile("tests/forever_evidence_70291_test.lua"))()(S, check, equal)
 assert(loadfile("tests/forever_professions_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_spells_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_remaining_test.lua"))()(S, check, equal, advance)
+build = "70412"; interface = 16002
+check(C.IsForever(), "future build and interface remain within the explicit Forever client identity")
+local oldSpellAPI = C_SpellBook
+C_SpellBook = nil
+local unavailableSpells, unavailableSpellsMeta = S.collectors.spells()
+equal(unavailableSpells, nil, "missing optional spell API leaves that section unavailable")
+check(unavailableSpellsMeta.reason:find("APIs unavailable", 1, true), "missing optional spell API has a section diagnostic")
+local unaffectedCharacter = S.collectors.character()
+equal(unaffectedCharacter.name, "Hallo", "unrelated character export continues with a missing optional API")
+C_SpellBook = oldSpellAPI
+local oldContainers = C_Container
+C_Container = {
+    GetContainerNumSlots = function() return "changed-contract" end,
+    GetContainerItemInfo = function() return nil end,
+}
+local incompatibleBags, incompatibleBagsMeta = S.collectors.bags()
+equal(incompatibleBags, nil, "a genuinely incompatible optional API shape does not fabricate a bag snapshot")
+check(incompatibleBagsMeta.reason:find("capacity unknown or changed", 1, true), "changed optional API shape is clearly diagnosed as unknown")
+equal(S.collectors.character().name, "Hallo", "incompatible bag API leaves unaffected sections functioning")
+C_Container = oldContainers
+build = "70338"; interface = 16001
+check(C.IsForever(), "known build restored after future compatibility fixtures")
 for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitRace", "UnitLevel", "UnitFactionGroup", "GetMoney", "UnitXP", "UnitXPMax" }) do
     _G[key] = function() error("API changed") end
 end
