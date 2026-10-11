@@ -11,6 +11,10 @@ if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
     S.order[#S.order + 1] = "professionSpecializations"
     S.order[#S.order + 1] = "professionRecipes"
     S.order[#S.order + 1] = "reputation"
+elseif addon.Forever then
+    -- Forever recipe evidence is a SavedVariables sidecar (never a new v1 text
+    -- section), and is collected only after the player opens their own panel.
+    S.order[#S.order + 1] = "professionRecipes"
 end
 -- Captured into SavedVariables only: the WOWSYNC v1 text omits these sections so
 -- existing importers, which reject unknown section headers, keep working.
@@ -240,6 +244,8 @@ function S.CommitProfessionRecipes(data, meta)
     local fresh = data.professions[1]
     local key = ProfessionRecipeKey(fresh)
     if not key or type(fresh.recipes) ~= "table" or #fresh.recipes == 0 then return end
+    fresh.observedAt = data.observedAt or S.Now()
+    fresh.sessionObservedAt = S.sessionStartedAt
     local old = owner.sections.professionRecipes
     local oldData = old and type(old.data) == "table" and old.data or {}
     local rows, currentPrior = {}, nil
@@ -330,7 +336,8 @@ end
 function S.Mark(key, delay)
     if not S.collectors[key] then return end
     if (key == "bank" or key == "accountBank") and not S.bankOpen
-        or key == "guildBank" and not S.guildBankOpen or key == "trainer" and not S.trainerOpen then return end
+        or key == "guildBank" and not S.guildBankOpen or key == "trainer" and not S.trainerOpen
+        or addon.Forever and key == "professionRecipes" and not S.professionRecipeOpen then return end
     local now = GetTime()
     local pending = S.dirty[key]
     if not pending then pending = { first = now, tries = 0 }; S.dirty[key] = pending end
@@ -557,6 +564,10 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.trainerOpen = true; Visit("trainer"); S.Mark("trainer"); S.Mark("spells")
     elseif event == "TRAINER_CLOSED" then
         S.trainerOpen = false; Close("trainer"); S.trainerCategory = nil
+    elseif addon.Forever and event == "TRADE_SKILL_SHOW" then
+        S.professionRecipeOpen = true; S.Mark("professionRecipes")
+    elseif addon.Forever and event == "TRADE_SKILL_CLOSE" then
+        S.professionRecipeOpen = false
     elseif event:match("^TRAINER_") then
         S.Mark("trainer")
     elseif event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED"
@@ -590,6 +601,7 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.Mark("reputation")
     elseif event == "GET_ITEM_INFO_RECEIVED" or event == "ITEM_DATA_LOAD_RESULT" then
         if S.record then
+            if type(arg) == "number" and S.requestedForeverItemInfo then S.requestedForeverItemInfo[arg] = nil end
             local keys = { "bags", "bank", "equipment" }
             if S.account then keys[#keys + 1] = "accountBank" end
             for _, key in ipairs(keys) do

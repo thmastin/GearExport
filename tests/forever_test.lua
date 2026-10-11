@@ -59,7 +59,7 @@ local function action() actions = actions + 1; error("Unexpected gameplay call")
 BuyTrainerService, UseContainerItem, PickupContainerItem = action, action, action
 for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.lua",
     "WoWSyncForeverCollectors.lua", "WoWSyncForever70291.lua", "WoWSyncForeverBags70291.lua",
-    "WoWSyncForeverEvidence70291.lua", "WoWSyncForeverBank.lua", "WoWSyncForeverProfessions.lua", "WoWSyncForeverSpells.lua",
+    "WoWSyncForeverEvidence70291.lua", "WoWSyncForeverBank.lua", "WoWSyncForeverProfessions.lua", "WoWSyncForeverRecipes.lua", "WoWSyncForeverSpells.lua",
     "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
@@ -221,6 +221,7 @@ assert(S.collectors.bags and S.collectors.bank and S.collectors.trainer
 assert(loadfile("tests/forever_bags_70291_test.lua"))()(S, check, equal)
 assert(loadfile("tests/forever_evidence_70291_test.lua"))()(S, check, equal)
 assert(loadfile("tests/forever_professions_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/forever_recipes_test.lua"))()(S, check, equal)
 assert(loadfile("tests/forever_spells_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_remaining_test.lua"))()(S, check, equal, advance)
 build = "70412"; interface = 16002

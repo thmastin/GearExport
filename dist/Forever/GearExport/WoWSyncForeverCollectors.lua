@@ -98,9 +98,25 @@ S.collectors.equipment = function()
                 end
                 -- Location-specific level, not the generic item's base level.
                 item.itemLevel = F.Number(label .. " level", itemAPI.GetCurrentItemLevel, issues, location)
-                if link then
-                    item.name = F.Read(label .. " name", itemAPI.GetItemInfo, 1, "string", issues, link)
-                    local required = F.Read(label .. " required level", itemAPI.GetItemInfo, 5, "number", issues, link)
+                -- GetItemLink may be unavailable while the item is loading.
+                -- GetItemInfo accepts an item ID as well as a link; use the
+                -- observed ID as a conservative name/level fallback without
+                -- constructing a variant link or overwriting an observed name.
+                local itemInfoRef = link or (item.itemID and item.itemID > 0 and item.itemID)
+                if itemInfoRef then
+                    item.name = F.Read(label .. " name", itemAPI.GetItemInfo, 1, "string", issues, itemInfoRef)
+                    if item.name then
+                        item.nameSource = "C_Item.GetItemInfo"
+                        item.nameObservedAt = S.Now()
+                    elseif item.itemID and type(itemAPI.RequestLoadItemDataByID) == "function" then
+                        S.requestedForeverItemInfo = S.requestedForeverItemInfo or {}
+                        if not S.requestedForeverItemInfo[item.itemID] then
+                            local requested = pcall(itemAPI.RequestLoadItemDataByID, item.itemID)
+                            if requested then S.requestedForeverItemInfo[item.itemID] = true end
+                        end
+                        pending = true
+                    end
+                    local required = F.Read(label .. " required level", itemAPI.GetItemInfo, 5, "number", issues, itemInfoRef)
                     if required and required >= 0 and required % 1 == 0 then item.requiredLevel = required
                     else issues[#issues + 1] = label .. " required level unknown" end
                 end

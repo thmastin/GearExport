@@ -7,7 +7,7 @@ assert(/^## SavedVariables: GearExportDB, WoWSyncDB$/m.test(toc), 'Existing data
 const files = toc.split(/\r?\n/).filter(line => line && !line.startsWith('#'));
 assert.deepStrictEqual(files, ['WoWSyncCompat.lua', 'WoWSyncForever.lua', 'WoWSyncCore.lua',
     'WoWSyncForeverCollectors.lua', 'WoWSyncForever70291.lua', 'WoWSyncForeverBags70291.lua', 'WoWSyncForeverEvidence70291.lua',
-    'WoWSyncForeverBank.lua', 'WoWSyncForeverProfessions.lua', 'WoWSyncForeverSpells.lua',
+    'WoWSyncForeverBank.lua', 'WoWSyncForeverProfessions.lua', 'WoWSyncForeverRecipes.lua', 'WoWSyncForeverSpells.lua',
     'WoWSyncRender.lua', 'WoWSyncUI.lua'], 'Forever observer load order');
 assert(!files.includes('WoWSyncForeverTrainers.lua'), 'Unverified legacy trainer tuple adapter remains excluded');
 for (const file of ['WoWSyncForeverBags.lua']) assert(!files.includes(file), 'Other-client collector remains excluded: ' + file);
