@@ -38,21 +38,26 @@ end
 
 local function numericRecipeIDs(value)
     if type(value) ~= "table" then return nil end
-    local keyedIDs, seen = {}, {}
+    local keyedIDs, seen, returnedCount, duplicateCount = {}, {}, 0, 0
     for key, id in pairs(value) do
         -- The version-matched API contract says this is a number array and
         -- its example iterates with pairs. Accept sparse positive-integer
         -- array keys, but never treat dictionary keys or boolean set values
         -- as recipe IDs. This handles holes without guessing a new shape.
-        if not positive(key) or not positive(id) or seen[id] then return nil end
-        seen[id] = true
-        keyedIDs[#keyedIDs + 1] = { key = key, id = id }
-        if #keyedIDs > 10000 then return nil end
+        if not positive(key) or not positive(id) then return nil end
+        returnedCount = returnedCount + 1
+        if returnedCount > 10000 then return nil end
+        if seen[id] then
+            duplicateCount = duplicateCount + 1
+        else
+            seen[id] = true
+            keyedIDs[#keyedIDs + 1] = { key = key, id = id }
+        end
     end
     table.sort(keyedIDs, function(left, right) return left.key < right.key end)
     local ids = {}
     for _, pair in ipairs(keyedIDs) do ids[#ids + 1] = pair.id end
-    return ids
+    return ids, returnedCount, duplicateCount
 end
 
 local function recipeEnumerationFailure(state, value, apiError)
@@ -245,7 +250,8 @@ S.collectors.professionRecipes = function()
         if type(api[name]) ~= "function" then return nil, { reason = "Forever recipe API unavailable: " .. name, retry = false, stale = true } end
     end
     local idsState, rawIDs, enumerationError = safe(api.GetAllRecipeIDs)
-    local ids = idsState == "OBSERVED_VALUE" and numericRecipeIDs(rawIDs) or nil
+    local ids, rawRecipeIDCount, duplicateRecipeIDCount
+    if idsState == "OBSERVED_VALUE" then ids, rawRecipeIDCount, duplicateRecipeIDCount = numericRecipeIDs(rawIDs) end
     if not ids or #ids == 0 then
         return nil, { reason = recipeEnumerationFailure(idsState, rawIDs, enumerationError), retry = true, stale = true }
     end
@@ -294,7 +300,9 @@ S.collectors.professionRecipes = function()
         table.sort(row.recipes, function(a, b) return a.recipeID < b.recipeID end)
         -- This is the raw candidate count returned by GetAllRecipeIDs. Some
         -- candidates can remain unassociated and therefore have no recipe row.
-        row.coverage.returnedRecipeCount = #ids
+        row.coverage.returnedRecipeCount = rawRecipeIDCount
+        row.coverage.uniqueCandidateCount = #ids
+        row.coverage.duplicateRecipeIDCount = duplicateRecipeIDCount
         professions[#professions + 1] = row
     end
     table.sort(professions, function(a, b) return a.skillLineID < b.skillLineID end)
@@ -323,7 +331,9 @@ S.collectors.professionRecipes = function()
         formatVersion = 1, observedAt = now, ownerScope = "CHARACTER",
         client = { clientFamily = "Forever", clientVersion = version, clientBuild = buildNumber, interface = interfaceNumber },
         coverage = { state = "PARTIAL", candidateCompleteness = "UNKNOWN", filteredEnumerationUsed = false,
-            returnedRecipeCount = #ids, learnedTrueCount = trueCount, learnedFalseCount = falseCount, unknownLearnedCount = unknownCount },
+            returnedRecipeCount = rawRecipeIDCount, uniqueCandidateCount = #ids,
+            duplicateRecipeIDCount = duplicateRecipeIDCount,
+            learnedTrueCount = trueCount, learnedFalseCount = falseCount, unknownLearnedCount = unknownCount },
         professions = professions,
     }, { completeness = "partial",
         reason = incomplete and "Recipe identity was observed, but one or more learned/output/reagent API results are unavailable or incomplete" or "Profession-panel recipe enumeration is a candidate list, not an exhaustive recipe catalogue" }
