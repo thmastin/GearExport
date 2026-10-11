@@ -1,9 +1,10 @@
--- Expose only the existing collectors carried forward from the documented 70245 contracts.
--- The other Forever modules remain available for their older package history,
--- but must not run under this build without a separate live audit.
+-- Expose only the existing read-only collectors carried forward from documented
+-- 70245 contracts. Other Forever modules remain disabled pending separate audit.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
-local CAPTURE_PROFILE = "Forever:1.60.1:70291:16001"
+local function captureProfile()
+    return "Forever:" .. F.version .. ":" .. F.build .. ":" .. F.interface
+end
 local equipmentCollector = S.collectors.equipment
 
 local function publicName(value)
@@ -76,11 +77,13 @@ local function captureNameEvidence(firstName, realm)
     conflict = distinct > 1 or (distinct == 1 and selected == nil)
     if conflict or distinct > 1 then selected, sources = nil, nil end
     return selected, sources and table.concat(sources, "+") or nil, { state = conflict and "CONFLICTING_OR_UNCORROBORATED_CANDIDATES" or selected and "CORROBORATED" or "UNKNOWN",
-        candidates = candidates, calls = calls, interpretation = "API semantics require live verification on Forever 1.60.1 build 70291" }
+        candidates = candidates, calls = calls,
+        interpretation = "API semantics require live verification on Forever 1.60.1 build " .. tostring(F.build) }
 end
 
 function addon.PrepareCaptureProfile(record)
-    if record.captureProfile == CAPTURE_PROFILE then return end
+    local activeProfile = captureProfile()
+    if record.captureProfile == activeProfile then return end
     local priorSections = type(record.sections) == "table" and record.sections or nil
     local priorItems = type(record.itemMetadata) == "table" and record.itemMetadata or nil
     local priorVisits = type(record.visits) == "table" and record.visits or nil
@@ -96,11 +99,11 @@ function addon.PrepareCaptureProfile(record)
             latestExport = priorExport,
         }
     end
-    -- Data captured by another client build must not appear as current 70291
+    -- Data captured by another client build must not appear as current
     -- evidence. Keep it archived and start a fresh active observation record.
     record.sections, record.itemMetadata, record.visits = {}, {}, {}
     record.latestExport = nil
-    record.captureProfile = CAPTURE_PROFILE
+    record.captureProfile = activeProfile
 end
 
 S.collectors = {
@@ -125,7 +128,7 @@ S.collectors = {
         }
         table.sort(issues)
         return data, { completeness = "partial",
-            reason = "Forever 70291 capture limited to fields supported by the carried-forward 70245 contract"
+            reason = "Forever capture limited to fields enabled by the version-scoped collectors"
                 .. (#issues > 0 and ("; " .. table.concat(issues, "; ")) or "") }
     end,
     equipment = function()
@@ -139,7 +142,7 @@ S.collectors = {
     bags = S.collectors.bags,
 }
 
--- This section is isolated to the exact Forever 70291 package. The older
+-- This section is isolated to exact allowlisted Forever builds. The older
 -- Forever trainer tuple adapter is intentionally not activated here.
 S.order[#S.order + 1] = "forever70291Evidence"
 -- Keep WOWSYNC v1 text parse-compatible with the currently deployed Dashboard.

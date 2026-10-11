@@ -13,10 +13,11 @@ for (const file of ['WoWSyncForeverBags.lua', 'WoWSyncForeverProfessions.lua', '
     assert(!files.includes(file), 'Unvalidated 70009 collector is excluded: ' + file);
 }
 for (const file of files) assert(fs.existsSync(file), 'Missing Forever source ' + file);
-assert(/version\s*=\s*"1\.60\.1"/.test(fs.readFileSync('WoWSyncForever.lua', 'utf8'))
-    && /build\s*=\s*"70291"/.test(fs.readFileSync('WoWSyncForever.lua', 'utf8'))
-    && /interface\s*=\s*16001/.test(fs.readFileSync('WoWSyncForever.lua', 'utf8')),
-    'Runtime guard pinned to live version, build, and interface');
+const foreverGuard = fs.readFileSync('WoWSyncForever.lua', 'utf8');
+assert(/version\s*=\s*"1\.60\.1"/.test(foreverGuard)
+    && /interface\s*=\s*16001/.test(foreverGuard)
+    && /supportedBuilds\s*=\s*\{\s*\["70291"\]\s*=\s*true,\s*\["70338"\]\s*=\s*true\s*\}/.test(foreverGuard),
+    'Runtime guard accepts only the two verified exact Forever builds and interface');
 assert(/S\.structuredOnly\.forever70291Evidence\s*=\s*true/.test(fs.readFileSync('WoWSyncForever70291.lua', 'utf8')),
     'new raw evidence remains outside strict WOWSYNC v1 text');
 console.log('PASS: Forever interface 16001, build-matched guard, target marker, SavedVariables and isolated load order');

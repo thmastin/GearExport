@@ -1,11 +1,15 @@
 -- Loaded only by the Forever package. No legacy exporter or gameplay modules.
 local ADDON_NAME, addon = ...
 local C = WoWSyncCompat
-local F = { version = "1.60.1", build = "70291", interface = 16001 }
+local F = { version = "1.60.1", interface = 16001, supportedBuilds = { ["70291"] = true, ["70338"] = true } }
 addon.Forever = F
 addon.Readers = { SlotNames = {} }
 -- This package selects its own adapters even if Blizzard reuses a project ID.
 function C.IsRetail() return false end
+
+function C.IsSupportedForeverBuild(build, interface)
+    return interface == F.interface and F.supportedBuilds[build] == true
+end
 
 local function Public(value)
     return not (type(issecretvalue) == "function" and issecretvalue(value))
@@ -43,7 +47,13 @@ function C.IsForever()
     local interface = F.Read("interface", GetBuildInfo, 4, "number", issues)
     local metadata = type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
     local target = F.Read("target", metadata, 1, "string", issues, ADDON_NAME, "X-WoWSync-Target")
-    return target == "Forever" and version == F.version and build == F.build and interface == F.interface
+    local supported = target == "Forever" and version == F.version and C.IsSupportedForeverBuild(build, interface)
+    if supported then
+        -- Collectors and profiles use the actual allowlisted runtime build.
+        -- This keeps observations from distinct builds from sharing freshness.
+        F.build = build
+    end
+    return supported
 end
 
 function addon.ReadIdentity()

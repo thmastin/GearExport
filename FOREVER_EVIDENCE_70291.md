@@ -2,6 +2,33 @@
 
 This candidate is pinned to Forever `1.60.1`, build `70291`, and interface `16001`. It carries forward only the production collectors selected from the build-70245 contracts. The exact earlier API evidence remains in `FOREVER_EVIDENCE_70245.md` and the historical production-validation report.
 
+## Exact-build compatibility extension - 2026-10-10
+
+The installed `WowB.exe` reports FileVersion `1.60.1.70338`; Forever logs
+written on 2026-10-10 and crash metadata independently report build `70338`.
+The client flavor marker is `wow_classic_beta`. A same-session
+`ForeverDingAssistant.lua` capture stores build `1.60.1.70338` and interface
+`16001` in its `HUNTER-12-trainer` record. Gethe's Blizzard UI-source mirror's
+`forever` branch is at commit
+[`943764493e6b16d63ded3ab304150d1f05e58b57`](https://github.com/Gethe/wow-ui-source/commit/943764493e6b16d63ded3ab304150d1f05e58b57),
+which identifies itself as `1.60.1 (70338)`; its Forever TOCs use interface
+`16001`. The corresponding generated API documentation directory is byte-for-
+byte unchanged from the source revision identifying build 70291
+(`9465cb2`, `1.60.1 (70291)`). This includes the declarations for build
+detection, character/unit data, items and item stats, containers, banks, skills,
+professions, and trainers. This is version-matched source evidence for unchanged
+API declarations, not proof of live runtime behavior or of every returned value.
+
+The runtime guard and deployment manifest now permit only exact client pairs
+`1.60.1 / 70291 / 16001` and `1.60.1 / 70338 / 16001`. Captures use the actual
+allowlisted build in `captureProfile`, so a 70338 refresh archives rather than
+mixes active 70291 observations. The package retains the same collectors,
+section shapes, and WOWSYNC v1 projection; unknown builds remain rejected.
+Forever 70338 has not yet been run through `/wowsync` with this package, so its
+live collector compatibility remains pending one real capture. No bank,
+profession, or recipe collector was enabled by this change; those observations
+remain absent/UNKNOWN exactly as before.
+
 ## Live validation status - 2026-10-08
 
 Live validation passed for the supported 70291 capture/export path on Hallo.

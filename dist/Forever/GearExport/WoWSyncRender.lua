@@ -2,9 +2,10 @@
 -- snapshot renders identically, and each section can be rendered independently.
 local _, addon = ...
 local S = addon.Sync
+local C = WoWSyncCompat
 local labels = { character = "CHARACTER", location = "LOCATION", equipment = "EQUIPMENT",
     bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", guildBank = "GUILD BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS", itemMetadata = "ITEM METADATA" }
-labels.forever70291Evidence = "FOREVER 70291 EVIDENCE"
+labels.forever70291Evidence = "FOREVER CLIENT EVIDENCE"
 
 local function Text(value)
     if value == nil then return "?" end
@@ -138,7 +139,7 @@ end
 
 renderers.character = function(out, data)
     Field(out, "Name", data.name)
-    if data.clientFamily == "Forever" and data.clientBuild == "70291" then
+    if data.clientFamily == "Forever" and C.IsSupportedForeverBuild(data.clientBuild, data.interface) then
         Field(out, "Surname", data.surname)
         if data.surname then Field(out, "SurnameSource", data.surnameSource) end
     end
@@ -147,8 +148,8 @@ renderers.character = function(out, data)
     -- WOWSYNC v1's strict CHARACTER parser has no Race field. Keep the
     -- observation in structured SavedVariables, but omit it from the strict
     -- v1 text projection on builds verified to use that schema.
-    if data.clientFamily == "Forever" and data.clientBuild
-        and data.clientBuild ~= "70245" and data.clientBuild ~= "70291" then
+    if data.clientFamily == "Forever" and data.clientBuild and not C.IsSupportedForeverBuild(data.clientBuild, data.interface)
+        and data.clientBuild ~= "70245" then
         Field(out, "Race", data.race)
     end
     Field(out, "Faction", data.faction); Field(out, "MoneyCopper", data.moneyCopper)

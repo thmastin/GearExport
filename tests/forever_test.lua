@@ -23,7 +23,7 @@ function GetTime() return seconds end
 function GetServerTime() return 1789670000 + math.floor(seconds) end
 -- Synthetic environment values match the observed client version/build/interface;
 -- the surrounding mocked APIs are test fixtures, not additional live evidence.
-local version, build, interface = "1.60.1", "70291", 16001
+local version, build, interface = "1.60.1", "70338", 16001
 function GetBuildInfo() return version, build, "test", interface end
 local target = "Forever"
 C_AddOns = { GetAddOnMetadata = function(name, field)
@@ -65,7 +65,8 @@ local function advance(duration)
         if S.eventFrame.scripts.OnUpdate then S.eventFrame.scripts.OnUpdate() end
     end
 end
-check(C.IsForever(), "explicit Forever package and verified version/build")
+check(C.IsForever(), "explicit Forever package and newly supported exact version/build")
+build = "70291"; check(C.IsForever(), "previously live-validated build remains supported"); build = "70338"
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
 check(not C.IsRetail(), "Forever is not routed as Retail even with a shared project ID")
 target = "Retail"; check(not C.IsForever(), "wrong package rejected"); target = "Forever"
@@ -73,14 +74,14 @@ for _, other in ipairs({ "1.15.9", "2.5.6", "12.1.0" }) do
     version = other; check(not C.IsForever(), "other clients rejected")
 end
 version = "1.60.1"
-for _, other in ipairs({ "69893", "70009", "69914", "different" }) do
+for _, other in ipairs({ "69893", "70009", "69914", "70334", "70339", "different" }) do
     build = other
     check(not S.Initialize(), "non-current build fails closed: " .. other)
     equal(WoWSyncDB, nil, "wrong client does not create database")
     equal(S.error, "The installed WoWSync build is not verified for the running Forever client.",
         "rejection describes verification rather than a package phase")
 end
-build = "70291"
+build = "70338"
 interface = 16000; check(not C.IsForever(), "wrong interface rejected"); interface = 16001
 local realGUID = UnitGUID
 UnitGUID = nil; check(not S.Initialize(), "missing GUID cannot fabricate character")
@@ -99,7 +100,15 @@ WoWSyncDB = { schemaVersion = 1, settings = { preserve = true }, characters = {
 S.eventFrame.scripts.OnEvent(S.eventFrame, "PLAYER_LOGIN")
 advance(1)
 equal(S.record.identity.name, "Hallo", "identity captured")
-equal(S.record.captureProfile, "Forever:1.60.1:70291:16001", "active saved-data profile is build scoped")
+equal(S.record.captureProfile, "Forever:1.60.1:70338:16001", "active saved-data profile is scoped to actual allowlisted build")
+local previousBuildRecord = { captureProfile = "Forever:1.60.1:70291:16001",
+    sections = { equipment = { data = { marker = "70291 evidence" } } },
+    latestExport = { text = "70291 export" } }
+addon.PrepareCaptureProfile(previousBuildRecord)
+equal(previousBuildRecord.captureProfile, "Forever:1.60.1:70338:16001", "build change gets its own active profile")
+equal(previousBuildRecord.archivedCaptures[1].sections.equipment.data.marker, "70291 evidence", "previous-build evidence is archived on transition")
+equal(previousBuildRecord.sections.equipment, nil, "previous-build evidence is not presented as current")
+equal(previousBuildRecord.archivedCaptures[1].latestExport.text, "70291 export", "previous-build text export remains archived")
 equal(S.record.sections.professions, nil, "legacy unsupported section is not current evidence")
 equal(S.record.archivedCaptures[1].sections, legacySections, "legacy sections remain preserved in archive")
 equal(S.record.archivedCaptures[1].itemMetadata, legacyItems, "legacy item metadata remains preserved")
@@ -176,7 +185,9 @@ local output
 check(S.Export(function(text) output = text end), "export accepted")
 advance(0.2) -- unprobed playtime is not requested
 check(output and output:find("WOWSYNC v1", 1, true), "shared canonical export")
-check(not output:find("Race: Dwarf", 1, true), "70245 race remains structured-only for strict v1 parser compatibility")
+check(output:find("Client: 1.60.1 build 70338", 1, true)
+    and output:find("Interface: 16001", 1, true), "actual allowlisted client build and interface serialized")
+check(not output:find("Race: Dwarf", 1, true), "Forever race remains structured-only for strict v1 parser compatibility")
 local unknownBuildSnapshot = S.GetSnapshot()
 unknownBuildSnapshot.sections.character.data.clientBuild = nil
 check(not S.RenderSection("character", unknownBuildSnapshot):find("Race:", 1, true),
@@ -188,7 +199,7 @@ check(S.RenderSection("character", legacyBuildSnapshot):find("Race: Dwarf", 1, t
 check(output:find("PlayedSeconds: ?\nLevelPlayedSeconds: ?", 1, true), "deferred playtime unknown")
 check(output:find("XP: ?/?", 1, true), "unprobed XP stays unknown")
 check(output:find("[BANK]\nState: UNKNOWN", 1, true), "bank not observed")
-check(output:find("capture limited to fields supported by the carried-forward 70245 contract", 1, true), "unprobed fields remain explicitly limited")
+check(output:find("capture limited to fields enabled by the version-scoped collectors", 1, true), "unprobed fields remain explicitly limited")
 local frozen = S.GetSnapshot()
 local frozenText = S.Render(frozen)
 advance(1); equal(S.Render(frozen), frozenText, "deterministic without clock reads")
@@ -212,7 +223,7 @@ end
 check(not unknown:find("Race:", 1, true), "70245 race is not added to the strict v1 text schema")
 check(unknown:find("Surname: ?", 1, true), "surname unavailable is explicit UNKNOWN in text")
 check(unknown:find("XP: ?/?", 1, true), "unavailable XP explicit")
-check(unknown:find("capture limited to fields supported by the carried-forward 70245 contract", 1, true), "scope diagnostic retained")
+check(unknown:find("capture limited to fields enabled by the version-scoped collectors", 1, true), "scope diagnostic retained")
 local secret = {}
 issecretvalue = function(value) return value == secret end
 UnitLevel = function() return "10" end

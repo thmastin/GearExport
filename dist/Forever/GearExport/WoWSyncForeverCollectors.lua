@@ -106,8 +106,8 @@ S.collectors.equipment = function()
                 end
                 if #issues > before then pending = true end
                 -- GetItemStats is collected separately for exact item variants, but this equipped-slot
-                -- collector has no validated build-70291 tooltip comparison for effective values.
-                issues[#issues + 1] = label .. " effective stat semantics unverified for Forever 1.60.1 build 70291"
+                -- collector has no validated Forever-client tooltip comparison for effective values.
+                issues[#issues + 1] = label .. " effective stat semantics unverified for Forever 1.60.1 build " .. tostring(addon.Forever.build)
                 item.stats = nil
             end
         else

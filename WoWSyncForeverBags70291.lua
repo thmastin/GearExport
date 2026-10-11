@@ -1,4 +1,4 @@
--- Forever 1.60.1.70291: carried-container API contract carried forward from 70245.
+-- Forever 1.60.1 supported builds: carried-container contract carried forward from 70245.
 -- No bank range, family, free-slot API, or transferability inference.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
@@ -37,7 +37,7 @@ local function BindingFacet(info, issues)
 end
 
 local function Failed(reason, retry)
-    return nil, { reason = "Forever 70291 " .. reason, retry = retry, stale = true }
+    return nil, { reason = "Forever " .. tostring(addon.Forever.build) .. " " .. reason, retry = retry, stale = true }
 end
 
 S.collectors.bags = function()

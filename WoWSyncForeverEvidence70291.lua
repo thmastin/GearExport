@@ -1,4 +1,4 @@
--- Raw, read-only skill-line and trainer observations for Forever 1.60.1.70291.
+-- Raw, read-only skill-line and trainer observations for supported Forever builds.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 local MAX_TRAINER_SERVICES, MAX_ABILITY_REQUIREMENTS = 200, 20
@@ -450,7 +450,7 @@ S.collectors.forever70291Evidence = function()
     table.sort(issues)
     return data, { completeness = #issues == 0 and "complete" or "partial",
         reason = #issues > 0 and table.concat(issues, "; ") or nil,
-        source = "Forever 70291 read-only runtime evidence; API tuple contracts carried forward from 70245 pending live comparison" }
+        source = "Forever read-only runtime evidence for build " .. tostring(F.build) .. "; API tuple contracts carried forward from 70245 pending live comparison" }
 end
 
 -- Collector refreshes on API change events and trainer-window events. It does

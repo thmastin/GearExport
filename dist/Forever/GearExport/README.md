@@ -5,8 +5,10 @@ GearExport includes WoWSync, a dependency-free World of Warcraft character expor
 TradeSkillMaster is optional. When it is installed, GearExport uses its public API to include market pricing and current-character inventory-location data.
 
 **Forever compatibility** provides a dedicated observational export for client
-`1.60.1`, build `70291`, interface `16001`. The exact build and client-family
-guard is live-validated on Hallo. The supported capture path includes character
+`1.60.1`, exact builds `70291` and `70338`, interface `16001`. Build 70291's
+capture path is live-validated on Hallo. Build 70338 is allowlisted after its
+matching Forever UI-source API contract review; WoWSync has not yet run in-game
+on 70338. Unknown builds remain rejected. The supported capture path includes character
 identity/build, equipped items, carried bags, and structured raw skill/runtime
 evidence. The WOWSYNC v1 export and same-refresh `WoWSyncDB` were compared after
 the live `/wowsync` capture. Location, faction, currency, playtime, XP,
@@ -64,9 +66,9 @@ inside this repository, redirected symlink/junction path components, a running
 `WowB.exe` Forever client, or a target executable whose version/build does not
 exactly match the package guard.
 
-The deployment workflow preserves the reviewed Forever runtime guard
-`1.60.1 / 70291 / interface 16001` and also compares it with the target
-`WowB.exe` FileVersion before changing the installation.
+The deployment workflow preserves the exact Forever runtime allowlist
+`1.60.1 / 70291, 70338 / interface 16001` and compares the target `WowB.exe`
+FileVersion against that allowlist before changing the installation.
 
 Before changing the installation, deployment creates a complete copy of the
 existing `GearExport` directory under

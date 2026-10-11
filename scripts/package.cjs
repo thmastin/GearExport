@@ -2,7 +2,7 @@
 // Build a single-client folder from the shared source; no game installation writes.
 const fs = require('fs');
 const path = require('path');
-const { hashFile, verifyPackage } = require('./package-utils.cjs');
+const { hashFile, readForeverBuildGuard, verifyPackage } = require('./package-utils.cjs');
 const root = path.resolve(__dirname, '..');
 const target = process.argv[2];
 const targets = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport-BCC.toc', Forever: 'GearExport-Forever.toc' };
@@ -17,6 +17,12 @@ if (luaFiles.some(file => path.basename(file) !== file)) throw new Error('Unexpe
 if (target === 'Retail' && luaFiles.includes('BankCleanup.lua')) throw new Error('Retail must exclude BankCleanup');
 if (target === 'Forever' && (luaFiles.includes('BankCleanup.lua') || luaFiles.includes('GearExport.lua')
     || luaFiles.includes('WoWSyncCollectors.lua'))) throw new Error('Forever must exclude legacy/action modules');
+const runtimeGuard = target === 'Forever'
+    ? readForeverBuildGuard(fs.readFileSync(path.join(root, 'WoWSyncForever.lua'), 'utf8'))
+    : null;
+if (target === 'Forever' && (!runtimeGuard || runtimeGuard.interface !== 16001)) {
+    throw new Error('Forever requires an exact, interface-matched runtime build allowlist');
+}
 const output = path.join(root, 'dist', target, 'GearExport');
 const docs = ['README.md', 'LICENSE', 'WOWSYNC_SCHEMA.md', 'WOWSYNC_ACCEPTANCE.md',
     'RETAIL_COMPATIBILITY.md', 'RETAIL_TEST_PLAN.md', 'BANK_CLEANUP_TESTS.md', 'PLAYTIME_API_AUDIT.md'];
@@ -36,6 +42,7 @@ try {
     }
     fs.writeFileSync(path.join(stage, 'package-manifest.json'), JSON.stringify({
         target, interface: Number(toc.match(/^## Interface:\s*(\d+)/m)[1]),
+        ...(runtimeGuard && { clientVersion: runtimeGuard.version, clientBuilds: runtimeGuard.builds }),
         schema: 'WOWSYNC v1', liveRetailValidation: 'pending', hashes,
     }, null, 2) + '\n');
     verifyPackage(stage, target);
