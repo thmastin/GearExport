@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const assert = require('assert');
+const { verifyPackage } = require('../scripts/package-utils.cjs');
 const targets = [['Retail', 120100], ['ClassicEra', 11509], ['TBC', 20506], ['Forever', null]];
 const selected = process.argv[2] ? targets.filter(([target]) => target === process.argv[2]) : targets;
 assert(selected.length, 'Unknown package target');
@@ -25,6 +26,14 @@ for (const [target, version] of selected) {
     assert.deepStrictEqual(fs.readFileSync(path.join(directory, 'GearExport.toc')), fs.readFileSync(sourceToc));
     assert.deepStrictEqual(fs.readdirSync(directory).sort(), [...Object.keys(manifest.hashes), 'package-manifest.json'].sort());
     if (target === 'Forever') {
+        // Validate the artifact that will actually be deployed, not only the
+        // locally generated source/package pair. This catches ignored dist
+        // files that were generated locally but omitted from the commit.
+        const verified = verifyPackage(directory, 'Forever');
+        const packagedLua = new Set(verified.entries.filter(file => file.endsWith('.lua')));
+        for (const line of fs.readFileSync(path.join(directory, 'GearExport.toc'), 'utf8').split(/\r?\n/)) {
+            if (line.endsWith('.lua')) assert(packagedLua.has(line), 'Forever TOC module is packaged: ' + line);
+        }
         assert(manifest.hashes['FOREVER_PHASE1.md']);
         assert(manifest.hashes['FOREVER_PHASE2.md']);
         assert(manifest.hashes['FOREVER_PHASE3.md']);
