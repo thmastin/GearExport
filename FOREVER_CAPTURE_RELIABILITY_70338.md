@@ -32,6 +32,7 @@ This checkpoint audits Forever 1.60.1 builds 70291 and 70338, interface 16001. B
 | Item stats/durability/enchant | Existing/raw item evidence as applicable | Raw stats are not interpreted as effective stats or upgrade decisions. Unsupported or absent values remain unknown. |
 | Durability/enchantments | No complete, verified Forever equipment-slot capture added | Not collected as authoritative fields; absent remains UNKNOWN. Exact item links alone do not establish current durability/enchant semantics. |
 | Bags and free slots | Existing Forever `C_Container` reader | Section status and exact links/quantities retained; names can be unresolved during cache miss. |
+| Binding and transfer traits | Existing carried-item binding observations plus raw item API evidence; bank collector records `isBound` when returned | Preserve raw boolean/bindType/API result and source. Bind semantics and transfer route remain UNKNOWN; no general transferability conclusion. |
 | Character bank | `C_Bank.CanViewBank`, `FetchPurchasedBankTabIDs`, `C_Container` while open | Only tabs exposed in that visit; empty requires a complete slot scan. Not observed outside visit. |
 | Professions and skills | `GetProfessions` + `GetProfessionInfo` | Learned entries/current/max skill only. No conclusion that an absent/unavailable section means no professions. |
 | Spells/profession abilities | `C_SpellBook` skill lines plus profession indices | Visible spellbook observations; no ranks, trainer learnability, or complete recipe list inferred. |
