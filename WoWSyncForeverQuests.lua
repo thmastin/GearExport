@@ -31,7 +31,7 @@ local function finiteInteger(value, minimum)
 end
 
 local function cleanText(value)
-    if not public(value) or type(value) ~= "string" then return nil end
+    if not public(value) or type(value) ~= "string" or value == "" then return nil end
     if #value > MAX_TEXT then return value:sub(1, MAX_TEXT), true end
     return value
 end
@@ -118,8 +118,9 @@ local function collectQuest(api, info, issues)
     local complete = readBoolean(api, "IsComplete", questID, issues)
     if complete ~= nil then quest.isComplete, quest.completionState = complete, "OBSERVED" end
 
-    -- The Forever generated declaration returns nullable boolean. Never infer
-    -- readiness from IsComplete or objective progress.
+    -- Optional runtime capability only: the pinned Forever declaration does
+    -- not establish this API. Treat semantics as UNKNOWN unless a live call
+    -- returns an actual boolean; never infer from completion or objectives.
     if type(api.ReadyForTurnIn) == "function" then
         local ok, ready = safeCall(api.ReadyForTurnIn, questID)
         if ok and public(ready) and type(ready) == "boolean" then

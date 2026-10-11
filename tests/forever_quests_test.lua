@@ -62,6 +62,17 @@ return function(S, check, equal, advance)
     data, meta = S.collectors.quests()
     e(data.completedHistory.state, "UNKNOWN", "missing completed-history API remains unknown")
 
+    C_QuestLog = {
+        GetNumQuestLogEntries = function() return 1, 1 end,
+        GetInfo = function() return { questID = 105, title = "Blank Objective" } end,
+        GetQuestObjectives = function() return { { text = "", finished = false, numFulfilled = 0, numRequired = 1 } } end,
+        IsComplete = function() return false end,
+        GetAllCompletedQuestIDs = function() return {} end,
+    }
+    data = S.collectors.quests()
+    e(data.active[1].objectiveState, "PARTIAL", "blank objective text is malformed, not complete evidence")
+    e(data.active[1].objectives[1].text, nil, "empty objective text is not retained as a valid description")
+
     C_QuestLog.GetNumQuestLogEntries = function() return 0, 0 end
     C_QuestLog.GetAllCompletedQuestIDs = function() return {} end
     data, meta = S.collectors.quests()
