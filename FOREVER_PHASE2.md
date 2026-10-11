@@ -9,10 +9,11 @@ build process does not install anything. Interface remains `16001`.
 The beta installation's `WowB.exe` file/product version and the running process
 at `D:\World of Warcraft\_classic_beta_\WowB.exe` were independently inspected:
 both report `1.60.1.70009`. The user also confirmed runtime interface `16001`.
-The guard now accepts exactly version `1.60.1`, build `70009`, and the explicit
-Forever package marker. Other builds, including the superseded `69893`, are
-rejected. The rejection message describes an unverified running client without
-referring to Phase 1.
+At this historical phase, the guard accepted exactly version `1.60.1`, build
+`70009`, and the explicit Forever package marker. That exact-build policy was
+later broadened: the current guard requires the Forever marker and exact
+version, while build/interface values scope observations and WoW's TOC policy
+handles outdated interfaces. See [current Forever update compatibility](FOREVER_UPDATE_COMPATIBILITY.md).
 
 ## Live equipment acceptance
 
