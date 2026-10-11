@@ -1,4 +1,6 @@
--- Forever build 70009 profession readiness adapter.
+-- Forever 1.60.1 learned-profession observation adapter. API return shapes
+-- are documented for this client family; retain strict validation and UNKNOWN
+-- on missing or changed values.
 --
 -- C_TradeSkillUI exposes an all-profession enumeration before its skill values
 -- hydrate. Its pre-hydration 0/0 records cannot establish that a profession is

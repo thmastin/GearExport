@@ -590,6 +590,7 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.Mark("reputation")
     elseif event == "GET_ITEM_INFO_RECEIVED" or event == "ITEM_DATA_LOAD_RESULT" then
         if S.record then
+            if type(arg) == "number" and S.requestedForeverItemInfo then S.requestedForeverItemInfo[arg] = nil end
             local keys = { "bags", "bank", "equipment" }
             if S.account then keys[#keys + 1] = "accountBank" end
             for _, key in ipairs(keys) do

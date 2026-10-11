@@ -1,4 +1,4 @@
--- Forever build 70009 uses the modern trainer tuple used by its Mainline UI:
+-- Forever 1.60.1 trainer-window adapter. It expects the modern trainer tuple:
 -- name, status, texture, requiredLevel. It is not the Classic rank/status tuple.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever

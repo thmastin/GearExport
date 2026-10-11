@@ -1,5 +1,8 @@
 -- Synthetic API-contract fixtures, not Hallo's equipment or real item data.
 return function(S, check, equal, advance)
+    local slotNames = { [1] = "Head", [2] = "Neck", [3] = "Shoulder", [4] = "Shirt", [5] = "Chest", [6] = "Waist",
+        [7] = "Legs", [8] = "Feet", [9] = "Wrist", [10] = "Hands", [11] = "Finger 1", [12] = "Finger 2",
+        [13] = "Trinket 1", [14] = "Trinket 2", [15] = "Back", [16] = "Main Hand", [17] = "Off Hand", [18] = "Ranged", [19] = "Tabard" }
     local itemAPI, paperAPI, locations = C_Item, C_PaperDollInfo, ItemLocation
     local occupied, pending, secret = { [5] = true }, false, {}
     local restricted = issecretvalue
@@ -11,10 +14,13 @@ return function(S, check, equal, advance)
         GetItemID = function() return 900001 end,
         GetItemLink = function() if not pending then return "|Hitem:900001:7:0:0|h[Synthetic tunic]|h" end end,
         GetCurrentItemLevel = function() if not pending then return 12 end end,
-        GetItemInfo = function(link)
-            equal(link, "|Hitem:900001:7:0:0|h[Synthetic tunic]|h", "metadata uses equipped variant")
-            return "Synthetic tunic", link, 1, 99, 0
+        GetItemInfo = function(ref)
+            if pending then return nil end
+            if type(ref) == "string" then equal(ref, "|Hitem:900001:7:0:0|h[Synthetic tunic]|h", "metadata uses equipped variant")
+            else equal(ref, 900001, "metadata falls back to observed base item ID without fabricating a variant") end
+            return "Synthetic tunic", type(ref) == "string" and ref or nil, 1, 99, 0
         end,
+        RequestLoadItemDataByID = function(id) equal(id, 900001, "uncached item load request uses observed ID") end,
         GetItemStats = function() error("70291 effective stat semantics are not verified") end,
     }
     local data, meta = S.collectors.equipment()
@@ -30,7 +36,7 @@ return function(S, check, equal, advance)
     S.RequestSync(); advance(1)
     local text = S.RenderSection("equipment", S.GetSnapshot())
     check(text:find("slot\titemRef\tname\tilvl\trequiredLevel\teffectiveStats", 1, true), "shared contract header")
-    check(text:find("5:\titem:900001:7:0:0\tSynthetic tunic\t12\t0\t?", 1, true), "unverified effective stats render unknown")
+    check(text:find("5:Chest\titem:900001:7:0:0\tSynthetic tunic\t12\t0\t?", 1, true), "human-readable Forever slot and unknown effective stats render")
     check(S.eventFrame.events.PLAYER_EQUIPMENT_CHANGED, "equipment event registered")
     check(S.eventFrame.events.ITEM_DATA_LOAD_RESULT, "item cache event registered")
     pending = true
@@ -87,6 +93,7 @@ return function(S, check, equal, advance)
         GetItemLink = function(location) return real[location.slot][1] end,
         GetCurrentItemLevel = function(location) return real[location.slot][3] end,
         GetItemInfo = function(link)
+            if type(link) == "number" then return nil end
             for _, row in pairs(real) do
                 if row[1] == link then return row[2], link, nil, nil, row[4] end
             end
@@ -100,9 +107,9 @@ return function(S, check, equal, advance)
     } } })
     for slot = 1, 19 do
         local row = real[slot]
-        local expected = slot .. ":\tEMPTY"
+        local expected = slot .. ":" .. slotNames[slot] .. "\tEMPTY"
         if row then
-            expected = slot .. ":\t" .. table.concat(row, "\t") .. "\t?"
+            expected = slot .. ":" .. slotNames[slot] .. "\t" .. table.concat(row, "\t") .. "\t?"
             equal(data.slots[slot].stats, nil, "equipped effective stats remain unknown")
         end
         check(("\n" .. actual .. "\n"):find("\n" .. expected .. "\n", 1, true),

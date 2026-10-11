@@ -1,9 +1,6 @@
--- Synthetic API shapes only.  Real Forever bank/trainer tuple validation remains live work.
+-- Synthetic bank API shapes only. Trainer tuple interpretation stays disabled pending live verification.
 return function(S, check, equal, advance)
     local oldBank, oldEnum, oldContainer = C_Bank, Enum, C_Container
-    local oldNum, oldInfo, oldCost, oldLevel, oldSkill, oldReqs, oldReq = GetNumTrainerServices,
-        GetTrainerServiceInfo, GetTrainerServiceCost, GetTrainerServiceLevelReq, GetTrainerServiceSkillReq,
-        GetTrainerServiceNumAbilityReq, GetTrainerServiceAbilityReq
     Enum = Enum or {}; Enum.BankType = { Character = 7 }
     C_Bank = { CanViewBank = function(kind) return kind == 7 end, FetchPurchasedBankTabIDs = function() return { 40, 44 } end }
     C_Container = { GetContainerNumSlots = function(id) return id == 40 and 2 or id == 44 and 1 end,
@@ -24,23 +21,8 @@ return function(S, check, equal, advance)
     C_Bank.FetchPurchasedBankTabIDs = function() return {} end
     bank, meta = S.collectors.bank(); equal(#bank.containers, 0, "observed empty bank is not UNKNOWN")
     C_Bank, Enum, C_Container = oldBank, oldEnum, oldContainer
-    GetNumTrainerServices = function() return 1 end
-    GetTrainerServiceInfo = function() return "Fireball", "available", 135812, 6 end
-    GetTrainerServiceCost, GetTrainerServiceLevelReq = function() return 100 end, nil
-    GetTrainerServiceSkillReq, GetTrainerServiceNumAbilityReq = function() return "Pyromancy", 50, false end, function() return 1 end
-    GetTrainerServiceAbilityReq = function() return "Fireball", true end
-    S.trainerOpen = true; S.currentTrainerVisit = { openedAt = 1, name = "Trainer", session = 1 }; S.record.visits.trainers = S.record.visits.trainers or {}
     local result, trainerMeta = S.collectors.trainer()
-    equal(result.snapshot.services[1].name, "Fireball", "trainer ability observed")
-    equal(result.snapshot.services[1].rank, nil, "modern trainer tuple exposes no rank")
-    equal(result.snapshot.services[1].requiredLevel, 6, "modern tuple required level observed")
-    equal(result.snapshot.services[1].skillRequirement.rank, 50, "trainer skill requirement observed")
-    equal(result.snapshot.services[1].abilityRequirements[1].name, "Fireball", "trainer prerequisite observed")
-    check(not result.snapshot.services[1].spellID, "trainer index never becomes spell ID")
-    GetTrainerServiceInfo = function() return nil end
-    equal(S.collectors.trainer(), nil, "malformed trainer tuple remains UNKNOWN")
-    GetTrainerServiceInfo = function() return "Fireball", "available", {}, 6 end
-    equal(S.collectors.trainer(), nil, "malformed modern texture remains UNKNOWN")
-    GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost, GetTrainerServiceLevelReq, GetTrainerServiceSkillReq, GetTrainerServiceNumAbilityReq, GetTrainerServiceAbilityReq = oldNum, oldInfo, oldCost, oldLevel, oldSkill, oldReqs, oldReq
+    equal(result, nil, "unverified trainer tuple is not parsed")
+    check(trainerMeta.reason:find("semantics remain UNKNOWN", 1, true) ~= nil, "trainer reason preserves unknown API semantics")
     S.trainerOpen, S.bankOpen = false, false
 end

@@ -145,11 +145,7 @@ renderers.character = function(out, data)
     end
     Field(out, "Realm", data.realm)
     Field(out, "Class", data.class); Field(out, "Level", data.level)
-    -- WOWSYNC v1's strict CHARACTER parser has no Race field. Keep the
-    -- observation in structured SavedVariables, but omit it from the strict
-    -- v1 text projection on builds verified to use that schema.
-    if data.clientFamily == "Forever" and data.clientBuild and not C.IsSupportedForeverBuild(data.clientBuild, data.interface)
-        and data.clientBuild ~= "70245" then
+    if data.clientFamily == "Forever" and C.IsSupportedForeverBuild(data.clientBuild, data.interface) then
         Field(out, "Race", data.race)
     end
     Field(out, "Faction", data.faction); Field(out, "MoneyCopper", data.moneyCopper)

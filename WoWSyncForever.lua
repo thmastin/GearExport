@@ -3,7 +3,15 @@ local ADDON_NAME, addon = ...
 local C = WoWSyncCompat
 local F = { version = "1.60.1", interface = 16001, supportedBuilds = { ["70291"] = true, ["70338"] = true } }
 addon.Forever = F
-addon.Readers = { SlotNames = {} }
+-- Forever uses the stable inventory slot IDs. Keep IDs in the export; these
+-- labels are presentation only and are checked against Blizzard's Forever UI
+-- slot constants rather than inferred from an item's class.
+addon.Readers = { SlotNames = {
+    [1] = "Head", [2] = "Neck", [3] = "Shoulder", [4] = "Shirt", [5] = "Chest",
+    [6] = "Waist", [7] = "Legs", [8] = "Feet", [9] = "Wrist", [10] = "Hands",
+    [11] = "Finger 1", [12] = "Finger 2", [13] = "Trinket 1", [14] = "Trinket 2",
+    [15] = "Back", [16] = "Main Hand", [17] = "Off Hand", [18] = "Ranged", [19] = "Tabard",
+} }
 -- This package selects its own adapters even if Blizzard reuses a project ID.
 function C.IsRetail() return false end
 
@@ -72,9 +80,11 @@ end
 -- Forever retains the documented asynchronous request/event contract.  Nothing
 -- is estimated while a response is outstanding or if either value is absent.
 function C.RequestPlayed()
-    -- RequestTimePlayed was not part of the 70245 runtime probe. Do not carry
-    -- its older-build contract forward; an unsolicited response is still read.
-    return false
+    -- The exact Forever 1.60.1 API contract is asynchronous. Core waits for
+    -- TIME_PLAYED_MSG and leaves both values unknown if it never arrives.
+    if type(RequestTimePlayed) ~= "function" then return false end
+    local ok = pcall(RequestTimePlayed)
+    return ok
 end
 
 function C.IsBankViewable()

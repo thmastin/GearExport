@@ -1,11 +1,13 @@
--- Expose only the existing read-only collectors carried forward from documented
--- 70245 contracts. Other Forever modules remain disabled pending separate audit.
+-- Version-scoped observational collectors for the explicitly allowlisted
+-- Forever builds. Raw trainer-window evidence remains in the evidence section;
+-- the legacy tuple adapter is deliberately not activated without verification.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 local function captureProfile()
     return "Forever:" .. F.version .. ":" .. F.build .. ":" .. F.interface
 end
 local equipmentCollector = S.collectors.equipment
+local locationCollector = S.collectors.location
 
 local function publicName(value)
     if type(issecretvalue) == "function" then
@@ -124,8 +126,24 @@ S.collectors = {
             clientVersion = F.Read("ClientVersion", GetBuildInfo, 1, "string", issues),
             clientBuild = F.Read("ClientBuild", GetBuildInfo, 2, "string", issues),
             interface = F.Read("Interface", GetBuildInfo, 4, "number", issues),
+            faction = F.Read("Faction", UnitFactionGroup, 1, "string", issues, "player"),
+            moneyCopper = F.Number("MoneyCopper", GetMoney, issues),
+            xp = F.Number("XP", UnitXP, issues, "player"),
+            xpMax = F.Number("XPMax", UnitXPMax, issues, "player"),
             clientFamily = "Forever",
         }
+        local played = S.played
+        if played then
+            if played.guid ~= UnitGUID("player") then
+                issues[#issues + 1] = "Playtime response belongs to a different character"
+            else
+                data.playedSeconds, data.levelPlayedSeconds = played.total, played.levelSeconds
+                if data.playedSeconds == nil then issues[#issues + 1] = "Total playtime unavailable" end
+                if data.levelPlayedSeconds == nil then issues[#issues + 1] = "Level playtime unavailable" end
+            end
+        else
+            issues[#issues + 1] = "Playtime response not observed"
+        end
         table.sort(issues)
         return data, { completeness = "partial",
             reason = "Forever capture limited to fields enabled by the version-scoped collectors"
@@ -139,7 +157,14 @@ S.collectors = {
         end
         return data, meta
     end,
+    location = locationCollector,
     bags = S.collectors.bags,
+    trainer = function()
+        -- Do not parse GetTrainerServiceInfo tuples until their exact Forever
+        -- semantics have been corroborated. forever70291Evidence stores the
+        -- visible-window calls as raw observations without asserting meaning.
+        return nil, { reason = "Forever trainer service semantics remain UNKNOWN; raw window evidence is stored in forever70291Evidence" }
+    end,
 }
 
 -- This section is isolated to exact allowlisted Forever builds. The older

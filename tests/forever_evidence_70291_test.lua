@@ -1,7 +1,9 @@
 -- Synthetic contract fixtures only; never evidence from a live client.
 return function(S, check, equal)
     check(S.collectors.forever70291Evidence ~= nil, "70291 raw evidence collector enabled")
-    check(not S.collectors.trainer, "unvalidated older trainer collector remains disabled")
+    local parsedTrainer, trainerReason = S.collectors.trainer()
+    equal(parsedTrainer, nil, "unverified trainer tuple adapter stays disabled")
+    check(trainerReason.reason:find("semantics remain UNKNOWN", 1, true) ~= nil, "trainer module fails closed while raw evidence collector remains enabled")
     local found = false
     for _, key in ipairs(S.order) do if key == "forever70291Evidence" then found = true end end
     check(found, "70291 evidence included in normal export refresh")

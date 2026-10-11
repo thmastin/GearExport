@@ -1,6 +1,6 @@
 -- Synthetic build-70009 C_SpellBook records; spell identity is never inferred.
 return function(S, check, equal, advance)
-    local savedAPI, savedEnum, oldSecret = C_SpellBook, Enum, issecretvalue
+    local savedAPI, savedEnum, oldSecret, savedProfessions = C_SpellBook, Enum, issecretvalue, GetProfessions
     local secret = {}
     issecretvalue = function(value) return value == secret end
     Enum = { SpellBookItemType = { Spell = 1, FutureSpell = 2, PetAction = 3, Flyout = 4 },
@@ -16,14 +16,15 @@ return function(S, check, equal, advance)
     C_SpellBook = {
         GetNumSpellBookSkillLines = function() return 2 end,
         GetSpellBookSkillLineInfo = function(line)
-            return line == 1 and { itemIndexOffset = 0, numSpellBookItems = 6, shouldHide = false }
-                or { itemIndexOffset = 6, numSpellBookItems = 2, shouldHide = true }
+            return line == 1 and { name = "General", itemIndexOffset = 0, numSpellBookItems = 6, shouldHide = false }
+                or { name = "Class", itemIndexOffset = 6, numSpellBookItems = 2, shouldHide = true }
         end,
         GetSpellBookItemInfo = function(index, bank)
             equal(bank, 0, "player bank only")
             return items[index]
         end,
     }
+    GetProfessions = function() return 3, nil, nil, nil, nil end
     local data, meta = S.collectors.spells()
     equal(meta.completeness, "complete", "complete player spellbook")
     equal(#data.entries, 1, "future/pet/flyout/off-spec and duplicate IDs excluded")
@@ -35,7 +36,7 @@ return function(S, check, equal, advance)
     check(not text:find("Future", 1, true) and not text:find("Pet action", 1, true), "excluded spellbook types absent")
     check(S.eventFrame.events.SPELLS_CHANGED and S.eventFrame.events.SPELL_TEXT_UPDATE, "spell refresh events")
     C_SpellBook.GetNumSpellBookSkillLines = function() return 1 end
-    C_SpellBook.GetSpellBookSkillLineInfo = function() return { itemIndexOffset = 0, numSpellBookItems = 1, shouldHide = false } end
+    C_SpellBook.GetSpellBookSkillLineInfo = function() return { name = "General", itemIndexOffset = 0, numSpellBookItems = 1, shouldHide = false } end
     items[1] = { itemType = 1, isOffSpec = false, spellID = nil, name = "Pending" }
     data, meta = S.collectors.spells()
     equal(#data.entries, 0, "missing ID is not guessed")
@@ -50,5 +51,5 @@ return function(S, check, equal, advance)
     equal(S.collectors.spells(), nil, "throwing spell API unknown")
     C_SpellBook.GetSpellBookItemInfo = nil
     equal(S.collectors.spells(), nil, "missing spell API unknown")
-    C_SpellBook, Enum, issecretvalue = savedAPI, savedEnum, oldSecret
+    C_SpellBook, Enum, issecretvalue, GetProfessions = savedAPI, savedEnum, oldSecret, savedProfessions
 end

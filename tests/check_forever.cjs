@@ -7,11 +7,10 @@ assert(/^## SavedVariables: GearExportDB, WoWSyncDB$/m.test(toc), 'Existing data
 const files = toc.split(/\r?\n/).filter(line => line && !line.startsWith('#'));
 assert.deepStrictEqual(files, ['WoWSyncCompat.lua', 'WoWSyncForever.lua', 'WoWSyncCore.lua',
     'WoWSyncForeverCollectors.lua', 'WoWSyncForever70291.lua', 'WoWSyncForeverBags70291.lua', 'WoWSyncForeverEvidence70291.lua',
+    'WoWSyncForeverBank.lua', 'WoWSyncForeverProfessions.lua', 'WoWSyncForeverSpells.lua',
     'WoWSyncRender.lua', 'WoWSyncUI.lua'], 'Forever observer load order');
-for (const file of ['WoWSyncForeverBags.lua', 'WoWSyncForeverProfessions.lua', 'WoWSyncForeverSpells.lua',
-    'WoWSyncForeverBank.lua', 'WoWSyncForeverTrainers.lua']) {
-    assert(!files.includes(file), 'Unvalidated 70009 collector is excluded: ' + file);
-}
+assert(!files.includes('WoWSyncForeverTrainers.lua'), 'Unverified legacy trainer tuple adapter remains excluded');
+for (const file of ['WoWSyncForeverBags.lua']) assert(!files.includes(file), 'Other-client collector remains excluded: ' + file);
 for (const file of files) assert(fs.existsSync(file), 'Missing Forever source ' + file);
 const foreverGuard = fs.readFileSync('WoWSyncForever.lua', 'utf8');
 assert(/version\s*=\s*"1\.60\.1"/.test(foreverGuard)
