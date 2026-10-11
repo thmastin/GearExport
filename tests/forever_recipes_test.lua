@@ -29,7 +29,7 @@ return function(S, check, equal)
             end,
             GetRecipeInfo = function(id)
                 if id == 61002 then return { learned = true } end -- conflicts with spellbook false
-                if id == 61001 then return { learned = true, name = "Info name fallback", relativeDifficulty = 2, maxTrivialLevel = 25, numSkillUps = 1, canSkillUp = true } end
+                if id == 61001 then return { recipeID = id, learned = true, name = "Info name fallback", relativeDifficulty = 2, maxTrivialLevel = 25, numSkillUps = 1, canSkillUp = true } end
                 return { learned = false }
             end,
             CraftRecipe = function() craftCalls = craftCalls + 1; error("collector must never craft") end,
@@ -115,6 +115,12 @@ return function(S, check, equal)
     equal(malformed.maxTrivialLevel, nil, "negative maximum trivial skill is omitted")
     equal(malformed.numSkillUps, nil, "boolean skill-up count is omitted")
     equal(malformed.canSkillUp, nil, "numeric can-skill-up value is omitted")
+    C_TradeSkillUI.GetRecipeInfo = function() return { recipeID = 61002, learned = true, relativeDifficulty = 2 } end
+    equal(S.collectors.professionRecipes(), nil, "recipe info identity cannot be attached to another enumerated recipe")
+    setFixture({ 61001 })
+    C_TradeSkillUI.GetRecipeInfo = function() return { recipeID = 61001, learned = true, relativeDifficulty = 4 } end
+    data = S.collectors.professionRecipes()
+    equal(data.professions[1].recipes[1].relativeDifficulty, nil, "out-of-domain relative difficulty is omitted")
     C_TradeSkillUI.IsTradeSkillLinked = function() return true end
     equal(S.collectors.professionRecipes(), nil, "another character's linked profession is rejected")
     C_TradeSkillUI.IsTradeSkillLinked = function() return nil end

@@ -129,6 +129,10 @@ local function recipeRow(api, recipeID)
     local knownState, learned = safe(C_SpellBook and C_SpellBook.IsSpellKnown, recipeID)
     if knownState ~= "OBSERVED_VALUE" or type(learned) ~= "boolean" then learned = nil end
     local infoState, recipeInfo = safe(api.GetRecipeInfo, recipeID)
+    if type(recipeInfo) == "table" and recipeInfo.recipeID ~= nil
+        and (not positive(recipeInfo.recipeID) or recipeInfo.recipeID ~= recipeID) then
+        return nil, "recipe info identity mismatch"
+    end
     local infoLearned = type(recipeInfo) == "table" and recipeInfo.learned or nil
     if type(infoLearned) ~= "boolean" then infoLearned = nil end
     if learned ~= nil and infoLearned ~= nil and learned ~= infoLearned then learned = nil end
@@ -180,7 +184,10 @@ local function recipeRow(api, recipeID)
     end
     if type(schematic) ~= "table" and infoName then row.name = infoName end
     if infoState == "OBSERVED_VALUE" and type(recipeInfo) == "table" then
-        if nonnegative(recipeInfo.relativeDifficulty) then row.relativeDifficulty = recipeInfo.relativeDifficulty end
+        if type(recipeInfo.relativeDifficulty) == "number" and recipeInfo.relativeDifficulty == math.floor(recipeInfo.relativeDifficulty)
+            and recipeInfo.relativeDifficulty >= 0 and recipeInfo.relativeDifficulty <= 3 then
+            row.relativeDifficulty = recipeInfo.relativeDifficulty
+        end
         if nonnegative(recipeInfo.maxTrivialLevel) then row.maxTrivialLevel = recipeInfo.maxTrivialLevel end
         if nonnegative(recipeInfo.numSkillUps) then row.numSkillUps = recipeInfo.numSkillUps end
         if type(recipeInfo.canSkillUp) == "boolean" then row.canSkillUp = recipeInfo.canSkillUp end
