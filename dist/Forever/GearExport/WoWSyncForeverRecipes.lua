@@ -195,7 +195,7 @@ S.collectors.professionRecipes = function()
     local learnedByLine = learnedProfessions()
     if not learnedByLine then return nil, { reason = "Learned profession identity has not hydrated", retry = true, stale = true } end
 
-    local rowsBySkillLine, recipeIDs, incomplete = {}, {}, false
+    local rowsBySkillLine, incomplete = {}, false
     for _, recipeID in ipairs(ids) do
         local association, reason = recipeRow(api, recipeID)
         if not association then
@@ -229,15 +229,15 @@ S.collectors.professionRecipes = function()
                         filteredEnumerationUsed = false },
                 }
             end
-            recipeIDs[#recipeIDs + 1] = association.recipe.recipeID
             if association.recipe.learnedState == "UNKNOWN" or association.recipe.schematicState == "UNKNOWN" then incomplete = true end
         end
     end
-    if #recipeIDs ~= #ids then incomplete = true end
     local professions = {}
     for _, row in pairs(rowsBySkillLine) do
         table.sort(row.recipes, function(a, b) return a.recipeID < b.recipeID end)
-        row.coverage.returnedRecipeCount = #row.recipes
+        -- This is the raw candidate count returned by GetAllRecipeIDs. Some
+        -- candidates can remain unassociated and therefore have no recipe row.
+        row.coverage.returnedRecipeCount = #ids
         professions[#professions + 1] = row
     end
     table.sort(professions, function(a, b) return a.skillLineID < b.skillLineID end)
@@ -266,7 +266,7 @@ S.collectors.professionRecipes = function()
         formatVersion = 1, observedAt = now, ownerScope = "CHARACTER",
         client = { clientFamily = "Forever", clientVersion = version, clientBuild = buildNumber, interface = interfaceNumber },
         coverage = { state = "PARTIAL", candidateCompleteness = "UNKNOWN", filteredEnumerationUsed = false,
-            returnedRecipeCount = #recipeIDs, learnedTrueCount = trueCount, learnedFalseCount = falseCount, unknownLearnedCount = unknownCount },
+            returnedRecipeCount = #ids, learnedTrueCount = trueCount, learnedFalseCount = falseCount, unknownLearnedCount = unknownCount },
         professions = professions,
     }, { completeness = "partial",
         reason = incomplete and "Recipe identity was observed, but one or more learned/output/reagent API results are unavailable or incomplete" or "Profession-panel recipe enumeration is a candidate list, not an exhaustive recipe catalogue" }

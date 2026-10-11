@@ -12,6 +12,7 @@ return function(S, check, equal)
             GetAllRecipeIDs = function() return ids end,
             GetFilteredRecipeIDs = function() filterCalls = filterCalls + 1; error("filtered candidates are not authoritative") end,
             GetTradeSkillLineForRecipe = function(id)
+                if id == 61004 then return nil end -- enumerated, but not enough evidence to associate
                 if id == 61003 then return 164, "Blacksmithing", 164 end
                 return 164, "Blacksmithing", 164
             end,
@@ -54,7 +55,7 @@ return function(S, check, equal)
     local closed = S.collectors.professionRecipes()
     equal(closed, nil, "closed profession window is not enumerated")
 
-    setFixture({ 61001, 61002, 61003 })
+    setFixture({ 61001, 61002, 61003, 61004 })
     local data, meta = S.collectors.professionRecipes()
     if not data then error("Forever recipe fixture was rejected: " .. tostring(meta and meta.reason)) end
     equal(meta.completeness, "partial", "candidate list never claims global catalogue completeness")
@@ -75,12 +76,17 @@ return function(S, check, equal)
     equal(#byID[61001].reagentSlots[1].reagents, 2, "alternative reagents remain alternatives")
     equal(byID[61001].reagentSlots[1].quantityRequired, 1, "required reagent quantity captured")
     equal(data.coverage.candidateCompleteness, "UNKNOWN", "enumeration is not treated as exhaustive")
+    equal(data.coverage.returnedRecipeCount, 4, "coverage count reflects every ID returned by GetAllRecipeIDs")
+    equal(data.professions[1].coverage.returnedRecipeCount, 4, "profession coverage retains raw enumeration count despite unresolved association")
+    equal(#data.professions[1].recipes, 3, "candidate with unresolved association is not fabricated into a recipe row")
     check(data.coverage.unknownLearnedCount >= 2, "unknown and contradictory learned results are counted")
     equal(filterCalls, 0, "no recipe filters are changed or trusted")
     equal(craftCalls, 0, "no crafting action occurs")
     S.CommitProfessionRecipes(data, meta)
     local stored = S.record.sections.professionRecipes.data.professions[1]
     equal(stored.recipes[1].evidence, "OBSERVED", "captured profession gets current provenance")
+    equal(stored.recipes[2].evidence, "UNKNOWN", "unknown learned state without prior evidence remains UNKNOWN")
+    equal(stored.recipes[3].evidence, "UNKNOWN", "candidate missing learned and schematic evidence remains UNKNOWN")
     check(stored.observedAt ~= nil, "profession observation time persisted")
 
     -- Missing optional GetRecipeInfo is expected for this API version. The
