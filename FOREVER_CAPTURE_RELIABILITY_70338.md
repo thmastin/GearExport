@@ -26,13 +26,16 @@ This checkpoint audits Forever 1.60.1 builds 70291 and 70338, interface 16001. B
 | Money | `GetMoney()` copper | Captured with numeric precision; absent remains unknown, observed 0 remains 0. |
 | Total and level playtime | `RequestTimePlayed()` then `TIME_PLAYED_MSG` | Asynchronous and GUID-scoped; no response means unknown. API call and event need consolidated live confirmation on 70338. |
 | Zone/subzone | Existing `GetRealZoneText` / subzone collector | Collector is restored; field stays unknown if API returns no value. |
+| Hearthstone/home bind location | No exact verified capture API or collector established in this pass | Not collected; remains UNKNOWN. Do not infer from Hearthstone item, zone, or inn visit. |
 | Equipment slots | Equipment collector + shared version-scoped labels | Numeric IDs retained. Empty means the slot-presence API explicitly said empty; it is not a recommendation that the slot needs gear. |
 | Item identity/name/level | `C_Item` exact link/ID calls | Exact link is preserved when available. ID-only fallback has no variant. Async item cache is retried on item-data event. Item names for 4237/4239/4362 require a new capture to verify. |
 | Item stats/durability/enchant | Existing/raw item evidence as applicable | Raw stats are not interpreted as effective stats or upgrade decisions. Unsupported or absent values remain unknown. |
+| Durability/enchantments | No complete, verified Forever equipment-slot capture added | Not collected as authoritative fields; absent remains UNKNOWN. Exact item links alone do not establish current durability/enchant semantics. |
 | Bags and free slots | Existing Forever `C_Container` reader | Section status and exact links/quantities retained; names can be unresolved during cache miss. |
 | Character bank | `C_Bank.CanViewBank`, `FetchPurchasedBankTabIDs`, `C_Container` while open | Only tabs exposed in that visit; empty requires a complete slot scan. Not observed outside visit. |
 | Professions and skills | `GetProfessions` + `GetProfessionInfo` | Learned entries/current/max skill only. No conclusion that an absent/unavailable section means no professions. |
 | Spells/profession abilities | `C_SpellBook` skill lines plus profession indices | Visible spellbook observations; no ranks, trainer learnability, or complete recipe list inferred. |
+| Known recipes and smelting | No recipe enumeration/recipe-to-reagent collector activated | UNKNOWN. Spellbook rows are not proof of a complete recipe list, known smelting conversion, skill threshold, or reagent ratio. |
 | Trainer services | Visible trainer evidence collector | Raw, bounded API tuples only. Adapter disabled until live contract is verified; no learnability claim. |
 | Faction, class, proficiency, item eligibility | Raw character/item evidence | Capture does not turn `CanUseItem`, item category, or missing data into full equip eligibility. |
 
