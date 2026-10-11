@@ -51,7 +51,24 @@ return function(S, check, equal)
     setFixture({})
     local cold, coldMeta = S.collectors.professionRecipes()
     equal(cold, nil, "empty/unhydrated candidate enumeration is not an empty learned set")
+    check(coldMeta.reason:match("empty table %(0 candidates%)") ~= nil, "empty API table is distinguished from an API error or malformed result")
     check(coldMeta.retry, "empty enumeration uses bounded readiness retry")
+    C_TradeSkillUI.GetAllRecipeIDs = function() error("recipe panel data pending") end
+    local failed, failedMeta = S.collectors.professionRecipes()
+    equal(failed, nil, "API exceptions do not produce recipe evidence")
+    check(failedMeta.reason:match("raised an API error: .*recipe panel data pending") ~= nil, "API exception detail is retained for diagnosis")
+    C_TradeSkillUI.GetAllRecipeIDs = function() return nil end
+    local nilResult, nilMeta = S.collectors.professionRecipes()
+    equal(nilResult, nil, "nil enumeration does not produce recipe evidence")
+    check(nilMeta.reason:match("returned nil") ~= nil, "nil API return is distinguished")
+    C_TradeSkillUI.GetAllRecipeIDs = function() return false end
+    local malformedResult, malformedMeta = S.collectors.professionRecipes()
+    equal(malformedResult, nil, "non-table enumeration does not produce recipe evidence")
+    check(malformedMeta.reason:match("returned boolean, expected a recipe ID array") ~= nil, "non-table API shape is identified")
+    C_TradeSkillUI.GetAllRecipeIDs = function() return { [1] = 61001, [3] = 61002 } end
+    local malformedArray, malformedArrayMeta = S.collectors.professionRecipes()
+    equal(malformedArray, nil, "sparse enumeration does not produce recipe evidence")
+    check(malformedArrayMeta.reason:match("malformed array %(keys=2, numericKeys=2%)") ~= nil, "malformed array shape is distinguished from an empty list")
     S.professionRecipeOpen = false
     local closed = S.collectors.professionRecipes()
     equal(closed, nil, "closed profession window is not enumerated")

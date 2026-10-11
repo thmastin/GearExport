@@ -27,7 +27,11 @@ end
 local function safe(fn, ...)
     if type(fn) ~= "function" then return "API_MISSING" end
     local values = pack(pcall(fn, ...))
-    if not values[1] then return "API_ERROR" end
+    if not values[1] then
+        local message = type(values[2]) == "string" and values[2] or ("error value type: " .. type(values[2]))
+        message = message:gsub("[%c]", " "):sub(1, 180)
+        return "API_ERROR", nil, message
+    end
     if values[2] == nil then return "NIL_RESULT" end
     return "OBSERVED_VALUE", unpackValues(values, 2, values.n)
 end
@@ -47,6 +51,34 @@ local function denseIDs(value)
         ids[#ids + 1] = id
     end
     return ids
+end
+
+local function recipeEnumerationFailure(state, value, apiError)
+    if state == "API_ERROR" then
+        return "C_TradeSkillUI.GetAllRecipeIDs raised an API error: " .. (apiError or "error detail unavailable")
+    end
+    if state == "NIL_RESULT" then return "C_TradeSkillUI.GetAllRecipeIDs returned nil; recipe availability remains UNKNOWN" end
+    if state ~= "OBSERVED_VALUE" then
+        return "C_TradeSkillUI.GetAllRecipeIDs result was not observed (" .. tostring(state) .. ")"
+    end
+    if type(value) ~= "table" then
+        return "C_TradeSkillUI.GetAllRecipeIDs returned " .. type(value) .. ", expected a recipe ID array"
+    end
+
+    local keyCount, numberKeys, otherKeyTypes = 0, 0, {}
+    for key in pairs(value) do
+        keyCount = keyCount + 1
+        if type(key) == "number" then numberKeys = numberKeys + 1
+        else otherKeyTypes[type(key)] = true end
+    end
+    if keyCount == 0 then
+        return "C_TradeSkillUI.GetAllRecipeIDs returned an empty table (0 candidates); whether the panel is still hydrating is UNKNOWN"
+    end
+    local keyTypes = {}
+    for keyType in pairs(otherKeyTypes) do keyTypes[#keyTypes + 1] = keyType end
+    table.sort(keyTypes)
+    return "C_TradeSkillUI.GetAllRecipeIDs returned a malformed array (keys=" .. keyCount .. ", numericKeys=" .. numberKeys
+        .. (#keyTypes > 0 and ", otherKeyTypes=" .. table.concat(keyTypes, ",") or "") .. "); candidate completeness remains UNKNOWN"
 end
 
 local function learnedProfessions()
@@ -210,10 +242,10 @@ S.collectors.professionRecipes = function()
     for _, name in ipairs({ "GetAllRecipeIDs", "GetTradeSkillLineForRecipe", "GetRecipeSchematic" }) do
         if type(api[name]) ~= "function" then return nil, { reason = "Forever recipe API unavailable: " .. name, retry = false, stale = true } end
     end
-    local idsState, rawIDs = safe(api.GetAllRecipeIDs)
+    local idsState, rawIDs, enumerationError = safe(api.GetAllRecipeIDs)
     local ids = idsState == "OBSERVED_VALUE" and denseIDs(rawIDs) or nil
     if not ids or #ids == 0 then
-        return nil, { reason = "Forever recipe enumeration is empty or malformed; an uninitialized panel is not an empty known-recipe list", retry = true, stale = true }
+        return nil, { reason = recipeEnumerationFailure(idsState, rawIDs, enumerationError), retry = true, stale = true }
     end
     local learnedByLine = learnedProfessions()
     if not learnedByLine then return nil, { reason = "Learned profession identity has not hydrated", retry = true, stale = true } end
