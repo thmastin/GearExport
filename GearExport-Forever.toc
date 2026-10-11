@@ -11,6 +11,7 @@ WoWSyncForever.lua
 WoWSyncCore.lua
 WoWSyncForeverCollectors.lua
 WoWSyncForever70291.lua
+WoWSyncForeverQuests.lua
 WoWSyncForeverBags70291.lua
 WoWSyncForeverEvidence70291.lua
 WoWSyncForeverBank.lua

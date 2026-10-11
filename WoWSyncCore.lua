@@ -11,10 +11,12 @@ if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
     S.order[#S.order + 1] = "professionSpecializations"
     S.order[#S.order + 1] = "professionRecipes"
     S.order[#S.order + 1] = "reputation"
+elseif WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever() then
+    S.order[#S.order + 1] = "quests"
 end
 -- Captured into SavedVariables only: the WOWSYNC v1 text omits these sections so
 -- existing importers, which reject unknown section headers, keep working.
-S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true }
+S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true }
 addon.Sync = S
 WoWSync = S
 
@@ -580,6 +582,11 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         if event == "SKILL_LINES_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE" then S.Mark("professionSpecializations") end
     elseif event == "NEW_RECIPE_LEARNED" then
         S.Mark("professionRecipes")
+    elseif event == "QUEST_ACCEPTED" or event == "QUEST_AUTOCOMPLETE" or event == "QUEST_COMPLETE"
+        or event == "QUEST_DATA_LOAD_RESULT" or event == "QUEST_LOG_CRITERIA_UPDATE"
+        or event == "QUEST_LOG_UPDATE" or event == "QUEST_REMOVED" or event == "QUEST_TURNED_IN"
+        or event == "QUEST_WATCH_LIST_CHANGED" or event == "QUEST_WATCH_UPDATE" then
+        S.Mark("quests")
     elseif event == "TRAIT_CONFIG_UPDATED" or event == "TRAIT_SUB_TREE_CHANGED" then
         S.Mark("combatSpecialization"); S.Mark("professionSpecializations")
     elseif event == "TRAIT_TREE_CURRENCY_INFO_UPDATED" or event == "SKILL_LINE_SPECS_RANKS_CHANGED"
