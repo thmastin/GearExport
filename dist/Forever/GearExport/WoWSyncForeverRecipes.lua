@@ -36,20 +36,22 @@ local function safe(fn, ...)
     return "OBSERVED_VALUE", unpackValues(values, 2, values.n)
 end
 
-local function denseIDs(value)
+local function numericRecipeIDs(value)
     if type(value) ~= "table" then return nil end
-    local count = 0
-    for key in pairs(value) do
-        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then return nil end
-        count = count + 1
-    end
-    local ids, seen = {}, {}
-    for index = 1, count do
-        local id = value[index]
-        if not positive(id) or seen[id] then return nil end
+    local keyedIDs, seen = {}, {}
+    for key, id in pairs(value) do
+        -- The version-matched API contract says this is a number array and
+        -- its example iterates with pairs. Accept sparse positive-integer
+        -- array keys, but never treat dictionary keys or boolean set values
+        -- as recipe IDs. This handles holes without guessing a new shape.
+        if not positive(key) or not positive(id) or seen[id] then return nil end
         seen[id] = true
-        ids[#ids + 1] = id
+        keyedIDs[#keyedIDs + 1] = { key = key, id = id }
+        if #keyedIDs > 10000 then return nil end
     end
+    table.sort(keyedIDs, function(left, right) return left.key < right.key end)
+    local ids = {}
+    for _, pair in ipairs(keyedIDs) do ids[#ids + 1] = pair.id end
     return ids
 end
 
@@ -243,7 +245,7 @@ S.collectors.professionRecipes = function()
         if type(api[name]) ~= "function" then return nil, { reason = "Forever recipe API unavailable: " .. name, retry = false, stale = true } end
     end
     local idsState, rawIDs, enumerationError = safe(api.GetAllRecipeIDs)
-    local ids = idsState == "OBSERVED_VALUE" and denseIDs(rawIDs) or nil
+    local ids = idsState == "OBSERVED_VALUE" and numericRecipeIDs(rawIDs) or nil
     if not ids or #ids == 0 then
         return nil, { reason = recipeEnumerationFailure(idsState, rawIDs, enumerationError), retry = true, stale = true }
     end

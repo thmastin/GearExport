@@ -66,9 +66,13 @@ return function(S, check, equal)
     equal(malformedResult, nil, "non-table enumeration does not produce recipe evidence")
     check(malformedMeta.reason:match("returned boolean, expected a recipe ID array") ~= nil, "non-table API shape is identified")
     C_TradeSkillUI.GetAllRecipeIDs = function() return { [1] = 61001, [3] = 61002 } end
-    local malformedArray, malformedArrayMeta = S.collectors.professionRecipes()
-    equal(malformedArray, nil, "sparse enumeration does not produce recipe evidence")
-    check(malformedArrayMeta.reason:match("malformed array %(keys=2, numericKeys=2%)") ~= nil, "malformed array shape is distinguished from an empty list")
+    local sparseArray, sparseArrayMeta = S.collectors.professionRecipes()
+    check(sparseArray ~= nil, "sparse numeric array from GetAllRecipeIDs is accepted as candidate enumeration")
+    equal(sparseArray.coverage.returnedRecipeCount, 2, "sparse numeric array preserves every returned candidate")
+    equal(sparseArray.professions[1].recipes[1].recipeID, 61001, "sparse numeric array retains numeric-key order")
+    equal(sparseArray.professions[1].recipes[2].recipeID, 61002, "sparse numeric array retains later candidate")
+    equal(sparseArray.coverage.candidateCompleteness, "UNKNOWN", "sparse candidate enumeration does not claim complete recipe knowledge")
+    equal(sparseArrayMeta.completeness, "partial", "sparse candidate list is still reported partial")
     S.professionRecipeOpen = false
     local closed = S.collectors.professionRecipes()
     equal(closed, nil, "closed profession window is not enumerated")
@@ -147,8 +151,8 @@ return function(S, check, equal)
     equal(S.collectors.professionRecipes(), nil, "recipe panel must match a learned player profession")
     setFixture({ 61001, 61001 })
     equal(S.collectors.professionRecipes(), nil, "duplicate candidate IDs are rejected")
-    setFixture({ [1] = 61001, [3] = 61002 })
-    equal(S.collectors.professionRecipes(), nil, "sparse candidate arrays are rejected")
+    setFixture({ [61001] = true })
+    equal(S.collectors.professionRecipes(), nil, "boolean ID-set dictionary is not mistaken for a number array")
 
     C_TradeSkillUI, C_SpellBook, C_Item = oldTrade, oldSpellbook, oldItem
     GetProfessions, GetProfessionInfo = oldProfessionList, oldProfessionInfo
