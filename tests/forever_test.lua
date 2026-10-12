@@ -60,6 +60,7 @@ BuyTrainerService, UseContainerItem, PickupContainerItem = action, action, actio
 for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.lua",
     "WoWSyncForeverCollectors.lua", "WoWSyncForever70291.lua", "WoWSyncForeverQuests.lua", "WoWSyncForeverBags70291.lua",
     "WoWSyncForeverEvidence70291.lua", "WoWSyncForeverBank.lua", "WoWSyncForeverProfessions.lua", "WoWSyncForeverSpells.lua",
+    "WoWSyncForeverRecipes.lua",
     "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
@@ -224,6 +225,7 @@ assert(loadfile("tests/forever_professions_test.lua"))()(S, check, equal, advanc
 assert(loadfile("tests/forever_spells_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_remaining_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_quests_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/forever_recipes_test.lua"))()(S, check, equal)
 for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitRace", "UnitLevel", "UnitFactionGroup", "GetMoney", "UnitXP", "UnitXPMax" }) do
     _G[key] = function() error("API changed") end
 end

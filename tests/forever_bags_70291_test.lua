@@ -85,6 +85,35 @@ return function(S, check, equal)
         if slot == 1 then return { itemID = 1, itemName = "bad", hyperlink = "item:2", stackCount = 1, isLocked = false } end
     end
     equal(S.collectors.bags(), nil, "mismatched item ID and hyperlink fail closed")
+    local exactFallback = "|Hitem:6948:4:5:6|h[Exact Variant]|h"
+    C_Container.GetContainerItemInfo = function(bag, slot)
+        local source, info = oldInfo(bag, slot), {}
+        if source then for key, value in pairs(source) do info[key] = value end end
+        if bag == 0 and slot == 1 then info.hyperlink = nil end
+        return source and info or nil
+    end
+    C_Container.GetContainerItemLink = function(bag, slot)
+        if bag == 0 and slot == 1 then return exactFallback end
+        return oldInfo(bag, slot).hyperlink
+    end
+    local fallback, fallbackMeta = S.collectors.bags()
+    equal(fallback.containers[1].slots[1].itemString, "item:6948:4:5:6",
+        "slot-link API supplies an observed exact variant when info.hyperlink is absent")
+    equal(fallback.containers[1].slots[1].itemStringSource, "C_Container.GetContainerItemLink",
+        "exact link source is recorded")
+    equal(fallbackMeta.completeness, "complete", "supported exact link fallback keeps successful scan complete")
+    C_Container.GetContainerItemInfo = function(bag, slot)
+        local source, info = oldInfo(bag, slot), {}
+        if source then for key, value in pairs(source) do info[key] = value end end
+        if bag == 0 and slot == 1 then info.hyperlink = nil end
+        return source and info or nil
+    end
+    C_Container.GetContainerItemLink = nil
+    local unknownIdentity, identityMeta = S.collectors.bags()
+    equal(unknownIdentity, nil, "item ID alone never substitutes for a required exact item string")
+    check(identityMeta.reason:find("bag 0 slot 1", 1, true) and identityMeta.reason:find("itemID=6948", 1, true)
+        and identityMeta.reason:find("GetContainerItemLink=API_MISSING", 1, true),
+        "failed exact identity names bag/slot and API evidence")
     C_Container.GetContainerItemInfo = function(_, slot)
         if slot == 1 then return { itemID = 1, itemName = "moving", hyperlink = "item:1", stackCount = 1, isLocked = true } end
     end

@@ -36,7 +36,7 @@ This checkpoint audits Forever 1.60.1 builds 70291 and 70338, interface 16001. B
 | Character bank | `C_Bank.CanViewBank`, `FetchPurchasedBankTabIDs`, `C_Container` while open | Only tabs exposed in that visit; empty requires a complete slot scan. Not observed outside visit. |
 | Professions and skills | `GetProfessions` + `GetProfessionInfo` | Learned entries/current/max skill only. No conclusion that an absent/unavailable section means no professions. |
 | Spells/profession abilities | `C_SpellBook` skill lines plus profession indices | Visible spellbook observations; no ranks, trainer learnability, or complete recipe list inferred. |
-| Known recipes and smelting | No recipe enumeration/recipe-to-reagent collector activated | UNKNOWN. Spellbook rows are not proof of a complete recipe list, known smelting conversion, skill threshold, or reagent ratio. |
+| Learned recipes and outputs | Forever profession-panel collector; recipe enumeration, learned-state check, schematic, output item APIs, and bounded requirement calls | Positively learned recipe rows can carry observed schematic/reagent and output-item API evidence. Candidate coverage remains partial/UNKNOWN. This does not establish smelting conversion, a minimum skill requirement, full eligibility, or an upgrade. |
 | Trainer services | Visible trainer evidence collector | Raw, bounded API tuples only. Adapter disabled until live contract is verified; no learnability claim. |
 | Faction, class, proficiency, item eligibility | Raw character/item evidence | Capture does not turn `CanUseItem`, item category, or missing data into full equip eligibility. |
 
@@ -47,3 +47,27 @@ For equipped IDs 4237, 4239, and 4362, the collector already had the numeric ID 
 ## Validation and limits
 
 The Lua fixture suite, release/package guards, and deployment fixtures exercise both allowed builds, unknown-build rejection, field missing/error behavior, time-played events, item-ID fallback, delayed item-data retry, profession and spell rows, and unknown trainer semantics. Fixtures are not live-client proof. Do not deploy this candidate from this checkpoint. The next real capture must verify basic fields, the three item names, a bank visit, profession/spell capture, and trainer-window raw return shapes in one session.
+
+## Forever learned-recipe output evidence (candidate; not live-validated)
+
+The Forever package now loads `WoWSyncForeverRecipes.lua`. Recipe observations are captured only while the player's profession window is open and the panel can be matched to a learned profession. A recipe receives candidate-output evidence only when its learned state is positively observed true. The collector does not change filters, start crafting, or infer a complete recipe catalogue.
+
+Each positively learned recipe may include an additive `outputItemEvidence` object under the existing structured `professionRecipes` SavedVariables section:
+
+- `itemID`: exact output item ID returned by the recipe schematic.
+- `itemReferenceKind`: `MINIMAL_ID_REFERENCE_NO_VARIANT`. Item information and stats are queried using the observed numeric output ID; this is not an item instance and does not create an `itemString`.
+- `itemInfo` / `itemInfoInstant`: raw API call state and only the tuple fields actually returned, including name, quality, item level, required level, class/subclass, and equip location when present.
+- `itemStats`: raw returned stat keys and numeric values. No stat valuation or upgrade score is produced.
+- `isEquippableItem` and `canUseItem`: raw player-scoped API results; neither is promoted to complete destination-character eligibility.
+- `cacheState`, request call state/result, and any later load-event result: separate cache/API evidence. A successful load event does not imply metadata or stats became available.
+- API names and observation timestamps: stored with the corresponding evidence.
+
+The optional `requirements` object preserves the exact `GetRecipeRequirements` values (`name`, `met`, and numeric `type`) and its own timestamp. It does not treat recipe difficulty, maximum trivial skill, or reagent-slot metadata as a minimum profession skill. Unreturned or unavailable requirement fields stay UNKNOWN.
+
+Collection is bounded: at most 128 requirement queries and 128 distinct output-item evidence rows per pass, with at most 32 requirement rows copied from any one API result and at most 32 item-data load requests per addon login session (one request attempt per item per session). Rows outside a bound remain partial/unresolved. Load events can schedule one normal collector refresh while the profession panel remains open; there is no polling loop or blocking wait.
+
+The only change to the export contract is this additive structured SavedVariables content in the Forever `professionRecipes` section. The legacy `WOWSYNC v1` text export is unchanged. Existing consumers that ignore unknown structured fields remain compatible, but a downstream importer must explicitly project these nested fields before they are available to Dashboard/REST/MCP assessments. No Dashboard, database schema, or non-Forever package is changed here.
+
+The bag collector now falls back from an absent/unusable `GetContainerItemInfo().hyperlink` to the item's slot link from `C_Container.GetContainerItemLink(bag, slot)`, validating that the link item ID matches the independently observed slot ID. It never synthesizes an exact variant from an ID. Contradictory non-empty links and unresolved identity fail the scan; existing stale/partial-section behavior is retained so a failed scan cannot become an empty bag.
+
+All new collector behavior is automated-tested with fixtures only. The candidate still requires one live build-70338 capture to validate recipe-window events, cache request/load behavior, output metadata/stat returns, requirement return shapes, and the bag link fallback against the actual client.

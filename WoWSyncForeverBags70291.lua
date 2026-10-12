@@ -40,6 +40,37 @@ local function Failed(reason, retry)
     return nil, { reason = "Forever " .. tostring(addon.Forever.build) .. " " .. reason, retry = retry, stale = true }
 end
 
+local function ExactItemReference(api, info, bag, slot, id)
+    local infoState = "NIL"
+    local ok, link = pcall(function() return info.hyperlink end)
+    if not ok then infoState = "API_ERROR"
+    elseif type(link) == "string" and link ~= "" then
+        local ref, linkID = ItemReference(link, id)
+        if ref then return ref, linkID, "CONTAINER_INFO_HYPERLINK" end
+        infoState = "INVALID_OR_ID_MISMATCH"
+        return nil, "bag " .. bag .. " slot " .. slot .. " carried item hyperlink conflicts with the observed item ID"
+            .. " (itemID=" .. (id and tostring(id) or "UNKNOWN") .. "; infoHyperlink=" .. infoState
+            .. "; GetContainerItemLink=NOT_USED_CONTRADICTION)", nil
+    elseif link ~= nil then infoState = "UNSUPPORTED_VALUE_TYPE"
+    end
+
+    local slotAPIState, slotLink = "API_MISSING", nil
+    if type(api.GetContainerItemLink) == "function" then
+        local linkOK, value = pcall(api.GetContainerItemLink, bag, slot)
+        if not linkOK then slotAPIState = "API_ERROR"
+        elseif value == nil then slotAPIState = "NIL_RESULT"
+        elseif type(value) ~= "string" or value == "" then slotAPIState = "UNSUPPORTED_VALUE_TYPE"
+        else
+            local ref, linkID = ItemReference(value, id)
+            if ref then return ref, linkID, "C_Container.GetContainerItemLink" end
+            slotAPIState = "INVALID_OR_ID_MISMATCH"
+        end
+    end
+    return nil, "bag " .. bag .. " slot " .. slot .. " exact item identity unknown"
+        .. " (itemID=" .. (id and tostring(id) or "UNKNOWN")
+        .. "; infoHyperlink=" .. infoState .. "; GetContainerItemLink=" .. slotAPIState .. ")", nil
+end
+
 S.collectors.bags = function()
     local api = type(C_Container) == "table" and C_Container or {}
     if type(api.GetContainerNumSlots) ~= "function" or type(api.GetContainerItemInfo) ~= "function" then
@@ -68,12 +99,12 @@ S.collectors.bags = function()
                 if locked ~= false then return Failed("carried item lock state unknown", true) end
                 local id = F.Number("Carried item ID", Field(info, "itemID"), issues)
                 if id == 0 then id = nil end
-                local link = F.Read("Carried item hyperlink", Field(info, "hyperlink"), 1, "string", issues)
-                local ref, linkID = ItemReference(link, id)
-                if not ref then return Failed("exact carried item identity unknown", true) end
+                local ref, linkID, linkSource = ExactItemReference(api, info, bag, slot, id)
+                if not ref then return Failed(linkID, true) end
                 local count = F.Number("Carried item stack count", Field(info, "stackCount"), issues)
                 if not count or count == 0 then return Failed("carried item quantity unknown", true) end
-                local item = { itemID = id or linkID, itemString = ref, count = count }
+                local item = { itemID = id or linkID, itemString = ref, count = count,
+                    itemStringSource = linkSource, itemIdentityState = "OBSERVED_EXACT_ITEM_STRING" }
                 item.name = F.Read("Carried item name", Field(info, "itemName"), 1, "string", issues)
                 item.bound, item.bindingState = BindingFacet(info, issues)
                 container.slots[slot] = item
@@ -107,15 +138,14 @@ S.collectors.bags = function()
                 local info = result[1]
                 local id = F.Number("Carried item verification ID", Field(info, "itemID"), issues)
                 if id == 0 then id = nil end
-                local link = F.Read("Carried item verification hyperlink", Field(info, "hyperlink"), 1, "string", issues)
-                local ref, linkID = ItemReference(link, id)
+                local ref, linkID = ExactItemReference(api, info, bag, slot, id)
                 local count = F.Number("Carried item verification quantity", Field(info, "stackCount"), issues)
                 local locked = F.Read("Carried item verification lock", Field(info, "isLocked"), 1, "boolean", issues)
                 local bound, bindingState = BindingFacet(info, issues)
                 if not ref or (id or linkID) ~= expected.itemID or ref ~= expected.itemString
                     or count ~= expected.count or locked ~= false
                     or bindingState ~= expected.bindingState or bound ~= expected.bound then
-                    return Failed("carried-container changed during capture", true)
+                    return Failed("carried-container changed during capture at bag " .. bag .. " slot " .. slot, true)
                 end
             end
         end
