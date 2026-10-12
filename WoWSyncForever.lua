@@ -26,12 +26,12 @@ function C.IsSupportedForeverBuild(build, interface, version)
     return F.knownProfiles[tostring(version) .. ":" .. tostring(build) .. ":" .. tostring(interface)] == true
 end
 
-local function IsForeverProject(projectID, camelotID, interface)
+local function IsForeverProject(projectID, camelotID)
     -- Prefer the named client constant. The numeric fallback is based on the
-    -- captured 1.60.1 build 70338 project ID (18), and constrained to the
-    -- Forever interface family. The addon TOC target is independently checked.
+    -- captured 1.60.1 build 70338 project ID (18). The addon TOC target and
+    -- Forever version family are independently checked.
     if type(camelotID) == "number" then return projectID == camelotID end
-    return projectID == 18 and type(interface) == "number" and interface >= 16000 and interface < 20000
+    return projectID == 18
 end
 
 F.IsForeverProject = IsForeverProject
@@ -84,10 +84,10 @@ function C.IsForever()
     local camelotID = type(WOW_PROJECT_CAMELOT) == "number" and WOW_PROJECT_CAMELOT or nil
     local metadata = type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
     local target = F.Read("target", metadata, 1, "string", issues, ADDON_NAME, "X-WoWSync-Target")
-    local isProject = IsForeverProject(projectID, camelotID, interface)
+    local isProject = IsForeverProject(projectID, camelotID)
     local recognized = target == "Forever" and isProject and IsForeverVersion(version)
         and type(build) == "string" and build:match("^%d+$") ~= nil
-        and interface ~= nil and interface >= 16000 and interface < 20000
+        and interface ~= nil and interface > 0 and interface % 1 == 0
     if recognized then
         -- Scope evidence and freshness to the exact running runtime, including
         -- unverified update builds. Build identity is not API compatibility.
@@ -98,7 +98,7 @@ function C.IsForever()
         F.compatibilityReason = F.compatibilityVerified and nil
             or "Forever project identified; this client build has not been compatibility-tested. Each observation remains API-guarded."
         local evidence = WOW_PROJECT_CAMELOT and "WOW_PROJECT_ID_EQUALS_WOW_PROJECT_CAMELOT"
-            or "WOW_PROJECT_ID_18_AND_INTERFACE_16000_19999"
+            or "WOW_PROJECT_ID_18_WITH_FOREVER_VERSION"
         if addon.Sync then addon.Sync.runtimeCompatibility = {
             state = F.compatibilityState, version = version, build = build, interface = interface,
             reason = F.compatibilityReason, projectEvidence = evidence,

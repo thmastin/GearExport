@@ -6,7 +6,9 @@ The Forever package no longer uses an exact build list as an addon-load or
 export gate. It requires the Forever addon TOC marker and the Forever client
 project identity (`WOW_PROJECT_ID == WOW_PROJECT_CAMELOT` when the constant is
 available). The fallback is the ID 18 observed in the 1.60.1 build 70338
-capture, constrained to interface IDs 16000–19999 and client versions 1.60–1.99.
+capture and combined with the Forever 1.60–1.99 version family and explicit
+package target. A positive integer interface is retained as provenance, but an
+arbitrary interface-number range is not used as a runtime compatibility gate.
 Retail (project 1), Classic Era (2), TBC (5), and other version families are
 rejected. The fallback is isolated in `WoWSyncForever.lua` and has a regression
 test.

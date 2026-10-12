@@ -92,15 +92,15 @@ for _, updateBuild in ipairs({ "70339", "70400", "71000" }) do
     equal(addon.Forever.runtimeBuild, updateBuild, "unknown build provenance is retained")
 end
 build = "70338"
-version, build, interface = "1.60.2", "70400", 16002
+version, build, interface = "1.60.2", "70400", 20001
 check(C.IsForever(), "new Forever patch version and interface remain recognized by project identity")
 equal(addon.Forever.compatibilityState, "UNVERIFIED_BUILD", "changed patch/interface does not become falsely verified")
-equal(addon.Forever.runtimeInterface, 16002, "changed interface is preserved as runtime provenance")
+equal(addon.Forever.runtimeInterface, 20001, "changed interface is preserved as runtime provenance")
 version, build, interface = "1.60.1", "70338", 16001
 check(C.IsForever(), "known live profile restored")
 WOW_PROJECT_ID = 2; check(not C.IsForever(), "Era project rejected even with Forever package marker"); WOW_PROJECT_ID = 18
-interface = 15999; check(not C.IsForever(), "interface outside Forever range rejected"); interface = 16000
-check(C.IsForever(), "a changed interface inside Forever family is not alone a load blocker"); interface = 16001
+interface = 20001; check(C.IsForever(), "project identity and Forever version permit an interface update beyond the old arbitrary range")
+interface = 0; check(not C.IsForever(), "missing/invalid interface is rejected"); interface = 16001
 local camelotConstant = WOW_PROJECT_CAMELOT
 WOW_PROJECT_CAMELOT = nil
 WOW_PROJECT_ID = 18; check(C.IsForever(), "observed numeric project-ID fallback works when named constant is absent")
