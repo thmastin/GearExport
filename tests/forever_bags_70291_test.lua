@@ -118,7 +118,7 @@ return function(S, check, equal)
     local recovered, recoveredMeta = S.collectors.bags()
     equal(recovered.containers[1].slots[1].itemString, "item:6948:4:5:6",
         "valid fallback is accepted after malformed embedded link")
-    equal(recovered.containers[1].slots[1].identityDiagnostics.embeddedState, "MALFORMED",
+    equal(recovered.containers[1].slots[1].identityDiagnostics.embeddedState, "UNRECOGNIZED_FORMAT",
         "malformed embedded-link state is preserved")
     equal(recovered.containers[1].slots[1].identityDiagnostics.fallbackItemID, 6948,
         "fallback base item identity is recorded")
@@ -144,6 +144,26 @@ return function(S, check, equal)
         and embeddedFallbackConflictMeta.reason:find("EMBEDDED_AND_FALLBACK_DISAGREE", 1, true),
         "contradiction diagnostic includes slot and both independently parsed IDs")
 
+    -- A malformed payload can still expose a base-ID hint. Keep it only as
+    -- contradictory evidence; it must never be accepted as an item identity.
+    C_Container.GetContainerItemInfo = function(bag, slot)
+        local source, info = oldInfo(bag, slot), {}
+        if source then for key, value in pairs(source) do info[key] = value end end
+        if bag == 0 and slot == 1 then info.hyperlink = "|Hitem:999:bad|h[Malformed]|h" end
+        return source and info or nil
+    end
+    C_Container.GetContainerItemLink = function(bag, slot)
+        if bag == 0 and slot == 1 then return exactFallback end
+        return oldInfo(bag, slot).hyperlink
+    end
+    local malformedConflict, malformedConflictMeta = S.collectors.bags()
+    equal(malformedConflict, nil, "malformed contradictory embedded ID rejects the entire scan")
+    check(malformedConflictMeta.reason:find("embeddedItemID=UNKNOWN", 1, true)
+        and malformedConflictMeta.reason:find("embeddedBaseIDHint=999", 1, true)
+        and malformedConflictMeta.reason:find("fallbackItemID=6948", 1, true)
+        and malformedConflictMeta.reason:find("EMBEDDED_AND_FALLBACK_DISAGREE", 1, true),
+        "malformed ID is retained only as a hint in fail-closed diagnostics")
+
     -- A valid embedded hyperlink remains preferred and does not call the
     -- fallback API unnecessarily.
     C_Container.GetContainerItemInfo = oldInfo
@@ -156,6 +176,84 @@ return function(S, check, equal)
     check(embeddedPreferred and embeddedPreferred.containers[1].slots[1].itemStringSource == "CONTAINER_INFO_HYPERLINK",
         "valid embedded link retains its source")
     equal(linkCalls, 0, "fallback API is not called when embedded exact identity validates")
+
+    local supportedLinks = {
+        { "|cffa335ee|Hitem:6948:4:5:6|h[Hearthstone]|h|r", "item:6948:4:5:6", "colored standard wrapper" },
+        { "|Hitem:6948:4:5:6|h[Hearthstone]|h", "item:6948:4:5:6", "hyperlink wrapper" },
+        { "item:6948:4:5:6", "item:6948:4:5:6", "plain item string" },
+        { "|Hitem:6948:1:2:3:4:5:6:7:8:9:10:11:12:13|h[Variant]|h",
+            "item:6948:1:2:3:4:5:6:7:8:9:10:11:12:13", "extended variant fields" },
+        { "item:6948", "item:6948", "omitted optional item fields" },
+    }
+    for _, fixture in ipairs(supportedLinks) do
+        C_Container.GetContainerItemInfo = function(bag, slot)
+            local source, info = oldInfo(bag, slot), {}
+            if source then for key, value in pairs(source) do info[key] = value end end
+            if bag == 0 and slot == 1 then info.hyperlink = fixture[1] end
+            return source and info or nil
+        end
+        local parsed = S.collectors.bags()
+        equal(parsed.containers[1].slots[1].itemString, fixture[2], fixture[3] .. " is preserved exactly")
+    end
+
+    local function failingLink(link)
+        C_Container.GetContainerItemInfo = function(bag, slot)
+            local source, info = oldInfo(bag, slot), {}
+            if source then for key, value in pairs(source) do info[key] = value end end
+            if bag == 0 and slot == 1 then info.hyperlink = link end
+            return source and info or nil
+        end
+        C_Container.GetContainerItemLink = function(bag, slot)
+            if bag == 0 and slot == 1 then return link end
+            return oldInfo(bag, slot).hyperlink
+        end
+        return S.collectors.bags()
+    end
+
+    local escapedData, escapedMeta = failingLink("||Hitem:6948:4|h[Private Display]|h")
+    equal(escapedData, nil, "escaped hyperlink delimiters are not treated as item identity")
+    check(escapedMeta.reason:find("shape=ESCAPED_DELIMITER", 1, true)
+        and not escapedMeta.reason:find("Private Display", 1, true),
+        "escaped-link diagnostic identifies structure without recording display text")
+    local escapedCloseData, escapedCloseMeta = failingLink("|Hitem:6948:4||h[Private Display]|h")
+    equal(escapedCloseData, nil, "escaped hyperlink close delimiter cannot terminate an item payload")
+    check(escapedCloseMeta.reason:find("embeddedState=MALFORMED_ESCAPE", 1, true)
+        and escapedCloseMeta.reason:find("shape=ESCAPED_DELIMITER", 1, true),
+        "escaped close delimiter is diagnosed without relaxing parser acceptance")
+    local nonItemData, nonItemMeta = failingLink("|Hspell:123|h[Private Display]|h")
+    equal(nonItemData, nil, "non-item hyperlinks do not satisfy item identity")
+    check(nonItemMeta.reason:find("shape=NON_ITEM_HYPERLINK", 1, true)
+        and not nonItemMeta.reason:find("Private Display", 1, true),
+        "non-item hyperlink diagnostic is sanitized")
+    C_Container.GetContainerItemInfo = function(bag, slot)
+        local source, info = oldInfo(bag, slot), {}
+        if source then for key, value in pairs(source) do info[key] = value end end
+        if bag == 0 and slot == 1 then info.hyperlink = "unrecognized" end
+        return source and info or nil
+    end
+    C_Container.GetContainerItemLink = function(bag, slot)
+        if bag == 0 and slot == 1 then return { private = "must not persist" } end
+        return oldInfo(bag, slot).hyperlink
+    end
+    local wrongTypeData, wrongTypeMeta = S.collectors.bags()
+    equal(wrongTypeData, nil, "non-string slot links do not satisfy exact identity")
+    check(wrongTypeMeta.reason:find("fallbackState=UNSUPPORTED_VALUE_TYPE", 1, true)
+        and wrongTypeMeta.reason:find("type=table;shape=NON_STRING", 1, true)
+        and not wrongTypeMeta.reason:find("must not persist", 1, true),
+        "non-string API diagnostics record only the type")
+    local truncatedData, truncatedMeta = failingLink("|Hitem:6948:4:5")
+    equal(truncatedData, nil, "unterminated item hyperlink is not accepted as a complete variant")
+    check(truncatedMeta.reason:find("embeddedState=TRUNCATED_ITEM_PAYLOAD", 1, true)
+        and truncatedMeta.reason:find("shape=TRUNCATED_ITEM_PAYLOAD", 1, true),
+        "truncated payload has explicit parser and format states")
+    local oversized = string.rep("PrivateChatPayload", 40)
+    local oversizedData, oversizedMeta = failingLink(oversized)
+    equal(oversizedData, nil, "unrecognized long API values do not become item identities")
+    check(oversizedMeta.reason:find("length=160+", 1, true)
+        and oversizedMeta.reason:find("shape=INSPECTION_LIMIT_REACHED", 1, true)
+        and not oversizedMeta.reason:find("PrivateChatPayload", 1, true)
+        and #oversizedMeta.reason < 1000,
+        "diagnostics cap inspected text and persisted output while redacting raw values")
 
     C_Container.GetContainerItemInfo = function(bag, slot)
         local source, info = oldInfo(bag, slot), {}

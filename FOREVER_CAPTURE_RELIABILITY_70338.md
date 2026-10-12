@@ -105,3 +105,42 @@ malformed embedded plus valid fallback, mismatch conflict, missing and nil
 fallbacks, exact variant retention, partial recovered evidence, and stale
 failure. This follow-up is not live-validated; a new controlled Forever
 capture is required before claiming the real slot conflict is resolved.
+
+## Forever 70338 link-format diagnostic follow-up (automated candidate)
+
+The next post-install Rordin export (`1791808762`, 2026-10-12 12:39:22 UTC)
+contains no raw hyperlink strings. It records the retry at `1791808740` as
+`embeddedState=MALFORMED` and `fallbackState=MALFORMED`, with the fallback API
+available and `itemID=10421`. The current bags therefore remain LAST_SEEN from
+`1791753907`; the client-returned link formats and exact item variant remain
+UNKNOWN. This narrows the unresolved issue to parser/API-return format but
+does not identify which side produced a malformed value.
+
+General WoW documentation describes item links as `|Hitem:payload|h[display]|h`
+with optional color wrappers, and documents escaped pipe characters in chat
+text ([item-link grammar](https://warcraft.wiki.gg/wiki/ItemLink),
+[hyperlink escaping](https://warcraft.wiki.gg/wiki/Hyperlink)). Plain `item:`
+strings are also accepted by the local item-reference contract. The parser now accepts
+only a complete wrapped item payload or a plain item string, keeps the existing
+numeric-field syntax and same-slot ID check, rejects escaped wrapper
+delimiters, and never fills missing fields. This is based on the documented
+hyperlink grammar and is not proof that Forever 1.60.1 returns those forms in
+both container APIs.
+
+On an identity failure, the Forever bag collector stores only bounded
+structural summaries for both API values: Lua value type, capped length, link
+shape, payload character class, escaped delimiter presence, item marker
+presence, and whether a wrapper close marker was seen. At most the first 160
+characters are inspected; no raw text, display name, chat text, player
+identifier, or variant payload is persisted. The diagnostic is limited to the
+failed Forever bag identity path. Exact parsed IDs and mismatch states remain
+separate fields in the existing refresh issue. Unresolved slots keep the
+all-or-stale behavior.
+
+Fixtures cover colored and uncolored wrappers, plain references, extended and
+omitted optional fields, escaped opening/closing delimiters, truncated
+wrappers, non-item links, oversized unrecognized values, sanitized/bounded
+diagnostics, exact ID agreement/disagreement, malformed payloads with a
+contradictory base-ID hint, and version-isolated loading. A malformed payload's
+base ID is diagnostic evidence only; it is never accepted as an exact identity.
+Live Forever validation of the actual API return structure is still required.

@@ -7,24 +7,116 @@ local function Field(object, key)
     return function() return object[key] end
 end
 
+local MAX_LINK_DIAGNOSTIC_SCAN = 160
+
+local function IsEscapedPipe(value, position)
+    local count = 0
+    for index = position, 1, -1 do
+        if value:sub(index, index) ~= "|" then break end
+        count = count + 1
+    end
+    return count > 0 and count % 2 == 0
+end
+
 local function ParseItemReference(link)
     if type(link) ~= "string" or link == "" then return nil, nil, "UNAVAILABLE" end
-    local ref = link:match("(item:[^|]+)")
-    if not ref or not ref:match("^item:%d+[%d:%-]*$") then return nil, nil, "MALFORMED" end
-    local linkID = tonumber(ref:match("^item:(%d+)"))
-    if not linkID or linkID <= 0 then return nil, nil, "MALFORMED" end
+    local marker = link:find("|Hitem:", 1, true)
+    local ref, baseIDHint
+    if marker then
+        if IsEscapedPipe(link, marker) then return nil, nil, "MALFORMED_ESCAPE" end
+        local payloadStart = marker + 2
+        local terminator = link:find("|h", payloadStart, true)
+        if not terminator then return nil, nil, "TRUNCATED_ITEM_PAYLOAD" end
+        if IsEscapedPipe(link, terminator) then return nil, nil, "MALFORMED_ESCAPE" end
+        ref = link:sub(payloadStart, terminator - 1)
+    elseif link:sub(1, 5) == "item:" then
+        ref = link
+    else
+        if link:find("|H", 1, true) then return nil, nil, "NON_ITEM_LINK" end
+        return nil, nil, "UNRECOGNIZED_FORMAT"
+    end
+    baseIDHint = tonumber(ref:match("^item:(%d+)"))
+    if not ref:match("^item:%d+[%d:%-]*$") then
+        return nil, nil, "MALFORMED_ITEM_PAYLOAD", baseIDHint
+    end
+    local linkID = baseIDHint
+    if not linkID or linkID <= 0 then return nil, nil, "MALFORMED_ITEM_PAYLOAD", baseIDHint end
     return ref, linkID, "PARSED"
 end
 
-local function IdentityDetails(bag, slot, id, embeddedState, embeddedID, fallbackState, fallbackID, apiAvailable, reason)
+-- Persist only structural summaries: never link text, display names, chat text,
+-- player identifiers, or variant payloads. Scan at most 160 characters.
+local function LinkDiagnostic(value)
+    local valueType = type(value)
+    if valueType ~= "string" then
+        local safeType = (valueType == "nil" or valueType == "number" or valueType == "boolean"
+            or valueType == "table" or valueType == "function" or valueType == "userdata" or valueType == "thread")
+            and valueType or "OTHER"
+        return "type=" .. safeType .. ";shape=NON_STRING"
+    end
+    local totalLength = #value
+    local sample = value:sub(1, MAX_LINK_DIAGNOSTIC_SCAN)
+    local clipped = totalLength > MAX_LINK_DIAGNOSTIC_SCAN
+    local marker = sample:find("|Hitem:", 1, true)
+    local escaped = sample:find("||", 1, true) ~= nil
+    local itemToken = sample:find("item:", 1, true)
+    local otherLink = sample:find("|H([^:|]+):")
+    local shape, payload = "UNRECOGNIZED_FORMAT", "NONE"
+    local close
+    if marker then
+        if IsEscapedPipe(sample, marker) then shape = "ESCAPED_DELIMITER"
+        else
+            close = sample:find("|h", marker + 7, true)
+            if close and IsEscapedPipe(sample, close) then shape = "ESCAPED_DELIMITER"
+            elseif close then
+                local prefix = sample:sub(1, marker - 1)
+                if prefix:find("|cff%x%x%x%x%x%x%x%x", 1) == 1 or prefix:find("|cn", 1, true) == 1 then
+                    shape = "COLORED_ITEM_HYPERLINK"
+                else shape = "ITEM_HYPERLINK" end
+            elseif clipped then shape = "INSPECTION_LIMIT_REACHED"
+            else shape = "TRUNCATED_ITEM_PAYLOAD" end
+        end
+        local payloadStart = marker + 2
+        local payloadEnd = close or (#sample + 1)
+        local itemPayload = sample:sub(payloadStart, payloadEnd - 1)
+        if clipped and not close then payload = "INSPECTION_LIMIT_REACHED"
+        elseif itemPayload:match("^item:%d+[%d:%-]*$") then payload = "NUMERIC_ITEM_FIELDS"
+        else payload = "MALFORMED_ITEM_FIELDS" end
+    elseif sample:sub(1, 5) == "item:" then
+        shape = "PLAIN_ITEM_STRING"
+        if clipped then payload = "INSPECTION_LIMIT_REACHED"
+        elseif sample:match("^item:%d+[%d:%-]*$") then payload = "NUMERIC_ITEM_FIELDS"
+        else payload = "MALFORMED_ITEM_FIELDS" end
+    elseif escaped and itemToken then shape = "ESCAPED_DELIMITER"
+    elseif otherLink then shape = "NON_ITEM_HYPERLINK"
+    elseif itemToken then shape = "UNWRAPPED_ITEM_TOKEN"
+    elseif clipped then shape = "INSPECTION_LIMIT_REACHED" end
+    local length = clipped and (MAX_LINK_DIAGNOSTIC_SCAN .. "+") or tostring(totalLength)
+    return "type=string;length=" .. length .. ";shape=" .. shape .. ";payload=" .. payload
+        .. ";escaped=" .. (escaped and "yes" or "no")
+        .. ";itemMarker=" .. (marker and "yes" or "no")
+        .. ";itemToken=" .. (itemToken and "yes" or "no")
+        .. ";hyperlinkClose=" .. (close and "yes" or "no")
+end
+
+local function SafeLinkDiagnostic(value)
+    local ok, diagnostic = pcall(LinkDiagnostic, value)
+    return ok and diagnostic or "type=restricted;shape=UNAVAILABLE"
+end
+
+local function IdentityDetails(bag, slot, id, embeddedState, embeddedID, fallbackState, fallbackID,
+    apiAvailable, reason, embeddedDiagnostic, fallbackDiagnostic, embeddedBaseIDHint)
     return "bag " .. bag .. " slot " .. slot .. " exact item identity rejected"
         .. " (reportedItemID=" .. (id and tostring(id) or "UNKNOWN")
         .. "; embeddedState=" .. embeddedState
         .. "; embeddedItemID=" .. (embeddedID and tostring(embeddedID) or "UNKNOWN")
+        .. "; embeddedBaseIDHint=" .. (embeddedBaseIDHint and tostring(embeddedBaseIDHint) or "UNKNOWN")
         .. "; fallbackAPI=" .. (apiAvailable and "AVAILABLE" or "MISSING")
         .. "; fallbackState=" .. fallbackState
         .. "; fallbackItemID=" .. (fallbackID and tostring(fallbackID) or "UNKNOWN")
-        .. "; reason=" .. reason .. ")"
+        .. "; reason=" .. reason
+        .. "; embeddedDiagnostic={" .. embeddedDiagnostic .. "}"
+        .. "; fallbackDiagnostic={" .. fallbackDiagnostic .. "})"
 end
 
 local function BindingFacet(info, issues)
@@ -52,55 +144,68 @@ local function Failed(reason, retry)
 end
 
 local function ExactItemReference(api, info, bag, slot, id)
-    local infoState, embeddedID, embeddedRef = "NIL", nil, nil
+    local infoState, embeddedID, embeddedRef, embeddedBaseIDHint = "NIL", nil, nil, nil
     local ok, link = pcall(function() return info.hyperlink end)
     if not ok then infoState = "API_ERROR"
     elseif type(link) == "string" and link ~= "" then
-        embeddedRef, embeddedID, infoState = ParseItemReference(link)
+        local parsed
+        parsed, embeddedRef, embeddedID, infoState, embeddedBaseIDHint = pcall(ParseItemReference, link)
+        if not parsed then embeddedRef, embeddedID, infoState, embeddedBaseIDHint = nil, nil, "API_ERROR", nil end
         if embeddedRef and embeddedID == id then
             return embeddedRef, embeddedID, "CONTAINER_INFO_HYPERLINK"
         elseif embeddedRef then infoState = "ID_MISMATCH"
         end
     elseif link ~= nil then infoState = "UNSUPPORTED_VALUE_TYPE"
     end
+    local embeddedDiagnostic = SafeLinkDiagnostic(ok and link or nil)
 
     local apiAvailable = type(api.GetContainerItemLink) == "function"
-    local slotAPIState, fallbackID, fallbackRef = "API_MISSING", nil, nil
+    local slotAPIState, fallbackID, fallbackRef, fallbackValue = "API_MISSING", nil, nil, nil
     if apiAvailable then
         local linkOK, value = pcall(api.GetContainerItemLink, bag, slot)
+        if linkOK then fallbackValue = value end
         if not linkOK then slotAPIState = "API_ERROR"
         elseif value == nil then slotAPIState = "NIL_RESULT"
         elseif type(value) ~= "string" or value == "" then slotAPIState = "UNSUPPORTED_VALUE_TYPE"
         else
-            fallbackRef, fallbackID, slotAPIState = ParseItemReference(value)
-            if fallbackRef and fallbackID ~= id then slotAPIState = "ID_MISMATCH" end
+            local parsed
+            parsed, fallbackRef, fallbackID, slotAPIState = pcall(ParseItemReference, value)
+            if not parsed then fallbackRef, fallbackID, slotAPIState = nil, nil, "API_ERROR"
+            elseif fallbackRef and fallbackID ~= id then slotAPIState = "ID_MISMATCH" end
         end
     end
+    local fallbackDiagnostic = SafeLinkDiagnostic(fallbackValue)
 
     -- A second, independently returned link can recover a missing or malformed
     -- embedded link only when its observed base ID matches the slot's itemID.
     -- A parseable disagreement between two link sources is retained as a hard
     -- contradiction rather than preferring either result.
     if fallbackRef and fallbackID == id then
-        if embeddedID and embeddedID ~= fallbackID then
+        local embeddedEvidenceID = embeddedID or embeddedBaseIDHint
+        if embeddedEvidenceID and embeddedEvidenceID ~= fallbackID then
             return nil, IdentityDetails(bag, slot, id, infoState, embeddedID,
-                slotAPIState, fallbackID, apiAvailable, "EMBEDDED_AND_FALLBACK_DISAGREE"), nil
+                slotAPIState, fallbackID, apiAvailable, "EMBEDDED_AND_FALLBACK_DISAGREE",
+                embeddedDiagnostic, fallbackDiagnostic, embeddedBaseIDHint), nil
         end
         local diagnostics
         if infoState ~= "NIL" then
             diagnostics = { embeddedState = infoState, embeddedItemID = embeddedID,
                 fallbackState = "OBSERVED_MATCH", fallbackItemID = fallbackID,
-                fallbackAPI = "AVAILABLE", reason = "EMBEDDED_LINK_UNUSABLE_FALLBACK_MATCHED_SLOT_ID" }
+                fallbackAPI = "AVAILABLE", embeddedDiagnostic = embeddedDiagnostic,
+                fallbackDiagnostic = fallbackDiagnostic,
+                reason = "EMBEDDED_LINK_UNUSABLE_FALLBACK_MATCHED_SLOT_ID" }
         end
         return fallbackRef, fallbackID, "C_Container.GetContainerItemLink", nil, diagnostics
     end
 
-    local reason = embeddedID and fallbackID and embeddedID ~= fallbackID
+    local embeddedEvidenceID = embeddedID or embeddedBaseIDHint
+    local reason = embeddedEvidenceID and fallbackID and embeddedEvidenceID ~= fallbackID
         and "EMBEDDED_AND_FALLBACK_DISAGREE"
         or fallbackRef and fallbackID ~= id and "FALLBACK_ID_MISMATCH"
         or "NO_VALID_EXACT_LINK_MATCHES_SLOT_ID"
     return nil, IdentityDetails(bag, slot, id, infoState, embeddedID,
-        slotAPIState, fallbackID, apiAvailable, reason), nil
+        slotAPIState, fallbackID, apiAvailable, reason, embeddedDiagnostic, fallbackDiagnostic,
+        embeddedBaseIDHint), nil
 end
 
 S.collectors.bags = function()
