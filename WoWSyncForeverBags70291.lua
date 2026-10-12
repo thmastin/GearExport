@@ -7,13 +7,24 @@ local function Field(object, key)
     return function() return object[key] end
 end
 
-local function ItemReference(link, id)
-    if type(link) ~= "string" then return nil end
+local function ParseItemReference(link)
+    if type(link) ~= "string" or link == "" then return nil, nil, "UNAVAILABLE" end
     local ref = link:match("(item:[^|]+)")
-    if not ref or not ref:match("^item:%d+[%d:%-]*$") then return nil end
+    if not ref or not ref:match("^item:%d+[%d:%-]*$") then return nil, nil, "MALFORMED" end
     local linkID = tonumber(ref:match("^item:(%d+)"))
-    if not linkID or linkID <= 0 or id and id ~= linkID then return nil end
-    return ref, linkID
+    if not linkID or linkID <= 0 then return nil, nil, "MALFORMED" end
+    return ref, linkID, "PARSED"
+end
+
+local function IdentityDetails(bag, slot, id, embeddedState, embeddedID, fallbackState, fallbackID, apiAvailable, reason)
+    return "bag " .. bag .. " slot " .. slot .. " exact item identity rejected"
+        .. " (reportedItemID=" .. (id and tostring(id) or "UNKNOWN")
+        .. "; embeddedState=" .. embeddedState
+        .. "; embeddedItemID=" .. (embeddedID and tostring(embeddedID) or "UNKNOWN")
+        .. "; fallbackAPI=" .. (apiAvailable and "AVAILABLE" or "MISSING")
+        .. "; fallbackState=" .. fallbackState
+        .. "; fallbackItemID=" .. (fallbackID and tostring(fallbackID) or "UNKNOWN")
+        .. "; reason=" .. reason .. ")"
 end
 
 local function BindingFacet(info, issues)
@@ -41,34 +52,55 @@ local function Failed(reason, retry)
 end
 
 local function ExactItemReference(api, info, bag, slot, id)
-    local infoState = "NIL"
+    local infoState, embeddedID, embeddedRef = "NIL", nil, nil
     local ok, link = pcall(function() return info.hyperlink end)
     if not ok then infoState = "API_ERROR"
     elseif type(link) == "string" and link ~= "" then
-        local ref, linkID = ItemReference(link, id)
-        if ref then return ref, linkID, "CONTAINER_INFO_HYPERLINK" end
-        infoState = "INVALID_OR_ID_MISMATCH"
-        return nil, "bag " .. bag .. " slot " .. slot .. " carried item hyperlink conflicts with the observed item ID"
-            .. " (itemID=" .. (id and tostring(id) or "UNKNOWN") .. "; infoHyperlink=" .. infoState
-            .. "; GetContainerItemLink=NOT_USED_CONTRADICTION)", nil
+        embeddedRef, embeddedID, infoState = ParseItemReference(link)
+        if embeddedRef and embeddedID == id then
+            return embeddedRef, embeddedID, "CONTAINER_INFO_HYPERLINK"
+        elseif embeddedRef then infoState = "ID_MISMATCH"
+        end
     elseif link ~= nil then infoState = "UNSUPPORTED_VALUE_TYPE"
     end
 
-    local slotAPIState, slotLink = "API_MISSING", nil
-    if type(api.GetContainerItemLink) == "function" then
+    local apiAvailable = type(api.GetContainerItemLink) == "function"
+    local slotAPIState, fallbackID, fallbackRef = "API_MISSING", nil, nil
+    if apiAvailable then
         local linkOK, value = pcall(api.GetContainerItemLink, bag, slot)
         if not linkOK then slotAPIState = "API_ERROR"
         elseif value == nil then slotAPIState = "NIL_RESULT"
         elseif type(value) ~= "string" or value == "" then slotAPIState = "UNSUPPORTED_VALUE_TYPE"
         else
-            local ref, linkID = ItemReference(value, id)
-            if ref then return ref, linkID, "C_Container.GetContainerItemLink" end
-            slotAPIState = "INVALID_OR_ID_MISMATCH"
+            fallbackRef, fallbackID, slotAPIState = ParseItemReference(value)
+            if fallbackRef and fallbackID ~= id then slotAPIState = "ID_MISMATCH" end
         end
     end
-    return nil, "bag " .. bag .. " slot " .. slot .. " exact item identity unknown"
-        .. " (itemID=" .. (id and tostring(id) or "UNKNOWN")
-        .. "; infoHyperlink=" .. infoState .. "; GetContainerItemLink=" .. slotAPIState .. ")", nil
+
+    -- A second, independently returned link can recover a missing or malformed
+    -- embedded link only when its observed base ID matches the slot's itemID.
+    -- A parseable disagreement between two link sources is retained as a hard
+    -- contradiction rather than preferring either result.
+    if fallbackRef and fallbackID == id then
+        if embeddedID and embeddedID ~= fallbackID then
+            return nil, IdentityDetails(bag, slot, id, infoState, embeddedID,
+                slotAPIState, fallbackID, apiAvailable, "EMBEDDED_AND_FALLBACK_DISAGREE"), nil
+        end
+        local diagnostics
+        if infoState ~= "NIL" then
+            diagnostics = { embeddedState = infoState, embeddedItemID = embeddedID,
+                fallbackState = "OBSERVED_MATCH", fallbackItemID = fallbackID,
+                fallbackAPI = "AVAILABLE", reason = "EMBEDDED_LINK_UNUSABLE_FALLBACK_MATCHED_SLOT_ID" }
+        end
+        return fallbackRef, fallbackID, "C_Container.GetContainerItemLink", nil, diagnostics
+    end
+
+    local reason = embeddedID and fallbackID and embeddedID ~= fallbackID
+        and "EMBEDDED_AND_FALLBACK_DISAGREE"
+        or fallbackRef and fallbackID ~= id and "FALLBACK_ID_MISMATCH"
+        or "NO_VALID_EXACT_LINK_MATCHES_SLOT_ID"
+    return nil, IdentityDetails(bag, slot, id, infoState, embeddedID,
+        slotAPIState, fallbackID, apiAvailable, reason), nil
 end
 
 S.collectors.bags = function()
@@ -99,12 +131,17 @@ S.collectors.bags = function()
                 if locked ~= false then return Failed("carried item lock state unknown", true) end
                 local id = F.Number("Carried item ID", Field(info, "itemID"), issues)
                 if id == 0 then id = nil end
-                local ref, linkID, linkSource = ExactItemReference(api, info, bag, slot, id)
+                local ref, linkID, linkSource, _, identityDiagnostics = ExactItemReference(api, info, bag, slot, id)
                 if not ref then return Failed(linkID, true) end
                 local count = F.Number("Carried item stack count", Field(info, "stackCount"), issues)
                 if not count or count == 0 then return Failed("carried item quantity unknown", true) end
                 local item = { itemID = id or linkID, itemString = ref, count = count,
                     itemStringSource = linkSource, itemIdentityState = "OBSERVED_EXACT_ITEM_STRING" }
+                if identityDiagnostics then
+                    item.identityDiagnostics = identityDiagnostics
+                    issues[#issues + 1] = "Carried item exact-link fallback used after embedded link was unusable at bag "
+                        .. bag .. " slot " .. slot
+                end
                 item.name = F.Read("Carried item name", Field(info, "itemName"), 1, "string", issues)
                 item.bound, item.bindingState = BindingFacet(info, issues)
                 container.slots[slot] = item

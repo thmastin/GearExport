@@ -102,6 +102,61 @@ return function(S, check, equal)
     equal(fallback.containers[1].slots[1].itemStringSource, "C_Container.GetContainerItemLink",
         "exact link source is recorded")
     equal(fallbackMeta.completeness, "complete", "supported exact link fallback keeps successful scan complete")
+
+    -- A malformed embedded link may be independently recovered from the same
+    -- slot API, but the discrepancy is retained and the section is partial.
+    C_Container.GetContainerItemInfo = function(bag, slot)
+        local source, info = oldInfo(bag, slot), {}
+        if source then for key, value in pairs(source) do info[key] = value end end
+        if bag == 0 and slot == 1 then info.hyperlink = "not-an-item-link" end
+        return source and info or nil
+    end
+    C_Container.GetContainerItemLink = function(bag, slot)
+        if bag == 0 and slot == 1 then return exactFallback end
+        return oldInfo(bag, slot).hyperlink
+    end
+    local recovered, recoveredMeta = S.collectors.bags()
+    equal(recovered.containers[1].slots[1].itemString, "item:6948:4:5:6",
+        "valid fallback is accepted after malformed embedded link")
+    equal(recovered.containers[1].slots[1].identityDiagnostics.embeddedState, "MALFORMED",
+        "malformed embedded-link state is preserved")
+    equal(recovered.containers[1].slots[1].identityDiagnostics.fallbackItemID, 6948,
+        "fallback base item identity is recorded")
+    equal(recoveredMeta.completeness, "partial", "recovered embedded-link defect marks the section partial")
+
+    -- A parsed contradiction is never resolved by choosing one link, even if
+    -- the fallback happens to agree with the reported slot itemID.
+    C_Container.GetContainerItemInfo = function(bag, slot)
+        local source, info = oldInfo(bag, slot), {}
+        if source then for key, value in pairs(source) do info[key] = value end end
+        if bag == 0 and slot == 1 then info.hyperlink = "|Hitem:999:8:7|h[Contradiction]|h" end
+        return source and info or nil
+    end
+    C_Container.GetContainerItemLink = function(bag, slot)
+        if bag == 0 and slot == 1 then return exactFallback end
+        return oldInfo(bag, slot).hyperlink
+    end
+    local embeddedFallbackConflict, embeddedFallbackConflictMeta = S.collectors.bags()
+    equal(embeddedFallbackConflict, nil, "conflicting embedded and fallback links reject the entire scan")
+    check(embeddedFallbackConflictMeta.reason:find("reportedItemID=6948", 1, true)
+        and embeddedFallbackConflictMeta.reason:find("embeddedItemID=999", 1, true)
+        and embeddedFallbackConflictMeta.reason:find("fallbackItemID=6948", 1, true)
+        and embeddedFallbackConflictMeta.reason:find("EMBEDDED_AND_FALLBACK_DISAGREE", 1, true),
+        "contradiction diagnostic includes slot and both independently parsed IDs")
+
+    -- A valid embedded hyperlink remains preferred and does not call the
+    -- fallback API unnecessarily.
+    C_Container.GetContainerItemInfo = oldInfo
+    local linkCalls = 0
+    C_Container.GetContainerItemLink = function(bag, slot)
+        linkCalls = linkCalls + 1
+        return oldInfo(bag, slot).hyperlink
+    end
+    local embeddedPreferred = S.collectors.bags()
+    check(embeddedPreferred and embeddedPreferred.containers[1].slots[1].itemStringSource == "CONTAINER_INFO_HYPERLINK",
+        "valid embedded link retains its source")
+    equal(linkCalls, 0, "fallback API is not called when embedded exact identity validates")
+
     C_Container.GetContainerItemInfo = function(bag, slot)
         local source, info = oldInfo(bag, slot), {}
         if source then for key, value in pairs(source) do info[key] = value end end
@@ -111,9 +166,18 @@ return function(S, check, equal)
     C_Container.GetContainerItemLink = nil
     local unknownIdentity, identityMeta = S.collectors.bags()
     equal(unknownIdentity, nil, "item ID alone never substitutes for a required exact item string")
-    check(identityMeta.reason:find("bag 0 slot 1", 1, true) and identityMeta.reason:find("itemID=6948", 1, true)
-        and identityMeta.reason:find("GetContainerItemLink=API_MISSING", 1, true),
+    check(identityMeta.reason:find("bag 0 slot 1", 1, true) and identityMeta.reason:find("reportedItemID=6948", 1, true)
+        and identityMeta.reason:find("fallbackAPI=MISSING", 1, true)
+        and identityMeta.reason:find("fallbackState=API_MISSING", 1, true),
         "failed exact identity names bag/slot and API evidence")
+    C_Container.GetContainerItemLink = function() return nil end
+    local noLinks, noLinksMeta = S.collectors.bags()
+    equal(noLinks, nil, "nil embedded and slot links do not synthesize an item identity")
+    check(noLinksMeta.reason:find("embeddedState=NIL", 1, true)
+        and noLinksMeta.reason:find("fallbackState=NIL_RESULT", 1, true)
+        and noLinksMeta.reason:find("NO_VALID_EXACT_LINK_MATCHES_SLOT_ID", 1, true),
+        "both unavailable-link diagnostics preserve individual API states")
+    C_Container.GetContainerItemLink = nil
     C_Container.GetContainerItemInfo = function(_, slot)
         if slot == 1 then return { itemID = 1, itemName = "moving", hyperlink = "item:1", stackCount = 1, isLocked = true } end
     end

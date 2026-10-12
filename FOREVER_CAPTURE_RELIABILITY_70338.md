@@ -71,3 +71,37 @@ The only change to the export contract is this additive structured SavedVariable
 The bag collector now falls back from an absent/unusable `GetContainerItemInfo().hyperlink` to the item's slot link from `C_Container.GetContainerItemLink(bag, slot)`, validating that the link item ID matches the independently observed slot ID. It never synthesizes an exact variant from an ID. Contradictory non-empty links and unresolved identity fail the scan; existing stale/partial-section behavior is retained so a failed scan cannot become an empty bag.
 
 All new collector behavior is automated-tested with fixtures only. The candidate still requires one live build-70338 capture to validate recipe-window events, cache request/load behavior, output metadata/stat returns, requirement return shapes, and the bag link fallback against the actual client.
+
+## Forever 70338 bag-link conflict follow-up (automated candidate)
+
+Rordin's post-install live capture at generation `1791807982` reported bag 0,
+slot 6 with `GetContainerItemInfo().itemID=10421` and a non-empty embedded
+hyperlink that failed item-ID validation. The old collector returned at that
+point and explicitly recorded that `C_Container.GetContainerItemLink` was not
+used. This proves a collector control-flow defect: a second available source
+was skipped. It does not establish whether the client's embedded value was
+malformed, stale, or genuinely identified a different item; the original raw
+link was not captured.
+
+The follow-up evaluates the slot-link API independently whenever the embedded
+link is absent, malformed, unreadable, or mismatched. Each link is parsed
+without trusting the expected ID first. An exact link is accepted only when
+its parsed base item ID matches the same-slot `itemID`; its actual item-string
+variant is preserved without synthesis. If the fallback matches after an
+unusable but unparseable embedded value, the item records bounded
+`identityDiagnostics` (states and parsed IDs, never raw links) and the section
+is marked partial. If both sources provide parseable but different IDs, the
+slot is rejected even when one source matches the slot's reported ID; the
+conflict is recorded in the bounded `lastAttemptError` with bag/slot, reported
+ID, both parsed IDs, API availability/state, and rejection reason. Nil, API
+error, malformed, and mismatched outcomes remain distinct.
+
+The bag snapshot contract does not support trustworthy current rows alongside
+unresolved slots: it represents one complete container scan. Therefore an
+unresolved or contradictory slot keeps the existing all-or-stale behavior.
+Previous contents remain LAST_SEEN and the failed scan cannot publish an
+empty or complete inventory. Automated fixtures cover embedded success,
+malformed embedded plus valid fallback, mismatch conflict, missing and nil
+fallbacks, exact variant retention, partial recovered evidence, and stale
+failure. This follow-up is not live-validated; a new controlled Forever
+capture is required before claiming the real slot conflict is resolved.
