@@ -2,6 +2,7 @@ const fs = require('fs');
 const assert = require('assert');
 const toc = fs.readFileSync('GearExport-Forever.toc', 'utf8');
 assert(/^## Interface: 16001$/m.test(toc), 'Forever interface verified on Hallo');
+assert(/^## AllowLoadGameType: camelot$/m.test(toc), 'Forever package is restricted to the Camelot game type');
 assert(/^## X-WoWSync-Target: Forever$/m.test(toc), 'Explicit Forever routing');
 assert(/^## SavedVariables: GearExportDB, WoWSyncDB$/m.test(toc), 'Existing database names');
 const files = toc.split(/\r?\n/).filter(line => line && !line.startsWith('#'));
@@ -13,10 +14,11 @@ assert(!files.includes('WoWSyncForeverTrainers.lua'), 'Unverified legacy trainer
 for (const file of ['WoWSyncForeverBags.lua']) assert(!files.includes(file), 'Other-client collector remains excluded: ' + file);
 for (const file of files) assert(fs.existsSync(file), 'Missing Forever source ' + file);
 const foreverGuard = fs.readFileSync('WoWSyncForever.lua', 'utf8');
-assert(/version\s*=\s*"1\.60\.1"/.test(foreverGuard)
-    && /interface\s*=\s*16001/.test(foreverGuard)
-    && /supportedBuilds\s*=\s*\{\s*\["70291"\]\s*=\s*true,\s*\["70338"\]\s*=\s*true\s*\}/.test(foreverGuard),
-    'Runtime guard accepts only the two verified exact Forever builds and interface');
+assert(/family\s*=\s*"Forever"/.test(foreverGuard)
+    && /knownProfiles\s*=\s*\{\s*\["1\.60\.1:70291:16001"\]\s*=\s*true,\s*\["1\.60\.1:70338:16001"\]\s*=\s*true,?\s*\}/.test(foreverGuard),
+    'Runtime identifies Forever independently and records exact profiles as verified evidence');
+assert(/WOW_PROJECT_CAMELOT/.test(foreverGuard) && /projectID == 18/.test(foreverGuard),
+    'Runtime prefers the client project constant and uses only the observed constrained fallback');
 assert(/S\.structuredOnly\.forever70291Evidence\s*=\s*true/.test(fs.readFileSync('WoWSyncForever70291.lua', 'utf8')),
     'new raw evidence remains outside strict WOWSYNC v1 text');
-console.log('PASS: Forever interface 16001, build-matched guard, target marker, SavedVariables and isolated load order');
+console.log('PASS: Forever interface 16001, project-isolated runtime profiles, target marker, SavedVariables and load order');

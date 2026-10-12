@@ -139,13 +139,13 @@ end
 
 renderers.character = function(out, data)
     Field(out, "Name", data.name)
-    if data.clientFamily == "Forever" and C.IsSupportedForeverBuild(data.clientBuild, data.interface) then
+    if data.clientFamily == "Forever" and C.IsSupportedForeverBuild(data.clientBuild, data.interface, data.clientVersion) then
         Field(out, "Surname", data.surname)
         if data.surname then Field(out, "SurnameSource", data.surnameSource) end
     end
     Field(out, "Realm", data.realm)
     Field(out, "Class", data.class); Field(out, "Level", data.level)
-    if data.clientFamily == "Forever" and C.IsSupportedForeverBuild(data.clientBuild, data.interface) then
+    if data.clientFamily == "Forever" and C.IsSupportedForeverBuild(data.clientBuild, data.interface, data.clientVersion) then
         Field(out, "Race", data.race)
     end
     Field(out, "Faction", data.faction); Field(out, "MoneyCopper", data.moneyCopper)
@@ -157,6 +157,11 @@ renderers.character = function(out, data)
     end
     Field(out, "Client", (data.clientVersion or "?") .. " build " .. (data.clientBuild or "?"))
     if data.clientFamily then Field(out, "ClientFamily", data.clientFamily); Field(out, "Interface", data.interface) end
+    if data.clientFamily == "Forever" then
+        local compatibility = data.compatibility or {}
+        Field(out, "Compatibility", compatibility.state or "UNKNOWN")
+        if compatibility.reason then Field(out, "CompatibilityNote", compatibility.reason) end
+    end
 end
 renderers.location = function(out, data)
     Field(out, "Zone", data.zone)

@@ -15,6 +15,13 @@ const defaultBackupRoot = path.join(process.env.LOCALAPPDATA || os.homedir(), 'G
 const uuid = () => crypto.randomUUID();
 const die = message => { throw new Error(message); };
 
+function isForeverVersion(version) {
+    const match = typeof version === 'string' && version.match(/^1\.(\d+)\.(\d+)$/);
+    if (!match) return false;
+    const minor = Number(match[1]);
+    return Number.isInteger(minor) && minor >= 60 && minor < 100;
+}
+
 function ensureBackupOutsideAddons(backupRoot, destination) {
     const backup = path.resolve(backupRoot);
     const addons = path.dirname(destination).toLowerCase() + path.sep.toLowerCase();
@@ -82,9 +89,8 @@ function deployForever({ destination, backupRoot, clientRunning = false, hooks =
     const packageInfo = verifyPackage(packageDirectory);
     if (validateSource) assertPackageMatchesSource(projectRoot, packageDirectory, packageInfo);
     if (requireCommittedSource && (!clientVersion || !clientBuild)) die('Target WowB.exe version/build evidence was not supplied by the PowerShell launcher.');
-    if (clientVersion && clientBuild && (clientVersion !== packageInfo.build.version || !packageInfo.build.builds.includes(String(clientBuild)))) {
-        die('Target Forever client is ' + clientVersion + '/' + clientBuild + ' but package guard allows ' +
-            packageInfo.build.version + '/' + packageInfo.build.builds.join(',') + '; refusing incompatible deployment.');
+    if (clientVersion && (!isForeverVersion(clientVersion) || !/^\d+$/.test(String(clientBuild)))) {
+        die('Target executable identity is not a Forever 1.60–1.99 version/build; refusing deployment.');
     }
     if (hooks.afterPreflight) hooks.afterPreflight({ packagePath: packageDirectory, install, packageInfo });
 
@@ -139,7 +145,7 @@ function deployForever({ destination, backupRoot, clientRunning = false, hooks =
         return {
             status: 'installed', install, backup: recovery, sourceCommit, files: packageInfo.entries.length,
             manifestHash: hashFile(path.join(packageDirectory, 'package-manifest.json')),
-            guard: packageInfo.build, cleanupWarning,
+            guard: { ...packageInfo.build, targetClient: clientVersion && clientBuild ? clientVersion + "/" + clientBuild : "UNKNOWN" }, cleanupWarning,
         };
     } catch (deploymentError) {
         let rollbackStatus = 'not-needed';
@@ -208,4 +214,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { deployForever, parseArgs, snapshot, verifySnapshot, detectForeverRunning };
+module.exports = { deployForever, parseArgs, snapshot, verifySnapshot, detectForeverRunning, isForeverVersion };

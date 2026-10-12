@@ -7,15 +7,14 @@ const hashFile = file => crypto.createHash('sha256').update(fs.readFileSync(file
 const tocSources = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport-BCC.toc', Forever: 'GearExport-Forever.toc' };
 
 function readForeverBuildGuard(source) {
-    const match = source.match(/local\s+F\s*=\s*\{[^\r\n]*\bversion\s*=\s*["']([^"']+)["'][^\r\n]*\binterface\s*=\s*(\d+)[^\r\n]*\bsupportedBuilds\s*=\s*\{([^}]*)\}/);
+    const match = source.match(/local\s+F\s*=\s*\{[^\r\n]*\bfamily\s*=\s*["']Forever["'][^\r\n]*\bknownProfiles\s*=\s*\{([^}]*)\}/);
     if (match) {
-        const builds = [...match[3].matchAll(/\["(\d+)"\]\s*=\s*true/g)].map(entry => entry[1]);
-        const remainder = match[3].replace(/\["\d+"\]\s*=\s*true/g, '').replace(/[\s,]/g, '');
-        if (!builds.length || remainder || new Set(builds).size !== builds.length) return null;
-        return { version: match[1], interface: Number(match[2]), builds: builds.sort() };
+        const profiles = [...match[1].matchAll(/\["(1\.\d+\.\d+:\d+:\d+)"\]\s*=\s*true/g)].map(entry => entry[1]);
+        const remainder = match[1].replace(/\["1\.\d+\.\d+:\d+:\d+"\]\s*=\s*true/g, '').replace(/[\s,]/g, '');
+        if (!profiles.length || remainder || new Set(profiles).size !== profiles.length) return null;
+        return { family: 'Forever', profiles: profiles.sort() };
     }
-    const legacy = source.match(/local\s+F\s*=\s*\{[^\r\n]*\bversion\s*=\s*["']([^"']+)["'][^\r\n]*\bbuild\s*=\s*["'](\d+)["'][^\r\n]*\binterface\s*=\s*(\d+)/);
-    return legacy ? { version: legacy[1], interface: Number(legacy[3]), builds: [legacy[2]] } : null;
+    return null;
 }
 
 function listTree(directory) {
@@ -80,17 +79,20 @@ function verifyPackage(packagePath, target = 'Forever') {
     if (manifest.target === 'Forever') {
         const toc = fs.readFileSync(path.join(packagePath, 'GearExport.toc'), 'utf8');
         const guard = fs.readFileSync(path.join(packagePath, 'WoWSyncForever.lua'), 'utf8');
-        if (manifest.interface !== 16001 || !/^## Interface: 16001\r?$/m.test(toc) || !/^## X-WoWSync-Target: Forever\r?$/m.test(toc)) {
-            throw new Error('Package TOC does not carry the Forever interface/target markers');
+        if (manifest.interface !== 16001 || !/^## Interface: 16001\r?$/m.test(toc)
+            || !/^## AllowLoadGameType: camelot\r?$/m.test(toc) || !/^## X-WoWSync-Target: Forever\r?$/m.test(toc)) {
+            throw new Error('Package TOC does not carry the Forever interface, camelot isolation, and explicit target markers');
         }
         const runtime = readForeverBuildGuard(guard);
-        if (!runtime) throw new Error('Forever runtime guard is missing or does not contain an exact build allowlist');
-        if (runtime.interface !== manifest.interface) throw new Error('Forever manifest interface does not match the runtime guard');
-        if (manifest.clientVersion !== undefined && manifest.clientVersion !== runtime.version) throw new Error('Forever manifest version does not match the runtime guard');
-        if (manifest.clientBuilds !== undefined) {
-            if (!Array.isArray(manifest.clientBuilds) || manifest.clientBuilds.some(build => typeof build !== 'string')
-                || JSON.stringify([...manifest.clientBuilds].sort()) !== JSON.stringify(runtime.builds)) {
-                throw new Error('Forever manifest build allowlist does not match the runtime guard');
+        if (!runtime) throw new Error('Forever runtime must identify the Forever family and validated profiles');
+        const mismatchedInterface = runtime.profiles.find(profile => Number(profile.split(':')[2]) !== manifest.interface);
+        if (mismatchedInterface) {
+            throw new Error('Forever validated profile interface does not match package interface: ' + mismatchedInterface);
+        }
+        if (manifest.validatedProfiles !== undefined) {
+            if (!Array.isArray(manifest.validatedProfiles) || manifest.validatedProfiles.some(profile => typeof profile !== 'string')
+                || JSON.stringify([...manifest.validatedProfiles].sort()) !== JSON.stringify(runtime.profiles)) {
+                throw new Error('Forever manifest validated profile evidence does not match the runtime source');
             }
         }
         return { manifest, build: runtime, entries: expectedPackageEntries(manifest) };

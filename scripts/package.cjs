@@ -9,8 +9,9 @@ const targets = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-Class
 if (!Object.hasOwn(targets, target)) throw new Error('Choose Retail, ClassicEra, TBC, or Forever');
 const toc = fs.readFileSync(path.join(root, targets[target]), 'utf8');
 if (target === 'Forever' && (!/^## Interface: 16001\r?$/m.test(toc)
+    || !/^## AllowLoadGameType: camelot\r?$/m.test(toc)
     || !/^## X-WoWSync-Target: Forever\r?$/m.test(toc))) {
-    throw new Error('Forever requires verified interface 16001 and explicit target marker');
+    throw new Error('Forever requires interface 16001, camelot game-type isolation, and explicit target marker');
 }
 const luaFiles = toc.split(/\r?\n/).filter(line => line.endsWith('.lua'));
 if (luaFiles.some(file => path.basename(file) !== file)) throw new Error('Unexpected source path in TOC');
@@ -20,13 +21,13 @@ if (target === 'Forever' && (luaFiles.includes('BankCleanup.lua') || luaFiles.in
 const runtimeGuard = target === 'Forever'
     ? readForeverBuildGuard(fs.readFileSync(path.join(root, 'WoWSyncForever.lua'), 'utf8'))
     : null;
-if (target === 'Forever' && (!runtimeGuard || runtimeGuard.interface !== 16001)) {
-    throw new Error('Forever requires an exact, interface-matched runtime build allowlist');
+if (target === 'Forever' && (!runtimeGuard || runtimeGuard.family !== 'Forever')) {
+    throw new Error('Forever requires a project-identity runtime guard and validated-profile inventory');
 }
 const output = path.join(root, 'dist', target, 'GearExport');
 const docs = ['README.md', 'LICENSE', 'WOWSYNC_SCHEMA.md', 'WOWSYNC_ACCEPTANCE.md',
     'RETAIL_COMPATIBILITY.md', 'RETAIL_TEST_PLAN.md', 'BANK_CLEANUP_TESTS.md', 'PLAYTIME_API_AUDIT.md'];
-if (target === 'Forever') docs.push('FOREVER_PHASE1.md', 'FOREVER_PHASE2.md', 'FOREVER_PHASE3.md', 'FOREVER_BAGS.md', 'FOREVER_PROFESSIONS.md', 'FOREVER_SPELLS.md', 'FOREVER_REMAINING.md', 'FOREVER_EVIDENCE_70245.md', 'FOREVER_EVIDENCE_70291.md', 'FOREVER_CAPTURE_RELIABILITY_70338.md');
+if (target === 'Forever') docs.push('FOREVER_PHASE1.md', 'FOREVER_PHASE2.md', 'FOREVER_PHASE3.md', 'FOREVER_BAGS.md', 'FOREVER_PROFESSIONS.md', 'FOREVER_SPELLS.md', 'FOREVER_REMAINING.md', 'FOREVER_EVIDENCE_70245.md', 'FOREVER_EVIDENCE_70291.md', 'FOREVER_CAPTURE_RELIABILITY_70338.md', 'FOREVER_UPDATE_RESILIENCE.md');
 const assets = ['WoWSyncIcon.tga'];
 const parent = path.dirname(output);
 fs.mkdirSync(parent, { recursive: true });
@@ -42,7 +43,7 @@ try {
     }
     fs.writeFileSync(path.join(stage, 'package-manifest.json'), JSON.stringify({
         target, interface: Number(toc.match(/^## Interface:\s*(\d+)/m)[1]),
-        ...(runtimeGuard && { clientVersion: runtimeGuard.version, clientBuilds: runtimeGuard.builds }),
+        ...(runtimeGuard && { validatedProfiles: runtimeGuard.profiles }),
         schema: 'WOWSYNC v1', liveRetailValidation: 'pending', hashes,
     }, null, 2) + '\n');
     verifyPackage(stage, target);

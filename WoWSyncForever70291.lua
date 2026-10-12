@@ -4,7 +4,7 @@
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 local function captureProfile()
-    return "Forever:" .. F.version .. ":" .. F.build .. ":" .. F.interface
+    return "Forever:" .. tostring(F.runtimeVersion) .. ":" .. tostring(F.runtimeBuild) .. ":" .. tostring(F.runtimeInterface)
 end
 local equipmentCollector = S.collectors.equipment
 local locationCollector = S.collectors.location
@@ -80,7 +80,8 @@ local function captureNameEvidence(firstName, realm)
     if conflict or distinct > 1 then selected, sources = nil, nil end
     return selected, sources and table.concat(sources, "+") or nil, { state = conflict and "CONFLICTING_OR_UNCORROBORATED_CANDIDATES" or selected and "CORROBORATED" or "UNKNOWN",
         candidates = candidates, calls = calls,
-        interpretation = "API semantics require live verification on Forever 1.60.1 build " .. tostring(F.build) }
+        interpretation = "API semantics require live verification on Forever " .. tostring(F.runtimeVersion)
+            .. " build " .. tostring(F.runtimeBuild) .. " (" .. tostring(F.compatibilityState) .. ")" }
 end
 
 function addon.PrepareCaptureProfile(record)
@@ -131,6 +132,11 @@ S.collectors = {
             xp = F.Number("XP", UnitXP, issues, "player"),
             xpMax = F.Number("XPMax", UnitXPMax, issues, "player"),
             clientFamily = "Forever",
+            compatibility = {
+                state = F.compatibilityState or "UNKNOWN", version = F.runtimeVersion,
+                build = F.runtimeBuild, interface = F.runtimeInterface,
+                reason = F.compatibilityReason,
+            },
         }
         local played = S.played
         if played then

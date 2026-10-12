@@ -25,6 +25,7 @@ function GetServerTime() return 1789670000 + math.floor(seconds) end
 -- Synthetic environment values match the observed client version/build/interface;
 -- the surrounding mocked APIs are test fixtures, not additional live evidence.
 local version, build, interface = "1.60.1", "70338", 16001
+WOW_PROJECT_ID, WOW_PROJECT_CAMELOT = 18, 18
 function GetBuildInfo() return version, build, "test", interface end
 local target = "Forever"
 C_AddOns = { GetAddOnMetadata = function(name, field)
@@ -75,20 +76,36 @@ check(C.IsForever(), "explicit Forever package and newly supported exact version
 build = "70291"; check(C.IsForever(), "previously live-validated build remains supported"); build = "70338"
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
 check(not C.IsRetail(), "Forever is not routed as Retail even with a shared project ID")
+WOW_PROJECT_ID = 18
 target = "Retail"; check(not C.IsForever(), "wrong package rejected"); target = "Forever"
 for _, other in ipairs({ "1.15.9", "2.5.6", "12.1.0" }) do
     version = other; check(not C.IsForever(), "other clients rejected")
 end
 version = "1.60.1"
-for _, other in ipairs({ "69893", "70009", "69914", "70334", "70339", "different" }) do
-    build = other
-    check(not S.Initialize(), "non-current build fails closed: " .. other)
-    equal(WoWSyncDB, nil, "wrong client does not create database")
-    equal(S.error, "The installed WoWSync build is not verified for the running Forever client.",
-        "rejection describes verification rather than a package phase")
+for _, updateBuild in ipairs({ "70339", "70400", "71000" }) do
+    build = updateBuild
+    check(C.IsForever(), "new build remains identified as Forever: " .. updateBuild)
+    local updateRecord = {}
+    addon.PrepareCaptureProfile(updateRecord)
+    equal(updateRecord.captureProfile, "Forever:1.60.1:" .. updateBuild .. ":16001", "unknown build receives an isolated evidence profile")
+    equal(addon.Forever.compatibilityState, "UNVERIFIED_BUILD", "unknown build remains explicitly unverified")
+    equal(addon.Forever.runtimeBuild, updateBuild, "unknown build provenance is retained")
 end
 build = "70338"
-interface = 16000; check(not C.IsForever(), "wrong interface rejected"); interface = 16001
+version, build, interface = "1.60.2", "70400", 16002
+check(C.IsForever(), "new Forever patch version and interface remain recognized by project identity")
+equal(addon.Forever.compatibilityState, "UNVERIFIED_BUILD", "changed patch/interface does not become falsely verified")
+equal(addon.Forever.runtimeInterface, 16002, "changed interface is preserved as runtime provenance")
+version, build, interface = "1.60.1", "70338", 16001
+check(C.IsForever(), "known live profile restored")
+WOW_PROJECT_ID = 2; check(not C.IsForever(), "Era project rejected even with Forever package marker"); WOW_PROJECT_ID = 18
+interface = 15999; check(not C.IsForever(), "interface outside Forever range rejected"); interface = 16000
+check(C.IsForever(), "a changed interface inside Forever family is not alone a load blocker"); interface = 16001
+local camelotConstant = WOW_PROJECT_CAMELOT
+WOW_PROJECT_CAMELOT = nil
+WOW_PROJECT_ID = 18; check(C.IsForever(), "observed numeric project-ID fallback works when named constant is absent")
+WOW_PROJECT_ID = 1; check(not C.IsForever(), "numeric fallback rejects Retail project ID")
+WOW_PROJECT_ID, WOW_PROJECT_CAMELOT = 18, camelotConstant
 local realGUID = UnitGUID
 UnitGUID = nil; check(not S.Initialize(), "missing GUID cannot fabricate character")
 UnitGUID = function() error("Unavailable") end; check(not S.Initialize(), "throwing GUID handled")
@@ -106,7 +123,7 @@ WoWSyncDB = { schemaVersion = 1, settings = { preserve = true }, characters = {
 S.eventFrame.scripts.OnEvent(S.eventFrame, "PLAYER_LOGIN")
 advance(1)
 equal(S.record.identity.name, "Hallo", "identity captured")
-equal(S.record.captureProfile, "Forever:1.60.1:70338:16001", "active saved-data profile is scoped to actual allowlisted build")
+equal(S.record.captureProfile, "Forever:1.60.1:70338:16001", "active saved-data profile is scoped to actual client build")
 local previousBuildRecord = { captureProfile = "Forever:1.60.1:70291:16001",
     sections = { equipment = { data = { marker = "70291 evidence" } } },
     latestExport = { text = "70291 export" } }
@@ -203,11 +220,18 @@ check(output:find("Race: Dwarf", 1, true), "supported Forever profile serializes
 local unknownBuildSnapshot = S.GetSnapshot()
 unknownBuildSnapshot.sections.character.data.clientBuild = nil
 check(not S.RenderSection("character", unknownBuildSnapshot):find("Race:", 1, true),
-    "unknown Forever build cannot add an unsupported v1 race field")
+    "missing race observation is not manufactured")
 local legacyBuildSnapshot = S.GetSnapshot()
 legacyBuildSnapshot.sections.character.data.clientBuild = "70009"
 check(not S.RenderSection("character", legacyBuildSnapshot):find("Race:", 1, true),
-    "unallowlisted build cannot serialize the Forever race field")
+    "missing race remains unknown in the versioned text projection")
+build = "70400"; addon.Forever.runtimeBuild = "70400"; addon.Forever.compatibilityState = "UNVERIFIED_BUILD"
+addon.Forever.compatibilityReason = "Forever project identified; this client build has not been compatibility-tested."
+local updateData = S.collectors.character()
+local updateCharacter = S.RenderSection("character", { sections = { character = { data = updateData } } })
+check(updateCharacter:find("Compatibility: UNVERIFIED_BUILD", 1, true)
+    and updateCharacter:find("not been compatibility-tested", 1, true), "new Forever build displays a clear compatibility warning")
+build = "70338"; addon.Forever.runtimeBuild = "70338"; addon.Forever.compatibilityState = "VERIFIED_PROFILE"; addon.Forever.compatibilityReason = nil; S.RequestSync(); advance(1)
 check(output:find("PlayedSeconds: 3600\nLevelPlayedSeconds: 1200", 1, true), "event-backed playtime serializes")
 check(output:find("XP: 413/72820", 1, true), "observed XP serializes")
 check(output:find("[BANK]\nState: UNKNOWN", 1, true), "bank not observed")

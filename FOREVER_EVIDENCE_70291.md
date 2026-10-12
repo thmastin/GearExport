@@ -1,6 +1,6 @@
 # Forever 70291 compatibility capture
 
-The original compatibility candidate was pinned to Forever `1.60.1`, build `70291`, and interface `16001`. It carries forward only the production collectors selected from the build-70245 contracts. The current exact-build allowlist extension is recorded below. The earlier API evidence remains in `FOREVER_EVIDENCE_70245.md` and the historical production-validation report.
+The original compatibility candidate was pinned to Forever `1.60.1`, build `70291`, and interface `16001`. It carries forward only the production collectors selected from the build-70245 contracts. This is historical verified-profile evidence, not a current runtime allowlist; see `FOREVER_UPDATE_RESILIENCE.md`. The earlier API evidence remains in `FOREVER_EVIDENCE_70245.md` and the historical production-validation report.
 
 ## Exact-build compatibility extension - 2026-10-10
 

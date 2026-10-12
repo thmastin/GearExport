@@ -450,7 +450,8 @@ S.collectors.forever70291Evidence = function()
     table.sort(issues)
     return data, { completeness = #issues == 0 and "complete" or "partial",
         reason = #issues > 0 and table.concat(issues, "; ") or nil,
-        source = "Forever read-only runtime evidence for build " .. tostring(F.build) .. "; API tuple contracts carried forward from 70245 pending live comparison" }
+        source = "Forever read-only runtime evidence for build " .. tostring(F.runtimeBuild)
+            .. "; API tuple semantics are verified only for the explicitly recorded profiles" }
 end
 
 -- Collector refreshes on API change events and trainer-window events. It does

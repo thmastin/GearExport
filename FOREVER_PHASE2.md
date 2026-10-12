@@ -53,7 +53,7 @@ whose `version.txt` is `1.60.1.69893`:
   ItemLocations and `C_Item.DoesItemExist` in the build's UI implementation.
 
 The directories named Mainline in this source tree do not select the addon
-target. Forever retains its explicit TOC marker and version/build guard.
+target. At this phase Forever retained its explicit TOC marker and version/build guard; that historical guard is superseded by the project-identity and capability-based policy in `FOREVER_UPDATE_RESILIENCE.md`.
 These source contracts support guarded implementation, not a claim of live
 equipment acceptance by themselves. Unexpected runtime behavior stays unknown.
 

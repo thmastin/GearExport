@@ -2,7 +2,7 @@
 
 ## Scope and evidence
 
-This checkpoint audits Forever 1.60.1 builds 70291 and 70338, interface 16001. Build acceptance remains an explicit allowlist; this change does not admit other builds. API names and call contracts below were checked against the version-matched Gethe UI-source Forever branch for 70338 and its generated API declarations (the declaration tree is unchanged from the 70291 source revision). This establishes documented API support, not that every live return value was observed after these changes. Real prior observations remain the source for the earlier 70291 live claims in `FOREVER_EVIDENCE_70291.md`.
+This historical checkpoint audited Forever 1.60.1 builds 70291 and 70338, interface 16001. Its exact build gate was superseded by the project-identity/capability policy in `FOREVER_UPDATE_RESILIENCE.md`; the known build profiles remain the verified API evidence baseline. API names and call contracts below were checked against the version-matched Gethe UI-source Forever branch for 70338 and its generated API declarations (the declaration tree is unchanged from the 70291 source revision). This establishes documented API support, not that every live return value was observed after those changes. Real prior observations remain the source for earlier 70291 live claims in `FOREVER_EVIDENCE_70291.md`.
 
 ## Changes
 

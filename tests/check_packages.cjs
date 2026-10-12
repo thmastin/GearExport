@@ -38,6 +38,7 @@ for (const [target, version] of selected) {
         assert(manifest.hashes['FOREVER_EVIDENCE_70291.md']);
         assert(manifest.hashes['WoWSyncForeverRecipes.lua'], 'Forever learned-recipe output collector included');
         assert(manifest.hashes['FOREVER_CAPTURE_RELIABILITY_70338.md']);
+        assert(manifest.hashes['FOREVER_UPDATE_RESILIENCE.md']);
         for (const file of ['GearExport.lua', 'BankCleanup.lua', 'WoWSyncCollectors.lua']) {
             assert(!fs.existsSync(path.join(directory, file)), 'Forever excludes ' + file);
         }

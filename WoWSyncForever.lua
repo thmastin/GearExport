@@ -1,7 +1,13 @@
 -- Loaded only by the Forever package. No legacy exporter or gameplay modules.
 local ADDON_NAME, addon = ...
 local C = WoWSyncCompat
-local F = { version = "1.60.1", interface = 16001, supportedBuilds = { ["70291"] = true, ["70338"] = true } }
+-- Builds in this table have direct compatibility evidence. It is deliberately
+-- not an addon-load allowlist: Forever updates frequently, and each collector
+-- guards its own API/return contract. A new build must not disable every
+-- otherwise-working observation merely because its build number changed.
+local F = { family = "Forever", knownProfiles = {
+    ["1.60.1:70291:16001"] = true, ["1.60.1:70338:16001"] = true,
+} }
 addon.Forever = F
 -- Forever uses the stable inventory slot IDs. Keep IDs in the export; these
 -- labels are presentation only and are checked against Blizzard's Forever UI
@@ -15,9 +21,30 @@ addon.Readers = { SlotNames = {
 -- This package selects its own adapters even if Blizzard reuses a project ID.
 function C.IsRetail() return false end
 
-function C.IsSupportedForeverBuild(build, interface)
-    return interface == F.interface and F.supportedBuilds[build] == true
+function C.IsSupportedForeverBuild(build, interface, version)
+    version = version or F.runtimeVersion
+    return F.knownProfiles[tostring(version) .. ":" .. tostring(build) .. ":" .. tostring(interface)] == true
 end
+
+local function IsForeverProject(projectID, camelotID, interface)
+    -- Prefer the named client constant. The numeric fallback is based on the
+    -- captured 1.60.1 build 70338 project ID (18), and constrained to the
+    -- Forever interface family. The addon TOC target is independently checked.
+    if type(camelotID) == "number" then return projectID == camelotID end
+    return projectID == 18 and type(interface) == "number" and interface >= 16000 and interface < 20000
+end
+
+F.IsForeverProject = IsForeverProject
+
+local function IsForeverVersion(version)
+    if type(version) ~= "string" then return false end
+    local major, minor, patch = version:match("^(%d+)%.(%d+)%.(%d+)$")
+    major, minor, patch = tonumber(major), tonumber(minor), tonumber(patch)
+    -- Forever 1.60+ is its own client line. This excludes Classic 1.15 and
+    -- TBC 2.x while allowing routine Forever 1.6x version updates.
+    return major == 1 and minor ~= nil and minor >= 60 and minor < 100 and patch ~= nil
+end
+F.IsForeverVersion = IsForeverVersion
 
 local function Public(value)
     return not (type(issecretvalue) == "function" and issecretvalue(value))
@@ -53,20 +80,36 @@ function C.IsForever()
     local version = F.Read("version", GetBuildInfo, 1, "string", issues)
     local build = F.Read("build", GetBuildInfo, 2, "string", issues)
     local interface = F.Read("interface", GetBuildInfo, 4, "number", issues)
+    local projectID = type(WOW_PROJECT_ID) == "number" and WOW_PROJECT_ID or nil
+    local camelotID = type(WOW_PROJECT_CAMELOT) == "number" and WOW_PROJECT_CAMELOT or nil
     local metadata = type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
     local target = F.Read("target", metadata, 1, "string", issues, ADDON_NAME, "X-WoWSync-Target")
-    local supported = target == "Forever" and version == F.version and C.IsSupportedForeverBuild(build, interface)
-    if supported then
-        -- Collectors and profiles use the actual allowlisted runtime build.
-        -- This keeps observations from distinct builds from sharing freshness.
-        F.build = build
+    local isProject = IsForeverProject(projectID, camelotID, interface)
+    local recognized = target == "Forever" and isProject and IsForeverVersion(version)
+        and type(build) == "string" and build:match("^%d+$") ~= nil
+        and interface ~= nil and interface >= 16000 and interface < 20000
+    if recognized then
+        -- Scope evidence and freshness to the exact running runtime, including
+        -- unverified update builds. Build identity is not API compatibility.
+        F.runtimeVersion, F.runtimeBuild, F.runtimeInterface = version, build, interface
+        F.version, F.build, F.interface = version, build, interface
+        F.compatibilityVerified = C.IsSupportedForeverBuild(build, interface, version)
+        F.compatibilityState = F.compatibilityVerified and "VERIFIED_PROFILE" or "UNVERIFIED_BUILD"
+        F.compatibilityReason = F.compatibilityVerified and nil
+            or "Forever project identified; this client build has not been compatibility-tested. Each observation remains API-guarded."
+        local evidence = WOW_PROJECT_CAMELOT and "WOW_PROJECT_ID_EQUALS_WOW_PROJECT_CAMELOT"
+            or "WOW_PROJECT_ID_18_AND_INTERFACE_16000_19999"
+        if addon.Sync then addon.Sync.runtimeCompatibility = {
+            state = F.compatibilityState, version = version, build = build, interface = interface,
+            reason = F.compatibilityReason, projectEvidence = evidence,
+        } end
     end
-    return supported
+    return recognized
 end
 
 function addon.ReadIdentity()
     if not C.IsForever() then
-        if addon.Sync then addon.Sync.error = "The installed WoWSync build is not verified for the running Forever client." end
+        if addon.Sync then addon.Sync.error = "Forever client identity is not established; export was not initialized." end
         return nil
     end
     local issues = {}

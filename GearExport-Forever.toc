@@ -1,4 +1,5 @@
 ## Interface: 16001
+## AllowLoadGameType: camelot
 ## Title: WoWSync
 ## Notes: Forever observational WoWSync v1 compatibility package
 ## Version: 2.5

@@ -4,16 +4,21 @@ GearExport includes WoWSync, a dependency-free World of Warcraft character expor
 
 TradeSkillMaster is optional. When it is installed, GearExport uses its public API to include market pricing and current-character inventory-location data.
 
-**Forever compatibility** provides a dedicated observational export for client
-`1.60.1`, exact builds `70291` and `70338`, interface `16001`. The supported
+**Forever compatibility** provides a dedicated observational export for the
+Forever/Camelot client family. Build `1.60.1/70291/interface 16001` and
+`1.60.1/70338/interface 16001` are the currently verified profiles. The supported
 capture includes character identity/build, equipment, carried inventory,
 location, faction, gold, XP, playtime when the asynchronous response arrives,
 professions, spellbook, bank while open, trainer evidence, learned recipes, and
 quest observations. Individual sections retain their own freshness and partial
 coverage; this is not proof that every optional API returns data on every
 character. Build 70291 and 70338 captures have been live-validated at separate
-checkpoints; only those exact builds are accepted. See
+checkpoints. New Forever 1.60+ profiles can load and attempt guarded collection,
+but are explicitly reported as `UNVERIFIED_BUILD` until live validation; this
+does not claim API compatibility. A newer interface may require the player's
+normal **Load Out of Date AddOns** option. See
 [Forever capture reliability](FOREVER_CAPTURE_RELIABILITY_70338.md) and
+[update resilience policy](FOREVER_UPDATE_RESILIENCE.md) and
 [70291 runtime evidence](FOREVER_EVIDENCE_70291.md). Build with
 `node scripts/package.cjs Forever`; the package is `dist/Forever/GearExport`
 and targets `_classic_beta_/Interface/AddOns`. It excludes BankCleanup and the
@@ -56,18 +61,21 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\dev\wow-addons\GearE
 `-ExecutionPolicy Bypass` applies only to that PowerShell process; it does not
 change machine or user policy. The script calls the existing package builder,
 then checks the package manifest's target, interface, exact file set, SHA256
-hashes, Forever TOC marker, and literal version/build guard. It preserves the
-guard from the current package source and requires all tracked source changes
+hashes, Forever TOC marker, and the known verified-profile inventory. It requires all tracked source changes
 to be committed. Untracked files are ignored and preserved. The backup record
 includes the source commit and package manifest hash. It rejects destinations
 that do not end in `_classic_beta_\Interface\AddOns\GearExport`, destinations
 inside this repository, redirected symlink/junction path components, a running
-`WowB.exe` Forever client, or a target executable whose version/build does not
-exactly match the package guard.
+`WowB.exe` Forever client, or an executable whose version metadata is not a
+Forever 1.60–1.99 version/build. The runtime distinguishes Forever through
+the Camelot game-type TOC directive and client project identity; a build number
+change alone no longer disables capture.
 
-The deployment workflow preserves the exact Forever runtime allowlist
-`1.60.1 / 70291, 70338 / interface 16001` and compares the target `WowB.exe`
-FileVersion against that allowlist before changing the installation.
+The installer checks that the target `WowB.exe` is versioned but does not claim
+an untested build is compatible. Exact known profiles remain separately listed
+as verified evidence. The TOC's current `16001` declaration is not rewritten
+from executable metadata; WoW's out-of-date addon option remains the ordinary
+loader fallback for an interface update.
 
 Before changing the installation, deployment creates a complete copy of the
 existing `GearExport` directory under

@@ -27,7 +27,7 @@ if (-not (Test-Path -LiteralPath $clientExecutable -PathType Leaf)) {
 $fileVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($clientExecutable).FileVersion
 $versionMatch = [regex]::Match($fileVersion, '^(?<version>\d+\.\d+\.\d+)\.(?<build>\d+)')
 if (-not $versionMatch.Success) {
-    Write-Error "Could not read a 1.60.1/build version from WowB.exe FileVersion '$fileVersion'."
+    Write-Error "Could not read a Forever 1.60–1.99 version/build from WowB.exe FileVersion '$fileVersion'."
     exit 2
 }
 & $node.Source $script --destination $Destination --backup-root $BackupRoot `
