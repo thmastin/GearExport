@@ -149,7 +149,7 @@ return function(S, check, equal)
     C_Container.GetContainerItemInfo = function(bag, slot)
         local source, info = oldInfo(bag, slot), {}
         if source then for key, value in pairs(source) do info[key] = value end end
-        if bag == 0 and slot == 1 then info.hyperlink = "|Hitem:999:bad|h[Malformed]|h" end
+        if bag == 0 and slot == 1 then info.hyperlink = "|Hitem:999bad|h[Malformed]|h" end
         return source and info or nil
     end
     C_Container.GetContainerItemLink = function(bag, slot)
@@ -164,8 +164,7 @@ return function(S, check, equal)
         and malformedConflictMeta.reason:find("EMBEDDED_AND_FALLBACK_DISAGREE", 1, true),
         "malformed ID is retained only as a hint in fail-closed diagnostics")
 
-    -- A valid embedded hyperlink remains preferred and does not call the
-    -- fallback API unnecessarily.
+    -- Two independently valid sources must agree exactly, including variant.
     C_Container.GetContainerItemInfo = oldInfo
     local linkCalls = 0
     C_Container.GetContainerItemLink = function(bag, slot)
@@ -175,14 +174,49 @@ return function(S, check, equal)
     local embeddedPreferred = S.collectors.bags()
     check(embeddedPreferred and embeddedPreferred.containers[1].slots[1].itemStringSource == "CONTAINER_INFO_HYPERLINK",
         "valid embedded link retains its source")
-    equal(linkCalls, 0, "fallback API is not called when embedded exact identity validates")
+    check(linkCalls > 0, "fallback API is checked independently for contradictions")
+
+    local embeddedVariant = "|cnIQ2:|Hitem:6948:::::::8:1485::75:::::::variant-a|h[Hearthstone]|h|r"
+    local fallbackVariant = "|cnIQ2:|Hitem:6948:::::::8:1485::75:::::::variant-b|h[Hearthstone]|h|r"
+    C_Container.GetContainerItemInfo = function(bag, slot)
+        local source, info = oldInfo(bag, slot), {}
+        if source then for key, value in pairs(source) do info[key] = value end end
+        if bag == 0 and slot == 1 then info.hyperlink = embeddedVariant end
+        return source and info or nil
+    end
+    C_Container.GetContainerItemLink = function(bag, slot)
+        if bag == 0 and slot == 1 then return fallbackVariant end
+        return oldInfo(bag, slot).hyperlink
+    end
+    local variantConflict, variantConflictMeta = S.collectors.bags()
+    equal(variantConflict, nil, "different exact variants for the same base ID fail closed")
+    check(variantConflictMeta.reason:find("EMBEDDED_AND_FALLBACK_VARIANT_DISAGREE", 1, true),
+        "same-base variant disagreement is diagnosed separately from base-ID conflict")
+
+    C_Container.GetContainerItemInfo = oldInfo
+    C_Container.GetContainerItemLink = function(bag, slot)
+        if bag == 0 and slot == 1 then return "item:6948not-delimited" end
+        return oldInfo(bag, slot).hyperlink
+    end
+    local embeddedOnly, embeddedOnlyMeta = S.collectors.bags()
+    equal(embeddedOnly.containers[1].slots[1].itemString, "item:6948::::::::8:1485::75:::::::",
+        "one exact source remains usable when the secondary source is malformed without contradiction")
+    equal(embeddedOnlyMeta.completeness, "partial",
+        "malformed secondary link is visible as partial evidence")
 
     local supportedLinks = {
         { "|cffa335ee|Hitem:6948:4:5:6|h[Hearthstone]|h|r", "item:6948:4:5:6", "colored standard wrapper" },
+        { "|Hitem:6948:4|h", "item:6948:4", "valid no-display hyperlink form" },
+        { "|cnIQ2:|Hitem:6948::::::::8:1485::75:::::::|h[Hearthstone]|h|r",
+            "item:6948::::::::8:1485::75:::::::", "named-quality color wrapper and long empty fields" },
         { "|Hitem:6948:4:5:6|h[Hearthstone]|h", "item:6948:4:5:6", "hyperlink wrapper" },
         { "item:6948:4:5:6", "item:6948:4:5:6", "plain item string" },
+        { "|Hitem:6948:0:0:0:0:0:0:0|h[Hearthstone]|h",
+            "item:6948:0:0:0:0:0:0:0", "Classic-era zero-filled item string" },
         { "|Hitem:6948:1:2:3:4:5:6:7:8:9:10:11:12:13|h[Variant]|h",
             "item:6948:1:2:3:4:5:6:7:8:9:10:11:12:13", "extended variant fields" },
+        { "|Hitem:6948:opaque-field;future=value|h[Variant]|h",
+            "item:6948:opaque-field;future=value", "opaque future variant fields are preserved" },
         { "item:6948", "item:6948", "omitted optional item fields" },
     }
     for _, fixture in ipairs(supportedLinks) do
@@ -191,6 +225,10 @@ return function(S, check, equal)
             if source then for key, value in pairs(source) do info[key] = value end end
             if bag == 0 and slot == 1 then info.hyperlink = fixture[1] end
             return source and info or nil
+        end
+        C_Container.GetContainerItemLink = function(bag, slot)
+            if bag == 0 and slot == 1 then return fixture[1] end
+            return oldInfo(bag, slot).hyperlink
         end
         local parsed = S.collectors.bags()
         equal(parsed.containers[1].slots[1].itemString, fixture[2], fixture[3] .. " is preserved exactly")
@@ -246,6 +284,12 @@ return function(S, check, equal)
     check(truncatedMeta.reason:find("embeddedState=TRUNCATED_ITEM_PAYLOAD", 1, true)
         and truncatedMeta.reason:find("shape=TRUNCATED_ITEM_PAYLOAD", 1, true),
         "truncated payload has explicit parser and format states")
+    local malformedItemData = failingLink("|Hitem:6948not-a-field|h[Malformed]|h")
+    equal(malformedItemData, nil, "opaque fields still require a delimiter after the numeric base ID")
+    local badPrefixData = failingLink("|czzzzzzzz|Hitem:6948:4|h[Bad Prefix]|h|r")
+    equal(badPrefixData, nil, "unrecognized item hyperlink wrapper prefix is rejected")
+    local badSuffixData = failingLink("|Hitem:6948:4|h[Missing close]")
+    equal(badSuffixData, nil, "unterminated display wrapper is rejected")
     local oversized = string.rep("PrivateChatPayload", 40)
     local oversizedData, oversizedMeta = failingLink(oversized)
     equal(oversizedData, nil, "unrecognized long API values do not become item identities")

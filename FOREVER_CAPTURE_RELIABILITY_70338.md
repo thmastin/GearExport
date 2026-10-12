@@ -144,3 +144,44 @@ diagnostics, exact ID agreement/disagreement, malformed payloads with a
 contradictory base-ID hint, and version-isolated loading. A malformed payload's
 base ID is diagnostic evidence only; it is never accepted as an exact identity.
 Live Forever validation of the actual API return structure is still required.
+
+## Opaque item-link parser correction (automated candidate)
+
+Source comparison showed that exact item-string identity must not depend on
+decoding every variant field. The Forever-installed `EllesmereUIBags` source
+calls `C_Container.GetContainerItemInfo` and `GetContainerItemLink`, passes the
+link to `GetItemInfo`, and uses `itemLink:match("|Hitem:([^|]*)|h")` in
+`NormalizePinKey` to preserve the full payload while interpreting only fields
+needed for its own pin key. Its installed TOC includes interface 16001. This is
+local evidence of a compatible implementation pattern, not proof of what
+Rordin's particular API values contain.
+
+Blizzard's shared UI `LinkUtil.ExtractLink` documents link data as all
+characters other than the pipe through the first `|h`; `GetItemInfoFromHyperlink`
+extracts the numeric base ID and retains the remainder as an opaque string.
+See [Blizzard UI source](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_SharedXML/LinkUtil.lua#L779-L829)
+and the [installed EllesmereUI source](https://github.com/EllesmereGaming/EllesmereUI/blob/main/EllesmereUIBags/EllesmereUIBags.lua#L301-L329).
+The current upstream Blizzard branch is not a version-matched Forever source;
+it is used only to corroborate the general link framing strategy. The local
+EllesmereUI bags TOC is interface-16001 compatible.
+
+The parser now accepts a plain item string or a complete colored/uncolored
+item hyperlink, validates the wrapper boundaries, visible bounded payload,
+numeric base ID, and delimiter after that ID, then preserves the entire
+`item:...` payload byte-for-byte. It does not interpret future modifier
+fields. The slot's independently observed `itemID` must match the parsed base
+ID. When both container APIs return valid exact references, both the base ID
+and complete variant string must agree; a different variant fails closed.
+Malformed wrappers, non-item links, controls, overlong values, invalid base
+IDs, and base-ID disagreements remain rejected. Unresolved scans remain
+all-or-stale.
+
+The live diagnostics' 87-character colored hyperlinks and `10421` base-ID
+hints are consistent with a link payload that the previous numeric-field
+grammar rejected, but the raw payload is intentionally unavailable, so its
+exact Forever-specific format remains unverified. Tests include the observed
+color-wrapper shape, Classic-style strings, empty fields, opaque future field
+content, ID mismatches, same-base variant conflicts, malformed framing, and
+the existing Retail/other-version guards. No third-party addon was installed;
+the local compatible bag addon and official parser source were sufficient to
+inform this correction.
