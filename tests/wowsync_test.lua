@@ -170,7 +170,7 @@ local oldLatest = GearExportDB.latestExport
 SlashCmdList.GEAREXPORT("help")
 equal(GearExportDB.latestExport, oldLatest, "help does not overwrite exports")
 load("BankCleanup.lua", addon)
-for _, file in ipairs({ "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do load(file, addon) end
+for _, file in ipairs({ "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncClassicRecipes.lua", "WoWSyncClassicProgression.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do load(file, addon) end
 local S = addon.Sync
 local function event(name, arg)
     S.eventFrame.scripts.OnEvent(S.eventFrame, name, arg)
@@ -413,7 +413,9 @@ local altSnapshot = S.GetSnapshot()
 local altText = S.Render(altSnapshot)
 check(altText:find("Name: Alt", 1, true) and not altText:find("Name: Torahn", 1, true), "default export excludes other character snapshots")
 for _, key in ipairs(S.order) do
-    check(altText:find(S.RenderSection(key, altSnapshot), 1, true), "independent section matches canonical export: " .. key)
+    if not S.structuredOnly[key] then
+        check(altText:find(S.RenderSection(key, altSnapshot), 1, true), "independent section matches canonical export: " .. key)
+    end
 end
 
 -- Bounded export even while events continue to arrive.
@@ -510,6 +512,8 @@ check(S.record.sections.bags.completeness == "complete", "Classic item data even
 local oldMap = C_Map; C_Map = nil; event("ZONE_CHANGED"); advance(1)
 check(S.record.sections.location.data.zone == "Thunder Bluff", "Classic optional map APIs fall back safely")
 C_Map = oldMap
+assert(loadfile("tests/classic_recipes_test.lua"))()(S, check, equal, event, advance)
+assert(loadfile("tests/classic_progression_test.lua"))()(S, check, equal, event, advance)
 assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
 GetBuildInfo, GetNumSpellTabs, GetSpellTabInfo, GetNumSkillLines, GetSkillLineInfo =
     originalBuild, originalTabs, originalTabInfo, originalSkillCount, originalSkillInfo

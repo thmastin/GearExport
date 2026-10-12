@@ -3,6 +3,10 @@ local ADDON_NAME, addon = ...
 local S = { apiVersion = 1, schemaVersion = 1, collectors = {}, dirty = {},
     order = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer", "itemMetadata" },
     bankOpen = false, guildBankOpen = false, trainerOpen = false, sessions = { bank = 0, accountBank = 0, guildBank = 0, trainer = 0 } }
+local function isLegacyClassic()
+    return not (WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail())
+        and not (WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever())
+end
 if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
     table.insert(S.order, 6, "accountBank")
     table.insert(S.order, 7, "guildBank")
@@ -14,10 +18,17 @@ if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
 elseif WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever() then
     S.order[#S.order + 1] = "quests"
     S.order[#S.order + 1] = "professionRecipes"
+else
+    -- Classic Era and TBC use the legacy visible tradeskill window adapter.
+    -- It reads only a profession already opened by the player.
+    S.order[#S.order + 1] = "professionRecipes"
+    S.order[#S.order + 1] = "quests"
+    S.order[#S.order + 1] = "reputation"
+    S.order[#S.order + 1] = "talents"
 end
 -- Captured into SavedVariables only: the WOWSYNC v1 text omits these sections so
 -- existing importers, which reject unknown section headers, keep working.
-S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true }
+S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true, talents = true }
 addon.Sync = S
 WoWSync = S
 
@@ -160,20 +171,26 @@ function S.Commit(key, data, meta)
                 if type(previous[listKey]) == "table" or type(current[listKey]) == "table" then
                     handled[listKey] = true
                     local byID, output = {}, {}
-                    for _, row in ipairs(current[listKey] or {}) do if type(row) == "table" and row[idKey] ~= nil then byID[row[idKey]] = row end end
+                    local function rowID(row)
+                        if type(row) ~= "table" then return nil end
+                        if idKey == "factionID" then return row.factionID or row.factionKey end
+                        return row[idKey]
+                    end
+                    for _, row in ipairs(current[listKey] or {}) do local id = rowID(row); if id ~= nil then byID[id] = row end end
                     for _, prior in ipairs(previous[listKey] or {}) do
-                        if type(prior) == "table" and prior[idKey] ~= nil then
-                            local fresh = byID[prior[idKey]]
+                        local id = rowID(prior)
+                        if id ~= nil then
+                            local fresh = byID[id]
                             if fresh then
                                 output[#output + 1] = merge(prior, fresh)
-                                byID[prior[idKey]] = nil
+                                byID[id] = nil
                             else
                                 local last = S.Copy(prior); last.evidence = "LAST_SEEN"; last.lastSeenAt = old.observedAt or old.data.observedAt
                                 output[#output + 1] = last
                             end
                         end
                     end
-                    for _, row in ipairs(current[listKey] or {}) do if type(row) == "table" and byID[row[idKey]] then output[#output + 1] = row end end
+                    for _, row in ipairs(current[listKey] or {}) do local id = rowID(row); if id ~= nil and byID[id] then output[#output + 1] = row end end
                     result[listKey] = output
                 end
             end
@@ -197,6 +214,127 @@ function S.Commit(key, data, meta)
                 if next(prior) then prior.evidence = "LAST_SEEN"; prior.lastSeenAt = old.observedAt or old.data.observedAt end
                 merged[field] = next(prior) and prior or merged[field]
             end
+        end
+        data = merged
+    elseif old and key == "quests" and type(old.data) == "table" and type(data) == "table" then
+        local merged = S.Copy(data)
+        local priorByID, currentByID, active = {}, {}, {}
+        for _, row in ipairs(old.data.active or {}) do if type(row) == "table" and type(row.questID) == "number" then priorByID[row.questID] = row end end
+        for _, row in ipairs(data.active or {}) do if type(row) == "table" and type(row.questID) == "number" then currentByID[row.questID] = row end end
+        local hasLastSeenActive = false
+        for _, prior in ipairs(old.data.active or {}) do
+            local fresh = type(prior) == "table" and currentByID[prior.questID]
+            if fresh then
+                local row = S.Copy(fresh)
+                local oldAt = old.observedAt or old.data.observedAt
+                row.fieldEvidence = S.Copy(row.fieldEvidence or {})
+                for _, field in ipairs({ "level", "suggestedGroup", "frequency" }) do
+                    if row[field] == nil and prior[field] ~= nil then
+                        row[field] = S.Copy(prior[field]); row.fieldEvidence[field] = "LAST_SEEN"
+                        row.fieldLastSeenAt = row.fieldLastSeenAt or {}
+                        row.fieldLastSeenAt[field] = (prior.fieldLastSeenAt and prior.fieldLastSeenAt[field]) or oldAt
+                    end
+                end
+                if row.completionState ~= "OBSERVED" and prior.completionState == "OBSERVED" then
+                    row.isComplete, row.isFailed = prior.isComplete, prior.isFailed
+                    row.completionState, row.completionEvidence = "LAST_SEEN", "LAST_SEEN"
+                    row.completionLastSeenAt = prior.completionLastSeenAt or prior.observedAt or oldAt
+                end
+                if row.objectiveState ~= "OBSERVED" and type(prior.objectives) == "table" then
+                    local priorObjectives = {}
+                    for _, objective in ipairs(prior.objectives) do priorObjectives[objective.index] = objective end
+                    local objectiveIndexes, currentObjectives = {}, {}
+                    row.objectives = row.objectives or {}
+                    for _, objective in ipairs(row.objectives) do
+                        objectiveIndexes[objective.index] = true
+                        currentObjectives[objective.index] = objective
+                    end
+                    for _, objective in ipairs(row.objectives) do
+                        local previous = priorObjectives[objective.index]
+                        local sameObjective = previous and (objective.text == nil or previous.text == nil or objective.text == previous.text)
+                        if sameObjective then
+                            objective.fieldEvidence = S.Copy(objective.fieldEvidence or {})
+                            for _, field in ipairs({ "text", "type", "finished" }) do
+                                if objective[field] == nil and previous[field] ~= nil then
+                                    objective[field] = S.Copy(previous[field])
+                                    objective.fieldEvidence[field] = "LAST_SEEN"
+                                    objective.fieldLastSeenAt = objective.fieldLastSeenAt or {}
+                                    objective.fieldLastSeenAt[field] = (previous.fieldLastSeenAt and previous.fieldLastSeenAt[field])
+                                        or previous.lastSeenAt or prior.observedAt or oldAt
+                                    if field == "finished" then
+                                        objective.finishedState = "LAST_SEEN"
+                                        objective.finishedEvidence = "LAST_SEEN"
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    for _, objective in ipairs(prior.objectives) do
+                        if not objectiveIndexes[objective.index] then
+                            local last = S.Copy(objective); last.evidence = "LAST_SEEN"
+                            last.lastSeenAt = last.lastSeenAt or (last.fieldLastSeenAt and last.fieldLastSeenAt.finished)
+                                or prior.observedAt or oldAt
+                            row.objectives[#row.objectives + 1] = last
+                        end
+                    end
+                    row.objectiveState = "PARTIAL"
+                    hasLastSeenActive = true
+                end
+                active[#active + 1] = row
+                currentByID[prior.questID] = nil
+            else
+                -- A missing quest-log row may reflect turn-in, abandon, filtering,
+                -- or a partial scan. Disappearance alone never proves completion.
+                local last = S.Copy(prior); last.evidence = "LAST_SEEN"
+                last.lastSeenAt = last.lastSeenAt or prior.observedAt or old.observedAt or old.data.observedAt
+                active[#active + 1] = last
+                hasLastSeenActive = true
+            end
+        end
+        for _, row in ipairs(data.active or {}) do if currentByID[row.questID] then active[#active + 1] = row end end
+        table.sort(active, function(a, b) return a.questID < b.questID end)
+        merged.active = active
+        if hasLastSeenActive then
+            merged.activeCompleteness = "partial"
+            merged.issues = S.Copy(merged.issues or {})
+            merged.issues[#merged.issues + 1] = "Previously observed active quests missing from this capture remain LAST_SEEN"
+        end
+        local oldHistory = old.data.completedHistory or {}
+        local newHistory = data.completedHistory or {}
+        if type(oldHistory.questIDs) == "table" and type(newHistory.questIDs) == "table" then
+            local ids, seen, rows, newlyObserved = {}, {}, {}, {}
+            for _, row in ipairs(oldHistory.quests or {}) do if row.questID then rows[row.questID] = S.Copy(row) end end
+            for _, row in ipairs(newHistory.quests or {}) do if row.questID then rows[row.questID] = S.Copy(row); rows[row.questID].evidence = "OBSERVED" end end
+            for _, id in ipairs(oldHistory.questIDs) do
+                if type(id) == "number" and rows[id] == nil then
+                    rows[id] = { questID = id, titleState = "UNKNOWN", evidence = "LAST_SEEN" }
+                end
+            end
+            for _, id in ipairs(newHistory.questIDs) do newlyObserved[id] = true end
+            for _, id in ipairs(newHistory.questIDs) do
+                if type(id) == "number" and rows[id] == nil then
+                    rows[id] = { questID = id, titleState = "UNKNOWN", evidence = "OBSERVED" }
+                end
+            end
+            for id in pairs(rows) do if type(id) == "number" and not seen[id] then seen[id] = true; ids[#ids + 1] = id end end
+            table.sort(ids)
+            local historyRows = {}
+            for _, id in ipairs(ids) do
+                local row = rows[id]
+                if not newlyObserved[id] then
+                    row.evidence = "LAST_SEEN"; row.lastSeenAt = row.lastSeenAt or old.observedAt or old.data.observedAt
+                end
+                historyRows[#historyRows + 1] = row
+            end
+            local hasUnconfirmedPrior = false
+            for id in pairs(rows) do
+                if type(id) == "number" and not newlyObserved[id] then hasUnconfirmedPrior = true end
+            end
+            merged.completedHistory = S.Copy(newHistory)
+            merged.completedHistory.questIDs = ids
+            merged.completedHistory.quests = historyRows
+            merged.completedHistory.state = newHistory.state == "OBSERVED" and not hasUnconfirmedPrior and "OBSERVED" or "PARTIAL"
+            merged.completedHistory.returnedCount = #ids
         end
         data = merged
     end
@@ -233,8 +371,17 @@ function S.CommitTrainer(category, data, meta)
 end
 
 local function ProfessionRecipeKey(row)
-    if type(row) ~= "table" or type(row.baseSkillLineID) ~= "number" or type(row.skillLineID) ~= "number" then return nil end
-    return tostring(row.baseSkillLineID) .. ":" .. tostring(row.skillLineID)
+    if type(row) ~= "table" then return nil end
+    if type(row.baseSkillLineID) == "number" and type(row.skillLineID) == "number" then
+        return "skill:" .. tostring(row.baseSkillLineID) .. ":" .. tostring(row.skillLineID)
+    end
+    if type(row.professionKey) == "string" and row.professionKey ~= "" then return row.professionKey end
+end
+
+local function RecipeIdentity(row)
+    if type(row) ~= "table" then return nil end
+    if type(row.recipeID) == "number" then return "id:" .. tostring(row.recipeID) end
+    if type(row.recipeKey) == "string" and row.recipeKey ~= "" then return "key:" .. row.recipeKey end
 end
 
 function S.CommitProfessionRecipes(data, meta)
@@ -264,14 +411,17 @@ function S.CommitProfessionRecipes(data, meta)
 
     local priorByID = {}
     for _, recipe in ipairs(currentPrior and currentPrior.recipes or {}) do
-        if type(recipe) == "table" and type(recipe.recipeID) == "number" then priorByID[recipe.recipeID] = recipe end
+        local identity = RecipeIdentity(recipe)
+        if identity then priorByID[identity] = recipe end
     end
     local currentByID, mergedRecipes = {}, {}
     for _, recipe in ipairs(fresh.recipes) do
-        if type(recipe) == "table" and type(recipe.recipeID) == "number" then currentByID[recipe.recipeID] = recipe end
+        local identity = RecipeIdentity(recipe)
+        if identity then currentByID[identity] = recipe end
     end
     for _, prior in ipairs(currentPrior and currentPrior.recipes or {}) do
-        if not currentByID[prior.recipeID] then
+        local identity = RecipeIdentity(prior)
+        if identity and not currentByID[identity] then
             local last = S.Copy(prior)
             last.evidence = "LAST_SEEN"
             last.lastSeenAt = last.lastSeenAt or last.observedAt or currentPrior.observedAt
@@ -280,18 +430,31 @@ function S.CommitProfessionRecipes(data, meta)
     end
     for _, recipe in ipairs(fresh.recipes) do
         local row = S.Copy(recipe)
-        local prior = priorByID[row.recipeID]
+        local identity = RecipeIdentity(row)
+        local prior = identity and priorByID[identity]
         if row.learnedState == "OBSERVED_TRUE" or row.learnedState == "OBSERVED_FALSE" then
             row.evidence = "OBSERVED"
+            row.learnedEvidence = "OBSERVED"
             row.observedAt = fresh.observedAt
         elseif prior and (prior.learnedState == "OBSERVED_TRUE" or prior.learnedState == "OBSERVED_FALSE") then
             row.learned, row.learnedState = prior.learned, prior.learnedState
-            row.evidence = "LAST_SEEN"
-            row.lastSeenAt = prior.lastSeenAt or prior.observedAt or currentPrior.observedAt
+            row.learnedEvidence = "LAST_SEEN"
+            row.learnedLastSeenAt = prior.learnedLastSeenAt or prior.observedAt or currentPrior.observedAt
+            if row.rowSource == "GetCraftInfo" and row.evidence == "OBSERVED" then
+                row.observedAt = fresh.observedAt
+            else
+                row.evidence = "LAST_SEEN"
+                row.lastSeenAt = prior.lastSeenAt or prior.observedAt or currentPrior.observedAt
+            end
         else
             row.learned = nil
             row.learnedState = "UNKNOWN"
-            row.evidence = "UNKNOWN"
+            row.learnedEvidence = "UNKNOWN"
+            if row.rowSource == "GetCraftInfo" and row.evidence == "OBSERVED" then
+                row.observedAt = fresh.observedAt
+            else
+                row.evidence = "UNKNOWN"
+            end
         end
         mergedRecipes[#mergedRecipes + 1] = row
     end
@@ -511,6 +674,12 @@ local events = addon.SyncEvents or {
     "SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE", "PLAYER_MONEY", "PLAYER_LEVEL_UP",
     "PLAYER_XP_UPDATE", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
     "GET_ITEM_INFO_RECEIVED", "TIME_PLAYED_MSG",
+    "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE", "TRADE_SKILL_LIST_UPDATE",
+    "TRADE_SKILL_DATA_SOURCE_CHANGED", "NEW_RECIPE_LEARNED",
+    "CRAFT_SHOW", "CRAFT_CLOSE", "CRAFT_UPDATE",
+    "QUEST_ACCEPTED", "QUEST_AUTOCOMPLETE", "QUEST_COMPLETE", "QUEST_LOG_UPDATE", "QUEST_LOG_CRITERIA_UPDATE",
+    "QUEST_DATA_LOAD_RESULT", "QUEST_REMOVED", "QUEST_TURNED_IN", "QUEST_WATCH_LIST_CHANGED", "QUEST_WATCH_UPDATE",
+    "UPDATE_FACTION", "FACTION_STANDING_CHANGED",
 }
 S.unsupportedEvents = {}
 for _, event in ipairs(events) do
@@ -563,10 +732,20 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.trainerOpen = true; Visit("trainer"); S.Mark("trainer"); S.Mark("spells")
     elseif event == "TRAINER_CLOSED" then
         S.trainerOpen = false; Close("trainer"); S.trainerCategory = nil
-    elseif addon.Forever and event == "TRADE_SKILL_SHOW" then
+    elseif (WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever()) and event == "TRADE_SKILL_SHOW" then
         S.professionRecipeOpen = true; S.Mark("professionRecipes")
-    elseif addon.Forever and event == "TRADE_SKILL_CLOSE" then
+    elseif (WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever()) and event == "TRADE_SKILL_CLOSE" then
         S.professionRecipeOpen = false
+    elseif isLegacyClassic() and event == "TRADE_SKILL_SHOW" then
+        S.professionRecipeOpen = true; S.professionRecipeWindowType = "TRADE_SKILL"; S.Mark("professionRecipes")
+    elseif isLegacyClassic() and event == "TRADE_SKILL_CLOSE" then
+        if S.professionRecipeWindowType == "TRADE_SKILL" then S.professionRecipeOpen = false; S.professionRecipeWindowType = nil end
+    elseif isLegacyClassic() and event == "CRAFT_SHOW" then
+        S.professionRecipeOpen = true; S.professionRecipeWindowType = "CRAFT"; S.Mark("professionRecipes")
+    elseif isLegacyClassic() and event == "CRAFT_CLOSE" then
+        if S.professionRecipeWindowType == "CRAFT" then S.professionRecipeOpen = false; S.professionRecipeWindowType = nil end
+    elseif isLegacyClassic() and event == "CRAFT_UPDATE" then
+        S.Mark("professionRecipes")
     elseif event:match("^TRAINER_") then
         S.Mark("trainer")
     elseif event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED"
@@ -590,6 +769,11 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         if event == "SKILL_LINES_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE" then S.Mark("professionSpecializations") end
     elseif event == "NEW_RECIPE_LEARNED" then
         S.Mark("professionRecipes")
+    elseif event == "QUEST_ACCEPTED" or event == "QUEST_AUTOCOMPLETE" or event == "QUEST_COMPLETE"
+        or event == "QUEST_LOG_UPDATE" or event == "QUEST_REMOVED" or event == "QUEST_TURNED_IN" or event == "QUEST_WATCH_UPDATE" then
+        S.Mark("quests")
+    elseif event == "UPDATE_FACTION" or event == "FACTION_STANDING_CHANGED" then
+        S.Mark("reputation")
     elseif event == "QUEST_ACCEPTED" or event == "QUEST_AUTOCOMPLETE" or event == "QUEST_COMPLETE"
         or event == "QUEST_DATA_LOAD_RESULT" or event == "QUEST_LOG_CRITERIA_UPDATE"
         or event == "QUEST_LOG_UPDATE" or event == "QUEST_REMOVED" or event == "QUEST_TURNED_IN"

@@ -63,6 +63,38 @@ for persistence; session scheduling uses `GetTime()` only in memory.
   Visible legacy skill lines are used without expanding/collapsing the UI.
 - `spells`: player spellbook entries with spellID/name/rank/kind and scope text.
   This is not a crafting-recipe database or pet spellbook.
+- Classic Era/TBC structured `professionRecipes`: observed rows from the
+  player's already-open legacy TradeSkill/Craft UI. The adapter stores output
+  and reagent item IDs plus the exact client item-link payload when returned,
+  required/carry quantities only when returned, and a stable opaque `recipeKey`
+  only when the profession/name/output identity is unique in that observation.
+  It does not manufacture a recipe ID or minimum skill from row difficulty.
+  Filters and collapsed categories make coverage `partial`; a remote/linked
+  skill list is rejected. This sidecar is SavedVariables-only and is omitted
+  from the human-readable WOWSYNC v1 text block. The separate legacy Craft UI
+  has its own `GetCraft*` APIs; those visible rows do not establish learned
+  state (`learnedState`/`learnedEvidence` remain `UNKNOWN`), and its returned `numAvailable` is retained as a neutral client value
+  rather than promoted to craftability. Trainer point/level requirements are
+  recorded only when those APIs return them in trainer context. Enchanting
+  Craft links use the separate `enchant:` identity; that typed link is not
+  represented as a physical `outputItemID`.
+- Classic Era/TBC structured `quests`: current visible quest-log rows, objective
+  descriptions/progress-completion flags, and the IDs returned by
+  `GetQuestsCompleted` when available. The latter reports the client-returned
+  keyed ID set; daily IDs may reset by day, and the API documents account-wide
+  pet-battle exceptions, so this is not a pure all-time per-character ledger.
+  The active list can be partial when
+  collapsed headers, row bounds, return omissions, or APIs limit coverage.
+  Turn-in readiness is unknown unless a distinct source establishes it.
+  Previously observed quests absent from a later log are `LAST_SEEN`, never
+  inferred completed. Completed-history IDs returned by a new query are
+  observed; prior IDs omitted by that query remain `LAST_SEEN` and make merged
+  history partial.
+- Classic Era/TBC structured `reputation`: the visible legacy faction rows,
+  including bar and war/watch fields where returned. This is character scoped,
+  UI-limited and always partial; missing stable faction IDs do not become
+  synthetic IDs. Structured `talents` records legacy talent tree/rank returns.
+  These sections are not part of the Retail or Forever package load sets.
 - Retail `professionRecipes`: compact, structured-only profession/tier caches.
   Each successful natural profession initialization records the base profession,
   active child `skillLineID`, per-profession `observedAt`, client identity, its

@@ -5,17 +5,16 @@ GearExport includes WoWSync, a dependency-free World of Warcraft character expor
 TradeSkillMaster is optional. When it is installed, GearExport uses its public API to include market pricing and current-character inventory-location data.
 
 **Forever compatibility** provides a dedicated observational export for client
-`1.60.1`, exact builds `70291` and `70338`, interface `16001`. Build 70291's
-capture path is live-validated on Hallo. Build 70338 is allowlisted after its
-matching Forever UI-source API contract review; WoWSync has not yet run in-game
-on 70338. Unknown builds remain rejected. The supported capture path includes character
-identity/build, equipped items, carried bags, and structured raw skill/runtime
-evidence. The WOWSYNC v1 export and same-refresh `WoWSyncDB` were compared after
-the live `/wowsync` capture. Location, faction, currency, playtime, XP,
-professions, spells, banks and trainer services remain unknown or unobserved;
-equipment effective stats and skill/trainer interpretations are not inferred.
-See [70291 runtime evidence](FOREVER_EVIDENCE_70291.md) and the historical
-[70245 scoped capture record](FOREVER_PHASE3.md). Build with
+`1.60.1`, exact builds `70291` and `70338`, interface `16001`. The supported
+capture includes character identity/build, equipment, carried inventory,
+location, faction, gold, XP, playtime when the asynchronous response arrives,
+professions, spellbook, bank while open, trainer evidence, learned recipes, and
+quest observations. Individual sections retain their own freshness and partial
+coverage; this is not proof that every optional API returns data on every
+character. Build 70291 and 70338 captures have been live-validated at separate
+checkpoints; only those exact builds are accepted. See
+[Forever capture reliability](FOREVER_CAPTURE_RELIABILITY_70338.md) and
+[70291 runtime evidence](FOREVER_EVIDENCE_70291.md). Build with
 `node scripts/package.cjs Forever`; the package is `dist/Forever/GearExport`
 and targets `_classic_beta_/Interface/AddOns`. It excludes BankCleanup and the
 legacy exporter.
@@ -150,7 +149,11 @@ WoW addons cannot write directly to the operating-system clipboard, so one manua
 ## WoWSync consolidated export
 
 WoWSync captures current character, equipment, carried inventory, professions, and
-player spellbook state automatically. Opening a bank or trainer captures its
+player spellbook state automatically. Classic Era and TBC packages additionally
+observe the currently open legacy TradeSkill or Craft profession list, active quest log/objectives,
+completed-quest IDs returned by the client, visible reputation rows, and talent
+trees. These legacy UI surfaces are explicitly partial where filters, collapsed
+categories, or missing APIs prevent full coverage. Opening a bank or trainer captures its
 accessible data; changes are coalesced rather than stored as an event history. After
 an observed bag, bank, money, equipment, zone, level, profession, or spell change
 settles, WoWSync quietly rebuilds that character's `latestExport` in memory.
@@ -173,8 +176,14 @@ unknown; service indices are never presented as IDs. Known spells come separatel
 from the player spellbook. Collapsed skill headers can limit profession coverage.
 
 WoWSync inventory includes all observed items, including items excluded by the
-traditional economic report. TSM enrichment, mailbox/AH scanning, recipe catalogues,
-and pet spellbook capture are deferred. Existing export formats and BankX's explicit
+traditional economic report. Mailbox/AH scanning and pet spellbook capture are
+not part of the WoWSync observation contract. Classic recipes are only observed
+from a player-opened legacy skill list and do not represent a complete catalogue.
+The separate Craft UI API does not establish learned state, and its client
+availability value is not presented as craftability. Enchanting Craft links are
+recorded as enchant identities, never physical output item IDs. The TSM market enrichment
+remains optional in the traditional economic report.
+Existing export formats and BankX's explicit
 one-click-per-move workflow are preserved. Synchronization never performs gameplay
 actions or executes a BankX plan.
 

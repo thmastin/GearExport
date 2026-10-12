@@ -10,5 +10,7 @@ GearExport.lua
 BankCleanup.lua
 WoWSyncCore.lua
 WoWSyncCollectors.lua
+WoWSyncClassicRecipes.lua
+WoWSyncClassicProgression.lua
 WoWSyncRender.lua
 WoWSyncUI.lua
