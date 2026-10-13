@@ -281,6 +281,31 @@ return function(S, check, equal)
     equal(#mixed.professions[1].recipes, 1, "the stray row is skipped")
     equal(mixed.professions[1].coverage.unmatchedProfessionCount, 1, "the stray row is counted")
     equal(mixed.professions[1].coverage.unmatchedProfessionExamples[1].recipeID, 61002, "the stray row is named")
+
+    -- A stray row from another profession the character HAS learned (Mining 186) inside the Blacksmithing panel.
+    local strayLine = function(id) if id == 61002 then return 186, "Mining", 186 end return 164, "Blacksmithing", 164 end
+    setFixture({ 61001, 61002 })
+    C_TradeSkillUI.GetTradeSkillLineForRecipe = strayLine
+    C_TradeSkillUI.GetBaseProfessionInfo = function() return { professionID = 164, professionName = "Blacksmithing" } end
+    local anchored = S.collectors.professionRecipes()
+    check(anchored ~= nil, "the open profession anchors the panel even when the stray profession is learned")
+    equal(anchored.professions[1].professionName, "Blacksmithing", "anchored to the open profession")
+    equal(anchored.professions[1].coverage.anchorBasis, "C_TradeSkillUI.GetBaseProfessionInfo", "anchor basis recorded")
+    equal(anchored.professions[1].coverage.unmatchedProfessionCount, 1, "the learned-profession stray is counted")
+    local many = {}
+    for id = 61005, 61023 do many[#many + 1] = id end
+    many[#many + 1] = 61002
+    setFixture(many)
+    C_TradeSkillUI.GetTradeSkillLineForRecipe = strayLine
+    local majority = S.collectors.professionRecipes()
+    check(majority ~= nil, "without an anchor, a 95% majority identifies the panel")
+    equal(majority.professions[1].coverage.anchorBasis, "DERIVED_MAJORITY", "majority basis recorded")
+    equal(#majority.professions[1].recipes, 19, "majority rows kept")
+    setFixture({ 61001, 61002 })
+    C_TradeSkillUI.GetTradeSkillLineForRecipe = strayLine
+    local split, splitMeta = S.collectors.professionRecipes()
+    equal(split, nil, "an evenly split panel without an anchor is still refused")
+    check(splitMeta.reason:find("Mining", 1, true) ~= nil and splitMeta.reason:find("Blacksmithing", 1, true) ~= nil, "refusal names both professions")
     setFixture({ 61001, 61001 })
     local duplicateIDs, duplicateMeta = S.collectors.professionRecipes()
     check(duplicateIDs ~= nil, "duplicate recipe IDs are deduplicated rather than discarding the whole API result")

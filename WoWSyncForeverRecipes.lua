@@ -510,6 +510,17 @@ S.collectors.professionRecipes = function()
 
     local rowsBySkillLine, incomplete = {}, false
     local unmatched = { count = 0, examples = {} }
+    -- The panel's own profession, as the client reports it. Rows from any other profession (the Forever
+    -- Leatherworking panel lists one Tailoring recipe) are strays even when that profession is also learned.
+    local anchor, anchorBasis
+    if type(api.GetBaseProfessionInfo) == "function" then
+        local baseState, base = safe(api.GetBaseProfessionInfo)
+        if baseState == "OBSERVED_VALUE" and type(base) == "table" then
+            for _, id in ipairs({ base.professionID, base.parentProfessionID }) do
+                if positive(id) and learnedByLine[id] then anchor, anchorBasis = id, "C_TradeSkillUI.GetBaseProfessionInfo"; break end
+            end
+        end
+    end
     local outputEvidenceContext = { byItemID = {}, count = 0, requirementCallCount = 0 }
     for _, recipeID in ipairs(ids) do
         local association, reason = recipeRow(api, recipeID, outputEvidenceContext)
@@ -517,6 +528,7 @@ S.collectors.professionRecipes = function()
             incomplete = true
         else
             local owner = learnedByLine[association.parentProfessionID]
+            if anchor and association.parentProfessionID ~= anchor then owner = nil end
             if not owner then
                 -- A candidate whose profession this character has not learned is skipped and recorded; one stray row
                 -- must not discard the whole panel. A panel with no matching row still fails below.
@@ -558,8 +570,35 @@ S.collectors.professionRecipes = function()
             end
         end
     end
+    -- Without a client anchor, a profession holding at least 95% of the matched rows is the panel's own;
+    -- the others become recorded strays. Anything less even stays a failure below.
+    if not anchor then
+        local total, best = 0, nil
+        for _, row in pairs(rowsBySkillLine) do
+            total = total + #row.recipes
+            if not best or #row.recipes > #best.recipes then best = row end
+        end
+        local count = 0
+        for _ in pairs(rowsBySkillLine) do count = count + 1 end
+        if best and count > 1 and #best.recipes >= total * 0.95 then
+            for line, row in pairs(rowsBySkillLine) do
+                if row ~= best then
+                    for _, recipe in ipairs(row.recipes) do
+                        unmatched.count = unmatched.count + 1
+                        if #unmatched.examples < 5 then
+                            unmatched.examples[#unmatched.examples + 1] = { recipeID = recipe.recipeID, skillLineID = row.skillLineID,
+                                parentProfessionID = row.parentProfessionID, professionName = row.professionName }
+                        end
+                    end
+                    rowsBySkillLine[line] = nil
+                end
+            end
+            anchorBasis = "DERIVED_MAJORITY"
+        end
+    end
     local professions = {}
     for _, row in pairs(rowsBySkillLine) do
+        row.coverage.anchorBasis = anchorBasis
         table.sort(row.recipes, function(a, b) return a.recipeID < b.recipeID end)
         -- This is the raw candidate count returned by GetAllRecipeIDs. Some
         -- candidates can remain unassociated and therefore have no recipe row.
