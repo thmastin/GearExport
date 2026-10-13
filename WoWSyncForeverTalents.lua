@@ -38,10 +38,138 @@ local function talentApiInventory()
     return { globals = globals, namespaces = namespaces, truncated = (#globals >= MAX_PROBE or #namespaces >= MAX_PROBE) or nil }
 end
 
+-- Forever 1.60.1 exposes talents through the Retail trait system (C_ClassTalents + C_Traits), seen in
+-- the API inventory on 2026-10-13. Only getters are called; nothing here purchases, refunds, commits,
+-- loads or switches anything.
+local MAX_NODES, MAX_TREES = 600, 12
+local function call(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, result = pcall(fn, ...)
+    if ok and public(result) then return result end
+    return nil
+end
+local function spellName(spellID)
+    if not integer(spellID, 1) then return nil end
+    local name = type(C_Spell) == "table" and clean(call(C_Spell.GetSpellName, spellID)) or nil
+    if not name and type(GetSpellInfo) == "function" then
+        local ok, legacy = pcall(GetSpellInfo, spellID)
+        name = ok and clean(legacy) or nil
+    end
+    return name
+end
+local function number(value)
+    return public(value) and type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+end
+
+local function collectTraits()
+    if type(C_ClassTalents) ~= "table" or type(C_Traits) ~= "table"
+        or type(C_ClassTalents.GetActiveConfigID) ~= "function" or type(C_Traits.GetConfigInfo) ~= "function"
+        or type(C_Traits.GetTreeNodes) ~= "function" or type(C_Traits.GetNodeInfo) ~= "function" then
+        return nil
+    end
+    local configID = call(C_ClassTalents.GetActiveConfigID)
+    if not integer(configID, 1) then
+        return nil, { completeness = "unknown", reason = "No active talent configuration yet (talents may still be loading)", stale = true }
+    end
+    local config = call(C_Traits.GetConfigInfo, configID)
+    local treeIDs = type(config) == "table" and type(config.treeIDs) == "table" and config.treeIDs or nil
+    if not treeIDs or #treeIDs == 0 or #treeIDs > MAX_TREES then
+        return nil, { completeness = "unknown", reason = "Talent configuration has no readable trees", stale = true }
+    end
+    local data = { formatVersion = 2, source = "C_ClassTalents/C_Traits", configID = configID, trees = {}, currencies = {} }
+    local specIndex = call(GetSpecialization)
+    if integer(specIndex, 1) and type(GetSpecializationInfo) == "function" then
+        local ok, specID, specName = pcall(GetSpecializationInfo, specIndex)
+        if ok and integer(specID, 1) then data.specialization = { index = specIndex, id = specID, name = clean(specName) } end
+    end
+    local partial, nodeCount, groups, order = false, 0, {}, {}
+    for _, treeID in ipairs(treeIDs) do
+        if integer(treeID, 1) then
+            local currencies = call(C_Traits.GetTreeCurrencyInfo, configID, treeID, false)
+            if type(currencies) == "table" then
+                for _, currency in ipairs(currencies) do
+                    if type(currency) == "table" then
+                        local row = { treeID = treeID }
+                        if integer(currency.traitCurrencyID, 0) then row.traitCurrencyID = currency.traitCurrencyID end
+                        if integer(currency.quantity, 0) then row.quantity = currency.quantity end
+                        if integer(currency.maxQuantity, 0) then row.maxQuantity = currency.maxQuantity end
+                        if integer(currency.spent, 0) then row.spent = currency.spent end
+                        data.currencies[#data.currencies + 1] = row
+                    end
+                end
+            end
+            local nodes = call(C_Traits.GetTreeNodes, treeID)
+            if type(nodes) ~= "table" then
+                partial = true
+            else
+                for _, nodeID in ipairs(nodes) do
+                    nodeCount = nodeCount + 1
+                    if nodeCount > MAX_NODES then partial = true; break end
+                    local node = call(C_Traits.GetNodeInfo, configID, nodeID)
+                    if type(node) ~= "table" then
+                        partial = true
+                    elseif node.isVisible ~= false then
+                        local subTree = integer(node.subTreeID, 1) and node.subTreeID or nil
+                        local key = subTree and ("sub:" .. subTree) or ("tree:" .. treeID)
+                        local group = groups[key]
+                        if not group then
+                            local name
+                            if subTree then
+                                local info = call(C_Traits.GetSubTreeInfo, configID, subTree)
+                                name = type(info) == "table" and clean(info.name) or nil
+                            end
+                            group = { treeID = treeID, subTreeID = subTree, name = name or ("Talent tree " .. treeID),
+                                nameSource = name and "OBSERVED" or "DERIVED", pointsSpent = 0, talents = {}, evidence = "OBSERVED" }
+                            groups[key] = group; order[#order + 1] = key
+                        end
+                        local entryID = type(node.activeEntry) == "table" and node.activeEntry.entryID
+                            or (type(node.entryIDs) == "table" and node.entryIDs[1]) or nil
+                        local name, spellID
+                        if integer(entryID, 1) then
+                            local entry = call(C_Traits.GetEntryInfo, configID, entryID)
+                            local definitionID = type(entry) == "table" and entry.definitionID or nil
+                            local definition = integer(definitionID, 1) and call(C_Traits.GetDefinitionInfo, definitionID) or nil
+                            if type(definition) == "table" then
+                                spellID = integer(definition.spellID, 1) and definition.spellID or nil
+                                name = clean(definition.overrideName) or spellName(spellID)
+                            end
+                        end
+                        local talent = { nodeID = integer(nodeID, 1) and nodeID or nil, name = name, spellID = spellID, evidence = "OBSERVED" }
+                        if integer(node.currentRank, 0) then talent.currentRank = node.currentRank else partial = true end
+                        if integer(node.maxRanks, 0) then talent.maxRank = node.maxRanks else partial = true end
+                        if integer(node.ranksPurchased, 0) then talent.ranksPurchased = node.ranksPurchased end
+                        if number(node.posX) then talent.posX = node.posX end
+                        if number(node.posY) then talent.posY = node.posY end
+                        if not name then partial = true end
+                        group.pointsSpent = group.pointsSpent + (talent.ranksPurchased or talent.currentRank or 0)
+                        group.talents[#group.talents + 1] = talent
+                    end
+                end
+            end
+        end
+    end
+    for _, key in ipairs(order) do data.trees[#data.trees + 1] = groups[key] end
+    -- Unspent points: the remaining quantity when exactly one talent currency is reported.
+    if #data.currencies == 1 and data.currencies[1].quantity then data.unspentPoints = data.currencies[1].quantity end
+    local hasUnspent = call(C_ClassTalents.HasUnspentTalentPoints)
+    if type(hasUnspent) == "boolean" then data.hasUnspentTalentPoints = hasUnspent end
+    local unspent = call(GetNumUnspentTalents)
+    if integer(unspent, 0) then data.unspentTalentsGlobal = unspent; data.unspentPoints = data.unspentPoints or unspent end
+    return data, { completeness = partial and "partial" or "complete", reason = partial and "One or more talent fields were unavailable" or nil }
+end
+
 S.collectors.talents = function()
     if not C.IsForever() then return nil, { completeness = "unknown", reason = "Forever talent collector is version isolated" } end
     if type(GetNumTalentTabs) ~= "function" or type(GetTalentTabInfo) ~= "function"
         or type(GetNumTalents) ~= "function" or type(GetTalentInfo) ~= "function" then
+        local traits, traitMeta = collectTraits()
+        if traits or traitMeta then
+            if traits then
+                traits.observedAt = S.Now()
+                traits.clientProfile = "Forever:" .. tostring(F and F.runtimeVersion) .. ":" .. tostring(F and F.runtimeBuild) .. ":" .. tostring(F and F.runtimeInterface)
+            end
+            return traits, traitMeta
+        end
         -- Record which talent API this client does expose, so the next collector reads the right one.
         local ok, inventory = pcall(talentApiInventory)
         return {

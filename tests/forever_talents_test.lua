@@ -52,6 +52,56 @@ return function(S, check, equal)
     e(meta.completeness, "unknown", "out-of-bound count is unknown")
     e(spent, 0, "no talent was learned")
 
+    -- Forever 1.60.1: legacy APIs absent, Retail trait system present. Only getters may be called.
+    GetNumTalentTabs, GetTalentTabInfo, GetNumTalents, GetTalentInfo = nil, nil, nil, nil
+    local mutated = 0
+    local function forbid() mutated = mutated + 1; error("talent collector must not change talents") end
+    local savedClassTalents, savedTraits, savedSpell, savedGetSpec, savedSpecInfo = C_ClassTalents, C_Traits, C_Spell, GetSpecialization, GetSpecializationInfo
+    local activeConfig = nil
+    C_ClassTalents = {
+        GetActiveConfigID = function() return activeConfig end,
+        HasUnspentTalentPoints = function() return true end,
+        CommitConfig = forbid, LoadConfig = forbid, SwitchToLoadoutByIndex = forbid,
+    }
+    local nodes = {
+        [11] = { ID = 11, currentRank = 2, maxRanks = 5, ranksPurchased = 2, posX = 100, posY = 200, isVisible = true, subTreeID = 7, activeEntry = { entryID = 111, rank = 2 } },
+        [12] = { ID = 12, currentRank = 0, maxRanks = 1, ranksPurchased = 0, isVisible = true, subTreeID = 8, entryIDs = { 112 } },
+        [13] = { ID = 13, currentRank = 0, maxRanks = 1, isVisible = false, subTreeID = 8, entryIDs = { 113 } },
+    }
+    C_Traits = {
+        GetConfigInfo = function() return { ID = 55, treeIDs = { 900 } } end,
+        GetTreeNodes = function() return { 11, 12, 13 } end,
+        GetNodeInfo = function(_, nodeID) return nodes[nodeID] end,
+        GetEntryInfo = function(_, entryID) return { definitionID = entryID + 1000 } end,
+        GetDefinitionInfo = function(definitionID) return { spellID = definitionID + 5000 } end,
+        GetSubTreeInfo = function(_, subTreeID) return { name = subTreeID == 7 and "Balance" or "Feral Combat" } end,
+        GetTreeCurrencyInfo = function() return { { traitCurrencyID = 3, quantity = 1, maxQuantity = 3, spent = 2 } } end,
+        PurchaseRank = forbid, RefundRank = forbid, ResetTree = forbid, RollbackConfig = forbid,
+    }
+    C_Spell = { GetSpellName = function(spellID) return "Spell " .. spellID end }
+    GetSpecialization = function() return 1 end
+    GetSpecializationInfo = function() return 102, "Balance" end
+
+    data, meta = S.collectors.talents()
+    e(data, nil, "no active config yet produces no data")
+    c(meta.stale == true and meta.completeness == "unknown", "missing config keeps the last observation")
+
+    activeConfig = 55
+    data, meta = S.collectors.talents()
+    e(data.source, "C_ClassTalents/C_Traits", "trait source recorded")
+    e(#data.trees, 2, "sub-trees become trees")
+    e(data.trees[1].name, "Balance", "sub-tree name observed")
+    e(data.trees[1].pointsSpent, 2, "points spent summed from purchased ranks")
+    e(data.trees[1].talents[1].name, "Spell 6111", "talent named from its definition spell")
+    e(data.trees[1].talents[1].currentRank, 2, "trait rank retained")
+    e(data.trees[1].talents[1].maxRank, 5, "trait max rank retained")
+    e(#data.trees[2].talents, 1, "invisible nodes are skipped")
+    e(data.unspentPoints, 1, "unspent points from the single talent currency")
+    e(data.specialization.name, "Balance", "specialization observed")
+    e(meta.completeness, "complete", "complete trait read")
+    e(mutated, 0, "no trait function that changes talents was called")
+
+    C_ClassTalents, C_Traits, C_Spell, GetSpecialization, GetSpecializationInfo = savedClassTalents, savedTraits, savedSpell, savedGetSpec, savedSpecInfo
     GetNumTalentTabs, GetTalentTabInfo, GetNumTalents, GetTalentInfo, UnitCharacterPoints = savedTabs, savedTab, savedNum, savedInfo, savedPoints
     LearnTalent = nil
     return passed
