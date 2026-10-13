@@ -509,6 +509,7 @@ S.collectors.professionRecipes = function()
     if not learnedByLine then return nil, { reason = "Learned profession identity has not hydrated", retry = true, stale = true } end
 
     local rowsBySkillLine, incomplete = {}, false
+    local unmatched = { count = 0, examples = {} }
     local outputEvidenceContext = { byItemID = {}, count = 0, requirementCallCount = 0 }
     for _, recipeID in ipairs(ids) do
         local association, reason = recipeRow(api, recipeID, outputEvidenceContext)
@@ -517,8 +518,14 @@ S.collectors.professionRecipes = function()
         else
             local owner = learnedByLine[association.parentProfessionID]
             if not owner then
-                return nil, { reason = "Open profession recipe list does not match a learned profession on this character", retry = false, stale = true }
-            end
+                -- A candidate whose profession this character has not learned is skipped and recorded; one stray row
+                -- must not discard the whole panel. A panel with no matching row still fails below.
+                unmatched.count = unmatched.count + 1
+                if #unmatched.examples < 5 then
+                    unmatched.examples[#unmatched.examples + 1] = { recipeID = recipeID, skillLineID = association.skillLineID,
+                        parentProfessionID = association.parentProfessionID, professionName = association.professionName }
+                end
+            else
             if association.professionName ~= owner.name then
                 return nil, { reason = "Profession API names disagree; recipe source remains UNKNOWN", retry = false, stale = true }
             end
@@ -548,6 +555,7 @@ S.collectors.professionRecipes = function()
                     and association.recipe.requirements.state ~= "PARTIAL"
                 or association.recipe.outputItemEvidenceState == "UNKNOWN"
                 or association.recipe.outputItemEvidenceState == "NOT_SAMPLED_BOUND" then incomplete = true end
+            end
         end
     end
     local professions = {}
@@ -558,10 +566,26 @@ S.collectors.professionRecipes = function()
         row.coverage.returnedRecipeCount = rawRecipeIDCount
         row.coverage.uniqueCandidateCount = #ids
         row.coverage.duplicateRecipeIDCount = duplicateRecipeIDCount
+        if unmatched.count > 0 then
+            row.coverage.unmatchedProfessionCount = unmatched.count
+            row.coverage.unmatchedProfessionExamples = unmatched.examples
+        end
         professions[#professions + 1] = row
     end
     table.sort(professions, function(a, b) return a.skillLineID < b.skillLineID end)
-    if #professions ~= 1 then return nil, { reason = "Recipe panel did not resolve to exactly one profession", retry = false, stale = true } end
+    local function example()
+        local first = unmatched.examples[1]
+        return first and (" (e.g. recipe " .. tostring(first.recipeID) .. " -> " .. tostring(first.professionName)
+            .. ", parent skill line " .. tostring(first.parentProfessionID) .. "; " .. unmatched.count .. " such rows)") or ""
+    end
+    if #professions == 0 and unmatched.count > 0 then
+        return nil, { reason = "Open profession recipe list does not match a learned profession on this character" .. example(), retry = false, stale = true }
+    end
+    if #professions ~= 1 then
+        local names = {}
+        for _, row in ipairs(professions) do names[#names + 1] = tostring(row.professionName) .. "/" .. tostring(row.skillLineID) end
+        return nil, { reason = "Recipe panel did not resolve to exactly one profession (" .. table.concat(names, ", ") .. ")" .. example(), retry = false, stale = true }
+    end
     local trueCount, falseCount, unknownCount = 0, 0, 0
     for _, recipe in ipairs(professions[1].recipes) do
         if recipe.learnedState == "OBSERVED_TRUE" then trueCount = trueCount + 1
