@@ -18,6 +18,7 @@ if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
 elseif WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever() then
     S.order[#S.order + 1] = "quests"
     S.order[#S.order + 1] = "professionRecipes"
+    S.order[#S.order + 1] = "talents"
 else
     -- Classic Era and TBC use the legacy visible tradeskill window adapter.
     -- It reads only a profession already opened by the player.
@@ -679,7 +680,7 @@ local events = addon.SyncEvents or {
     "CRAFT_SHOW", "CRAFT_CLOSE", "CRAFT_UPDATE",
     "QUEST_ACCEPTED", "QUEST_AUTOCOMPLETE", "QUEST_COMPLETE", "QUEST_LOG_UPDATE", "QUEST_LOG_CRITERIA_UPDATE",
     "QUEST_DATA_LOAD_RESULT", "QUEST_REMOVED", "QUEST_TURNED_IN", "QUEST_WATCH_LIST_CHANGED", "QUEST_WATCH_UPDATE",
-    "UPDATE_FACTION", "FACTION_STANDING_CHANGED",
+    "UPDATE_FACTION", "FACTION_STANDING_CHANGED", "CHARACTER_POINTS_CHANGED",
 }
 S.unsupportedEvents = {}
 for _, event in ipairs(events) do
@@ -769,6 +770,8 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         if event == "SKILL_LINES_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE" then S.Mark("professionSpecializations") end
     elseif event == "NEW_RECIPE_LEARNED" then
         S.Mark("professionRecipes")
+    elseif event == "CHARACTER_POINTS_CHANGED" then
+        if S.collectors.talents then S.Mark("talents") end
     elseif event == "QUEST_ACCEPTED" or event == "QUEST_AUTOCOMPLETE" or event == "QUEST_COMPLETE"
         or event == "QUEST_LOG_UPDATE" or event == "QUEST_REMOVED" or event == "QUEST_TURNED_IN" or event == "QUEST_WATCH_UPDATE" then
         S.Mark("quests")
