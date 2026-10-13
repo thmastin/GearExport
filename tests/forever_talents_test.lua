@@ -64,7 +64,8 @@ return function(S, check, equal)
         CommitConfig = forbid, LoadConfig = forbid, SwitchToLoadoutByIndex = forbid,
     }
     local nodes = {
-        [11] = { ID = 11, currentRank = 2, maxRanks = 5, ranksPurchased = 2, posX = 100, posY = 200, isVisible = true, subTreeID = 7, activeEntry = { entryID = 111, rank = 2 } },
+        [11] = { ID = 11, currentRank = 2, maxRanks = 5, ranksPurchased = 2, posX = 100, posY = 200, isVisible = true, subTreeID = 7, activeEntry = { entryID = 111, rank = 2 },
+            isAvailable = true, canPurchaseRank = true, meetsEdgeRequirements = true, visibleEdges = { { targetNode = 12 } }, conditionIDs = { 77 } },
         [12] = { ID = 12, currentRank = 0, maxRanks = 1, ranksPurchased = 0, isVisible = true, subTreeID = 8, entryIDs = { 112 } },
         [13] = { ID = 13, currentRank = 0, maxRanks = 1, isVisible = false, subTreeID = 8, entryIDs = { 113 } },
     }
@@ -76,6 +77,7 @@ return function(S, check, equal)
         GetDefinitionInfo = function(definitionID) return { spellID = definitionID + 5000 } end,
         GetSubTreeInfo = function(_, subTreeID) return { name = subTreeID == 7 and "Balance" or "Feral Combat" } end,
         GetTreeCurrencyInfo = function() return { { traitCurrencyID = 3, quantity = 1, maxQuantity = 3, spent = 2 } } end,
+        GetConditionInfo = function() return { isMet = true, spentAmountRequired = 5, traitCurrencyID = 3 } end,
         PurchaseRank = forbid, RefundRank = forbid, ResetTree = forbid, RollbackConfig = forbid,
     }
     C_Spell = { GetSpellName = function(spellID) return "Spell " .. spellID end }
@@ -96,6 +98,9 @@ return function(S, check, equal)
     e(data.trees[1].talents[1].currentRank, 2, "trait rank retained")
     e(data.trees[1].talents[1].maxRank, 5, "trait max rank retained")
     e(#data.trees[2].talents, 1, "invisible nodes are skipped")
+    e(data.trees[1].talents[1].canPurchaseRank, true, "purchasability observed")
+    e(data.trees[1].talents[1].unlocksNodeIDs[1], 12, "outgoing edge recorded")
+    e(data.trees[1].talents[1].conditions[1].spentAmountRequired, 5, "points-in-tree gate recorded")
     e(data.unspentPoints, 1, "unspent points from the single talent currency")
     e(data.specialization.name, "Balance", "specialization observed")
     e(meta.completeness, "complete", "complete trait read")

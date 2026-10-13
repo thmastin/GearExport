@@ -14,6 +14,7 @@ WoWSyncForeverCollectors.lua
 WoWSyncForever70291.lua
 WoWSyncForeverQuests.lua
 WoWSyncForeverTalents.lua
+WoWSyncForeverReputation.lua
 WoWSyncForeverBags70291.lua
 WoWSyncForeverEvidence70291.lua
 WoWSyncForeverBank.lua

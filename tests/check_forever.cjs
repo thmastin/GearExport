@@ -7,7 +7,7 @@ assert(/^## X-WoWSync-Target: Forever$/m.test(toc), 'Explicit Forever routing');
 assert(/^## SavedVariables: GearExportDB, WoWSyncDB$/m.test(toc), 'Existing database names');
 const files = toc.split(/\r?\n/).filter(line => line && !line.startsWith('#'));
 assert.deepStrictEqual(files, ['WoWSyncCompat.lua', 'WoWSyncForever.lua', 'WoWSyncCore.lua',
-    'WoWSyncForeverCollectors.lua', 'WoWSyncForever70291.lua', 'WoWSyncForeverQuests.lua', 'WoWSyncForeverTalents.lua', 'WoWSyncForeverBags70291.lua', 'WoWSyncForeverEvidence70291.lua',
+    'WoWSyncForeverCollectors.lua', 'WoWSyncForever70291.lua', 'WoWSyncForeverQuests.lua', 'WoWSyncForeverTalents.lua', 'WoWSyncForeverReputation.lua', 'WoWSyncForeverBags70291.lua', 'WoWSyncForeverEvidence70291.lua',
     'WoWSyncForeverBank.lua', 'WoWSyncForeverProfessions.lua', 'WoWSyncForeverRecipes.lua', 'WoWSyncForeverSpells.lua',
     'WoWSyncRender.lua', 'WoWSyncUI.lua'], 'Forever observer load order');
 assert(!files.includes('WoWSyncForeverTrainers.lua'), 'Unverified legacy trainer tuple adapter remains excluded');

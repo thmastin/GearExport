@@ -19,6 +19,7 @@ elseif WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever() t
     S.order[#S.order + 1] = "quests"
     S.order[#S.order + 1] = "professionRecipes"
     S.order[#S.order + 1] = "talents"
+    S.order[#S.order + 1] = "reputation"
 else
     -- Classic Era and TBC use the legacy visible tradeskill window adapter.
     -- It reads only a profession already opened by the player.

@@ -140,6 +140,34 @@ local function collectTraits()
                         if integer(node.ranksPurchased, 0) then talent.ranksPurchased = node.ranksPurchased end
                         if number(node.posX) then talent.posX = node.posX end
                         if number(node.posY) then talent.posY = node.posY end
+                        -- Availability as the client reports it now; the requirement details come from conditions and edges.
+                        if public(node.isAvailable) and type(node.isAvailable) == "boolean" then talent.isAvailable = node.isAvailable end
+                        if public(node.canPurchaseRank) and type(node.canPurchaseRank) == "boolean" then talent.canPurchaseRank = node.canPurchaseRank end
+                        if public(node.meetsEdgeRequirements) and type(node.meetsEdgeRequirements) == "boolean" then talent.meetsEdgeRequirements = node.meetsEdgeRequirements end
+                        if type(node.visibleEdges) == "table" then
+                            local unlocks = {}
+                            for _, edge in ipairs(node.visibleEdges) do
+                                if type(edge) == "table" and integer(edge.targetNode, 1) and #unlocks < 8 then unlocks[#unlocks + 1] = edge.targetNode end
+                            end
+                            if #unlocks > 0 then talent.unlocksNodeIDs = unlocks end
+                        end
+                        if type(node.conditionIDs) == "table" and type(C_Traits.GetConditionInfo) == "function" then
+                            local conditions = {}
+                            for _, conditionID in ipairs(node.conditionIDs) do
+                                local condition = integer(conditionID, 1) and #conditions < 4 and call(C_Traits.GetConditionInfo, configID, conditionID) or nil
+                                if type(condition) == "table" then
+                                    local row = { conditionID = conditionID }
+                                    for _, field in ipairs({ "isMet", "isGate", "isAlwaysMet", "isSufficient" }) do
+                                        if public(condition[field]) and type(condition[field]) == "boolean" then row[field] = condition[field] end
+                                    end
+                                    for _, field in ipairs({ "spentAmountRequired", "traitCurrencyID", "playerLevel", "requiredLevel", "questID", "ranksGranted" }) do
+                                        if integer(condition[field], 0) then row[field] = condition[field] end
+                                    end
+                                    conditions[#conditions + 1] = row
+                                end
+                            end
+                            if #conditions > 0 then talent.conditions = conditions end
+                        end
                         if not name then partial = true end
                         group.pointsSpent = group.pointsSpent + (talent.ranksPurchased or talent.currentRank or 0)
                         group.talents[#group.talents + 1] = talent
