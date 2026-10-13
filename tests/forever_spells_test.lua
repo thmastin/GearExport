@@ -30,6 +30,30 @@ return function(S, check, equal, advance)
     equal(#data.entries, 1, "future/pet/flyout/off-spec and duplicate IDs excluded")
     equal(data.entries[1].spellID, 100, "observed spell ID")
     equal(data.entries[1].name, "Arcane Shot", "observed spell name")
+
+    -- Class catalog: future entries only, with the client-reported level; nothing is cast or learned.
+    local casts = 0
+    local savedCast, savedLearn = CastSpellByID, LearnSpell
+    CastSpellByID = function() casts = casts + 1 end
+    LearnSpell = function() casts = casts + 1 end
+    C_SpellBook.GetSpellBookItemLevelLearned = function(index) return index == 2 and 12 or nil end
+    local catalog, catalogMeta = S.collectors.classSpellCatalog()
+    equal(#catalog.entries, 1, "only future spells enter the class catalog")
+    equal(catalog.entries[1].spellID, 101, "future spell ID")
+    equal(catalog.entries[1].levelLearned, 12, "client-reported learn level")
+    equal(catalog.entries[1].levelSource, "C_SpellBook.GetSpellBookItemLevelLearned", "level source recorded")
+    equal(catalogMeta.completeness, "complete", "catalog complete")
+    check(S.structuredOnly.classSpellCatalog, "class catalog travels only in the structured sidecar")
+    local savedFuture = Enum.SpellBookItemType.FutureSpell
+    Enum.SpellBookItemType.FutureSpell = nil
+    catalog, catalogMeta = S.collectors.classSpellCatalog()
+    equal(catalog.futureSpellType, "UNAVAILABLE", "missing future type is recorded, not guessed")
+    equal(catalogMeta.completeness, "unknown", "missing future type is unknown")
+    Enum.SpellBookItemType.FutureSpell = savedFuture
+    C_SpellBook.GetSpellBookItemLevelLearned = nil
+    equal(casts, 0, "catalog never casts or learns")
+    CastSpellByID, LearnSpell = savedCast, savedLearn
+
     S.RequestSync(); advance(2)
     local text = S.RenderSection("spells", S.GetSnapshot())
     check(text:find("100\tArcane Shot\t-", 1, true), "existing WOWSYNC spell schema")

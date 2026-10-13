@@ -20,6 +20,7 @@ elseif WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever() t
     S.order[#S.order + 1] = "professionRecipes"
     S.order[#S.order + 1] = "talents"
     S.order[#S.order + 1] = "reputation"
+    S.order[#S.order + 1] = "classSpellCatalog"
 else
     -- Classic Era and TBC use the legacy visible tradeskill window adapter.
     -- It reads only a profession already opened by the player.
@@ -30,7 +31,7 @@ else
 end
 -- Captured into SavedVariables only: the WOWSYNC v1 text omits these sections so
 -- existing importers, which reject unknown section headers, keep working.
-S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true, talents = true }
+S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true, talents = true, classSpellCatalog = true }
 addon.Sync = S
 WoWSync = S
 
@@ -767,6 +768,7 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         or event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELL_TEXT_UPDATE"
         or event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then
         S.Mark("professions"); S.Mark("spells"); S.Mark("trainer")
+        if S.collectors.classSpellCatalog and (event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE") then S.Mark("classSpellCatalog") end
         if event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then S.Mark("professionRecipes") end
         if event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELLS_CHANGED" then S.Mark("combatSpecialization") end
         if event == "SKILL_LINES_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE" then S.Mark("professionSpecializations") end

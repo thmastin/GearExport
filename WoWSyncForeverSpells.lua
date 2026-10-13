@@ -79,3 +79,66 @@ S.collectors.spells = function()
         { completeness = #issues > 0 and "partial" or "complete",
             reason = #issues > 0 and table.concat(issues, "; ") or nil, retry = #issues > 0 }
 end
+
+-- Class ability catalog: spellbook entries the client lists as not yet learned (future spells), with the
+-- level the client reports for each. Read-only; nothing is cast, learned or trained.
+local MAX_FUTURE = 300
+S.collectors.classSpellCatalog = function()
+    local api = type(C_SpellBook) == "table" and C_SpellBook or {}
+    local enum = type(Enum) == "table" and Enum or {}
+    local types, banks = enum.SpellBookItemType or {}, enum.SpellBookSpellBank or {}
+    if type(api.GetNumSpellBookSkillLines) ~= "function" or type(api.GetSpellBookSkillLineInfo) ~= "function"
+        or type(api.GetSpellBookItemInfo) ~= "function" or type(banks.Player) ~= "number" then
+        return nil, { completeness = "unknown", reason = "Forever spellbook APIs unavailable" }
+    end
+    if type(types.FutureSpell) ~= "number" then
+        return { entries = {}, futureSpellType = "UNAVAILABLE", observedAt = S.Now() },
+            { completeness = "unknown", reason = "This client exposes no future-spell spellbook type" }
+    end
+    local issues, entries, seen = {}, {}, {}
+    local lines = F.Number("Spellbook skill-line count", api.GetNumSpellBookSkillLines, issues)
+    if not lines or lines == 0 then return nil, { reason = "Forever spellbook not ready", retry = true } end
+    local levelOf = function(index, spellID)
+        if type(api.GetSpellBookItemLevelLearned) == "function" then
+            local ok, level = pcall(api.GetSpellBookItemLevelLearned, index, banks.Player)
+            if ok and type(level) == "number" and level > 0 then return level, "C_SpellBook.GetSpellBookItemLevelLearned" end
+        end
+        if type(C_Spell) == "table" and type(C_Spell.GetSpellLevelLearned) == "function" then
+            local ok, level = pcall(C_Spell.GetSpellLevelLearned, spellID)
+            if ok and type(level) == "number" and level > 0 then return level, "C_Spell.GetSpellLevelLearned" end
+        end
+        if type(GetSpellLevelLearned) == "function" then
+            local ok, level = pcall(GetSpellLevelLearned, spellID)
+            if ok and type(level) == "number" and level > 0 then return level, "GetSpellLevelLearned" end
+        end
+        return nil, nil
+    end
+    for line = 1, lines do
+        local info = F.Read("Spellbook skill line " .. line, api.GetSpellBookSkillLineInfo, 1, "table", issues, line)
+        if not info then return nil, { reason = "Forever spellbook skill line pending", retry = true } end
+        local offset = F.Number("Spellbook skill line " .. line .. " offset", Field(info, "itemIndexOffset"), issues)
+        local count = F.Number("Spellbook skill line " .. line .. " count", Field(info, "numSpellBookItems"), issues)
+        if not offset or not count or count < 0 then
+            issues[#issues + 1] = "Spellbook skill line " .. line .. " range unavailable"
+        elseif info.shouldHide ~= true and info.offSpecID == nil then
+            for index = offset + 1, offset + count do
+                local item = F.Read("Spellbook item " .. index, api.GetSpellBookItemInfo, 1, "table", issues, index, banks.Player)
+                if item and item.itemType == types.FutureSpell and #entries < MAX_FUTURE then
+                    local spellID = F.Number("Spellbook item " .. index .. " ID", Field(item, "spellID"), issues)
+                    local name = F.Read("Spellbook item " .. index .. " name", Field(item, "name"), 1, "string", issues)
+                    if spellID and spellID > 0 and name and not seen[spellID] then
+                        seen[spellID] = true
+                        local level, levelSource = levelOf(index, spellID)
+                        entries[#entries + 1] = { spellID = spellID, name = name, levelLearned = level, levelSource = levelSource,
+                            skillLineName = type(info.name) == "string" and info.name or nil, evidence = "OBSERVED" }
+                    end
+                end
+            end
+        end
+    end
+    table.sort(entries, function(a, b) return (a.levelLearned or 999) < (b.levelLearned or 999) or ((a.levelLearned or 999) == (b.levelLearned or 999) and a.spellID < b.spellID) end)
+    table.sort(issues)
+    return { entries = entries, futureSpellType = "OBSERVED", observedAt = S.Now(),
+        coverage = "Forever spellbook future-spell entries (class and general tabs); ranks and training costs are not exposed here" },
+        { completeness = #issues > 0 and "partial" or "complete", reason = #issues > 0 and table.concat(issues, "; ") or nil }
+end
