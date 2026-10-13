@@ -19,11 +19,36 @@ local function clean(value)
     return #value > MAX_TEXT and value:sub(1, MAX_TEXT) or value
 end
 
+-- Names only: which talent-related functions this client exposes. Nothing found here is called.
+local MAX_PROBE = 60
+local function talentApiInventory()
+    local globals, namespaces = {}, {}
+    for name, value in pairs(_G) do
+        if #globals < MAX_PROBE and type(name) == "string" and type(value) == "function" and name:find("Talent") then globals[#globals + 1] = name end
+        if type(name) == "string" and name:match("^C_") and type(value) == "table" and #namespaces < MAX_PROBE then
+            for member, fn in pairs(value) do
+                if #namespaces < MAX_PROBE and type(member) == "string" and type(fn) == "function"
+                    and (member:find("Talent") or member:find("Trait") or name:find("Talent") or name:find("Trait") or name:find("Spec")) then
+                    namespaces[#namespaces + 1] = name .. "." .. member
+                end
+            end
+        end
+    end
+    table.sort(globals); table.sort(namespaces)
+    return { globals = globals, namespaces = namespaces, truncated = (#globals >= MAX_PROBE or #namespaces >= MAX_PROBE) or nil }
+end
+
 S.collectors.talents = function()
     if not C.IsForever() then return nil, { completeness = "unknown", reason = "Forever talent collector is version isolated" } end
     if type(GetNumTalentTabs) ~= "function" or type(GetTalentTabInfo) ~= "function"
         or type(GetNumTalents) ~= "function" or type(GetTalentInfo) ~= "function" then
-        return nil, { completeness = "unknown", reason = "Talent APIs unavailable on this Forever client", stale = true }
+        -- Record which talent API this client does expose, so the next collector reads the right one.
+        local ok, inventory = pcall(talentApiInventory)
+        return {
+            formatVersion = 1, state = "LEGACY_API_UNAVAILABLE", observedAt = S.Now(),
+            clientProfile = "Forever:" .. tostring(F and F.runtimeVersion) .. ":" .. tostring(F and F.runtimeBuild) .. ":" .. tostring(F and F.runtimeInterface),
+            apiInventory = ok and inventory or nil, trees = {},
+        }, { completeness = "unknown", reason = "Legacy talent APIs unavailable on this Forever client; API names inventoried" }
     end
     local ok, tabCount = pcall(GetNumTalentTabs)
     if not ok or not integer(tabCount, 0) or tabCount > MAX_TABS then

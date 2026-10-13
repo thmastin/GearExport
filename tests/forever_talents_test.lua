@@ -13,9 +13,19 @@ return function(S, check, equal)
 
     local savedTabs, savedTab, savedNum, savedInfo, savedPoints = GetNumTalentTabs, GetTalentTabInfo, GetNumTalents, GetTalentInfo, UnitCharacterPoints
     GetNumTalentTabs, GetTalentTabInfo, GetNumTalents, GetTalentInfo = nil, nil, nil, nil
+    local probed = 0
+    local savedSpec = C_SpecializationInfo
+    C_FakeTalentProbe = { GetTalentTreeInfo = function() probed = probed + 1 end, Other = function() probed = probed + 1 end }
+    C_SpecializationInfo = { GetSpecialization = function() probed = probed + 1 end }
     local data, meta = S.collectors.talents()
-    e(data, nil, "missing APIs produce no data")
+    e(data.state, "LEGACY_API_UNAVAILABLE", "missing legacy APIs are recorded as such")
+    e(#data.trees, 0, "missing APIs produce no trees")
     e(meta.completeness, "unknown", "missing APIs are unknown, not empty")
+    local names = table.concat(data.apiInventory.namespaces, ",")
+    c(names:find("C_FakeTalentProbe.GetTalentTreeInfo", 1, true) ~= nil, "talent namespaces are inventoried by name")
+    c(names:find("C_SpecializationInfo.GetSpecialization", 1, true) ~= nil, "specialization namespace inventoried")
+    e(probed, 0, "inventoried functions are never called")
+    C_FakeTalentProbe, C_SpecializationInfo = nil, savedSpec
 
     GetNumTalentTabs = function() return 3 end
     GetTalentTabInfo = function(tab) return ({ "Balance", "Feral Combat", "Restoration" })[tab], "icon", tab == 1 and 2 or 0 end
