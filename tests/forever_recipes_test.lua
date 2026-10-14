@@ -306,6 +306,18 @@ return function(S, check, equal)
     local split, splitMeta = S.collectors.professionRecipes()
     equal(split, nil, "an evenly split panel without an anchor is still refused")
     check(splitMeta.reason:find("Mining", 1, true) ~= nil and splitMeta.reason:find("Blacksmithing", 1, true) ~= nil, "refusal names both professions")
+
+    -- Source text for unlearned recipes, raw and read-only.
+    setFixture({ 61002 })
+    C_TradeSkillUI.GetRecipeInfo = function() return { learned = false } end
+    C_TradeSkillUI.GetRecipeSourceText = function(id) return "Trainer: Blacksmithing\nRequires Blacksmithing (50)" end
+    local sourced = S.collectors.professionRecipes()
+    equal(sourced.professions[1].recipes[1].learned, false, "fixture recipe is unlearned")
+    equal(sourced.professions[1].recipes[1].sourceText, "Trainer: Blacksmithing\nRequires Blacksmithing (50)", "client source text recorded raw")
+    equal(sourced.professions[1].recipes[1].sourceTextState, "OBSERVED", "source text state")
+    C_TradeSkillUI.GetRecipeSourceText = nil
+    sourced = S.collectors.professionRecipes()
+    equal(sourced.professions[1].recipes[1].sourceTextState, "API_UNAVAILABLE", "missing API recorded, not guessed")
     setFixture({ 61001, 61001 })
     local duplicateIDs, duplicateMeta = S.collectors.professionRecipes()
     check(duplicateIDs ~= nil, "duplicate recipe IDs are deduplicated rather than discarding the whole API result")

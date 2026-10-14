@@ -484,6 +484,22 @@ local function recipeRow(api, recipeID, outputEvidenceContext)
     else
         row.recipeProgressionInfoState = "UNKNOWN"
     end
+    -- How an unlearned recipe is obtained, as the client's recipe panel words it (trainer, vendor, drop,
+    -- "Requires <Profession> (N)"). Kept raw and bounded; the Dashboard parses it. Read-only.
+    if row.learned == false then
+        if type(api.GetRecipeSourceText) == "function" then
+            local sourceState, sourceText = safe(api.GetRecipeSourceText, recipeID)
+            local text = sourceState == "OBSERVED_VALUE" and publicString(sourceText) or nil
+            if text then
+                row.sourceText = #text > 400 and text:sub(1, 400) or text
+                row.sourceTextState = "OBSERVED"
+            else
+                row.sourceTextState = sourceState == "OBSERVED_VALUE" and "EMPTY" or "UNKNOWN"
+            end
+        else
+            row.sourceTextState = "API_UNAVAILABLE"
+        end
+    end
     return { baseSkillLineID = parentSkillLineID, skillLineID = skillLineID,
         parentProfessionID = parentSkillLineID, professionName = professionName, recipe = row }
 end
