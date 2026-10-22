@@ -21,7 +21,7 @@ function hash(file) { return crypto.createHash('sha256').update(fs.readFileSync(
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'forever-deploy-fixtures-'));
 function write(file, value) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, value); }
 function makePackage(name, files = { 'GearExport.toc': '## Interface: 16001\n## X-WoWSync-Target: Forever\nWoWSyncForever.lua\n',
-    'WoWSyncForever.lua': 'local F = { version = "1.60.1", interface = 16001, supportedBuilds = { ["70291"] = true, ["70338"] = true } }\n', 'README.md': 'fixture package\n' }) {
+    'WoWSyncForever.lua': 'local F = { version = "1.60.1", interface = 16001, minimumBuild = 70291, verifiedBuilds = { ["70291"] = true, ["70338"] = true, ["70450"] = true } }\n', 'README.md': 'fixture package\n' }) {
     const directory = path.join(temp, name);
     fs.mkdirSync(directory, { recursive: true });
     const hashes = {};
@@ -30,7 +30,7 @@ function makePackage(name, files = { 'GearExport.toc': '## Interface: 16001\n## 
         hashes[file] = hash(path.join(directory, file));
     }
     write(path.join(directory, 'package-manifest.json'), JSON.stringify({ target: 'Forever', interface: 16001,
-        clientVersion: '1.60.1', clientBuilds: ['70291', '70338'], schema: 'WOWSYNC v1', hashes }, null, 2) + '\n');
+        clientVersion: '1.60.1', clientBuilds: ['70291', '70338', '70450'], schema: 'WOWSYNC v1', hashes }, null, 2) + '\n');
     return directory;
 }
 function fixture(name, packagePath) {
@@ -52,7 +52,7 @@ try {
         'PowerShell launcher resolves WowB.exe from the Forever installation root');
     const validPackage = makePackage('valid-package');
     const info = verifyPackage(validPackage);
-    equal(info.build, { version: '1.60.1', interface: 16001, builds: ['70291', '70338'] }, 'Preserves the exact package runtime build allowlist');
+    equal(info.build, { version: '1.60.1', interface: 16001, minimumBuild: 70291, builds: ['70291', '70338', '70450'] }, 'Preserves the minimum and verified runtime build contract');
     const legacyGuardPackage = makePackage('legacy-single-build', {
         'GearExport.toc': '## Interface: 16001\n## X-WoWSync-Target: Forever\nWoWSyncForever.lua\n',
         'WoWSyncForever.lua': 'local F = { version = "1.60.1", build = "70291", interface = 16001 }\n',
@@ -71,10 +71,13 @@ try {
     write(manifestPath, JSON.stringify(manifest));
     throws(() => verifyPackage(mismatchedManifest), /manifest build allowlist does not match/, 'Manifest cannot broaden the runtime build allowlist');
     const latestBuildInstall = fixture('latest-build', validPackage);
-    equal(deploy(latestBuildInstall, undefined, '70338').status, 'installed', 'Deployment accepts an exactly allowlisted Forever update');
+    equal(deploy(latestBuildInstall, undefined, '70450').status, 'installed', 'Deployment accepts a verified Forever update');
+    const newerBuildInstall = fixture('newer-build', validPackage);
+    equal(deploy(newerBuildInstall, undefined, '70999').status, 'installed', 'Deployment accepts a newer unlisted Forever build above minimum');
     const install = fixture('fresh', validPackage);
     const freshResult = deploy(install);
     equal(freshResult.status, 'installed', 'Fresh installation succeeds');
+    equal(freshResult.sourceCommit, 'uncommitted-working-tree', 'Local authorized deployment is labelled without inventing a commit SHA');
     verifyDirectoryAgainstPackage(validPackage, install.destination);
     check(fs.existsSync(path.join(freshResult.backup, 'backup-manifest.json')), 'Fresh install writes a recovery record');
 
@@ -124,7 +127,7 @@ try {
         validateSource: false, detectProcess: false, requireCommittedSource: false, repositoryRoot: path.join(temp, 'test-repository') }),
         /refusing incompatible deployment/, 'Target executable build outside exact allowlist is refused');
     const unknown = fixture('unknown-guard-build', validPackage);
-    throws(() => deploy(unknown, undefined, '70339'), /refusing incompatible deployment/, 'A future build is not accepted by the deployment allowlist');
+    throws(() => deploy(unknown, undefined, '70009'), /refusing incompatible deployment/, 'A below-minimum build is refused');
 
     const broken = fixture('rollback', validPackage);
     write(path.join(broken.destination, 'old.lua'), 'preserve me');

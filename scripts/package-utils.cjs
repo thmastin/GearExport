@@ -7,6 +7,13 @@ const hashFile = file => crypto.createHash('sha256').update(fs.readFileSync(file
 const tocSources = { Retail: 'GearExport-Retail.toc', ClassicEra: 'GearExport-ClassicEra.toc', TBC: 'GearExport-BCC.toc', Forever: 'GearExport-Forever.toc' };
 
 function readForeverBuildGuard(source) {
+    const tolerant = source.match(/local\s+F\s*=\s*\{[^\r\n]*\bversion\s*=\s*["']([^"']+)["'][^\r\n]*\binterface\s*=\s*(\d+)[^\r\n]*\bminimumBuild\s*=\s*(\d+)[^\r\n]*\bverifiedBuilds\s*=\s*\{([^}]*)\}/);
+    if (tolerant) {
+        const builds = [...tolerant[4].matchAll(/\["(\d+)"\]\s*=\s*true/g)].map(entry => entry[1]);
+        const remainder = tolerant[4].replace(/\["\d+"\]\s*=\s*true/g, '').replace(/[\s,]/g, '');
+        if (!builds.length || remainder || new Set(builds).size !== builds.length) return null;
+        return { version: tolerant[1], interface: Number(tolerant[2]), minimumBuild: Number(tolerant[3]), builds: builds.sort() };
+    }
     const match = source.match(/local\s+F\s*=\s*\{[^\r\n]*\bversion\s*=\s*["']([^"']+)["'][^\r\n]*\binterface\s*=\s*(\d+)[^\r\n]*\bsupportedBuilds\s*=\s*\{([^}]*)\}/);
     if (match) {
         const builds = [...match[3].matchAll(/\["(\d+)"\]\s*=\s*true/g)].map(entry => entry[1]);

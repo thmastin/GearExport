@@ -1,7 +1,7 @@
 -- Loaded only by the Forever package. No legacy exporter or gameplay modules.
 local ADDON_NAME, addon = ...
 local C = WoWSyncCompat
-local F = { version = "1.60.1", interface = 16001, supportedBuilds = { ["70291"] = true, ["70338"] = true, ["70450"] = true } }
+local F = { version = "1.60.1", interface = 16001, minimumBuild = 70291, verifiedBuilds = { ["70291"] = true, ["70338"] = true, ["70450"] = true } }
 addon.Forever = F
 -- Forever uses the stable inventory slot IDs. Keep IDs in the export; these
 -- labels are presentation only and are checked against Blizzard's Forever UI
@@ -16,7 +16,8 @@ addon.Readers = { SlotNames = {
 function C.IsRetail() return false end
 
 function C.IsSupportedForeverBuild(build, interface)
-    return interface == F.interface and F.supportedBuilds[build] == true
+    return interface == F.interface and type(build) == "string" and build:match("^%d+$") ~= nil
+        and tonumber(build) >= F.minimumBuild
 end
 
 local function Public(value)
@@ -62,6 +63,11 @@ function C.IsForever()
         F.build = build
     end
     return supported
+end
+
+function F.BuildCompatibility(build)
+    if F.verifiedBuilds[build] then return "VERIFIED_PROFILE" end
+    return "UNVERIFIED_BUILD", "Forever build " .. tostring(build) .. " has not been compatibility-tested; each observation remains API-guarded."
 end
 
 function addon.ReadIdentity()

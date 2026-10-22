@@ -71,7 +71,7 @@ function deployForever({ destination, backupRoot, clientRunning = false, hooks =
     const install = validateForeverDestination(destination, projectRoot);
     const backups = ensureBackupOutsideAddons(backupRoot, install);
     if (clientRunning || (detectProcess && detectForeverRunning())) die('Forever client (WowB.exe) is running. Close Forever completely and retry.');
-    const sourceCommit = requireCommittedSource ? getCommittedSource(projectRoot) : 'fixture';
+    const sourceCommit = requireCommittedSource ? getCommittedSource(projectRoot) : 'uncommitted-working-tree';
 
     // Package once through the repository's existing builder, then validate its complete manifest contract.
     if (buildPackage) {
@@ -82,7 +82,11 @@ function deployForever({ destination, backupRoot, clientRunning = false, hooks =
     const packageInfo = verifyPackage(packageDirectory);
     if (validateSource) assertPackageMatchesSource(projectRoot, packageDirectory, packageInfo);
     if (requireCommittedSource && (!clientVersion || !clientBuild)) die('Target WowB.exe version/build evidence was not supplied by the PowerShell launcher.');
-    if (clientVersion && clientBuild && (clientVersion !== packageInfo.build.version || !packageInfo.build.builds.includes(String(clientBuild)))) {
+    const numericBuild = /^\d+$/.test(String(clientBuild ?? '')) ? Number(clientBuild) : NaN;
+    const compatibleTargetBuild = packageInfo.build.minimumBuild !== undefined
+        ? Number.isFinite(numericBuild) && numericBuild >= packageInfo.build.minimumBuild
+        : packageInfo.build.builds.includes(String(clientBuild));
+    if (clientVersion && clientBuild && (clientVersion !== packageInfo.build.version || !compatibleTargetBuild)) {
         die('Target Forever client is ' + clientVersion + '/' + clientBuild + ' but package guard allows ' +
             packageInfo.build.version + '/' + packageInfo.build.builds.join(',') + '; refusing incompatible deployment.');
     }

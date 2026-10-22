@@ -15,8 +15,8 @@ for (const file of files) assert(fs.existsSync(file), 'Missing Forever source ' 
 const foreverGuard = fs.readFileSync('WoWSyncForever.lua', 'utf8');
 assert(/version\s*=\s*"1\.60\.1"/.test(foreverGuard)
     && /interface\s*=\s*16001/.test(foreverGuard)
-    && /supportedBuilds\s*=\s*\{\s*\["70291"\]\s*=\s*true,\s*\["70338"\]\s*=\s*true,\s*\["70450"\]\s*=\s*true\s*\}/.test(foreverGuard),
-    'Runtime guard accepts the verified Forever builds and interface');
+    && /minimumBuild\s*=\s*70291,\s*verifiedBuilds\s*=\s*\{\s*\["70291"\]\s*=\s*true,\s*\["70338"\]\s*=\s*true,\s*\["70450"\]\s*=\s*true\s*\}/.test(foreverGuard),
+    'Runtime guard accepts verified and newer Forever builds while recording the verification set');
 assert(/S\.structuredOnly\.forever70291Evidence\s*=\s*true/.test(fs.readFileSync('WoWSyncForever70291.lua', 'utf8')),
     'new raw evidence remains outside strict WOWSYNC v1 text');
 console.log('PASS: Forever interface 16001, build-matched guard, target marker, SavedVariables and isolated load order');

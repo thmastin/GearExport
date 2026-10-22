@@ -73,7 +73,7 @@ local function advance(duration)
 end
 check(C.IsForever(), "explicit Forever package and supported exact version/build")
 build = "70291"; check(C.IsForever(), "previously live-validated build remains supported"); build = "70338"
-build = "70450"; check(C.IsForever(), "new Forever build is supported"); build = "70338"
+build = "70450"; check(C.IsForever(), "verified Forever build is supported"); build = "70999"; check(C.IsForever(), "newer unlisted Forever build remains capture-compatible"); build = "70338"
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
 check(not C.IsRetail(), "Forever is not routed as Retail even with a shared project ID")
 target = "Retail"; check(not C.IsForever(), "wrong package rejected"); target = "Forever"
@@ -81,9 +81,9 @@ for _, other in ipairs({ "1.15.9", "2.5.6", "12.1.0" }) do
     version = other; check(not C.IsForever(), "other clients rejected")
 end
 version = "1.60.1"
-for _, other in ipairs({ "69893", "70009", "69914", "70334", "70339", "70449", "70451", "different" }) do
+for _, other in ipairs({ "69893", "70009", "69914", "different" }) do
     build = other
-    check(not S.Initialize(), "non-current build fails closed: " .. other)
+    check(not S.Initialize(), "below-minimum or malformed build fails closed: " .. other)
     equal(WoWSyncDB, nil, "wrong client does not create database")
     equal(S.error, "The installed WoWSync build is not verified for the running Forever client.",
         "rejection describes verification rather than a package phase")
@@ -206,6 +206,11 @@ launchBuildSnapshot.sections.character.data.clientBuild = "70450"
 check(C.IsSupportedForeverBuild("70450", 16001), "build 70450 passes the exact Forever build guard")
 check(S.RenderSection("character", launchBuildSnapshot):find("Race: Dwarf", 1, true),
     "build 70450 serializes observed race in the character section")
+local newerBuildSnapshot = S.GetSnapshot()
+newerBuildSnapshot.sections.character.data.clientBuild = "70999"
+local newerRendered = S.RenderSection("character", newerBuildSnapshot)
+check(newerRendered:find("Race: Dwarf", 1, true), "unlisted newer build retains observed race")
+check(newerRendered:find("Compatibility: UNVERIFIED_BUILD", 1, true) and newerRendered:find("build 70999", 1, true), "newer build is explicitly labelled with its build number")
 local unknownBuildSnapshot = S.GetSnapshot()
 unknownBuildSnapshot.sections.character.data.clientBuild = nil
 check(not S.RenderSection("character", unknownBuildSnapshot):find("Race:", 1, true),
@@ -213,7 +218,7 @@ check(not S.RenderSection("character", unknownBuildSnapshot):find("Race:", 1, tr
 local legacyBuildSnapshot = S.GetSnapshot()
 legacyBuildSnapshot.sections.character.data.clientBuild = "70009"
 check(not S.RenderSection("character", legacyBuildSnapshot):find("Race:", 1, true),
-    "unallowlisted build cannot serialize the Forever race field")
+    "below-minimum build cannot serialize the Forever race field")
 check(output:find("PlayedSeconds: 3600\nLevelPlayedSeconds: 1200", 1, true), "event-backed playtime serializes")
 check(output:find("XP: 413/72820", 1, true), "observed XP serializes")
 check(output:find("[BANK]\nState: UNKNOWN", 1, true), "bank not observed")

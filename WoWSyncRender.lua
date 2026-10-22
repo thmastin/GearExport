@@ -157,6 +157,11 @@ renderers.character = function(out, data)
     end
     Field(out, "Client", (data.clientVersion or "?") .. " build " .. (data.clientBuild or "?"))
     if data.clientFamily then Field(out, "ClientFamily", data.clientFamily); Field(out, "Interface", data.interface) end
+    if data.clientFamily == "Forever" and C.IsSupportedForeverBuild(data.clientBuild, data.interface) then
+        local compatibility, note = addon.Forever.BuildCompatibility(data.clientBuild)
+        Field(out, "Compatibility", compatibility)
+        if note then Field(out, "CompatibilityNote", note) end
+    end
 end
 renderers.location = function(out, data)
     Field(out, "Zone", data.zone)
