@@ -71,8 +71,9 @@ local function advance(duration)
         if S.eventFrame.scripts.OnUpdate then S.eventFrame.scripts.OnUpdate() end
     end
 end
-check(C.IsForever(), "explicit Forever package and newly supported exact version/build")
+check(C.IsForever(), "explicit Forever package and supported exact version/build")
 build = "70291"; check(C.IsForever(), "previously live-validated build remains supported"); build = "70338"
+build = "70450"; check(C.IsForever(), "new Forever build is supported"); build = "70338"
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
 check(not C.IsRetail(), "Forever is not routed as Retail even with a shared project ID")
 target = "Retail"; check(not C.IsForever(), "wrong package rejected"); target = "Forever"
@@ -80,7 +81,7 @@ for _, other in ipairs({ "1.15.9", "2.5.6", "12.1.0" }) do
     version = other; check(not C.IsForever(), "other clients rejected")
 end
 version = "1.60.1"
-for _, other in ipairs({ "69893", "70009", "69914", "70334", "70339", "different" }) do
+for _, other in ipairs({ "69893", "70009", "69914", "70334", "70339", "70449", "70451", "different" }) do
     build = other
     check(not S.Initialize(), "non-current build fails closed: " .. other)
     equal(WoWSyncDB, nil, "wrong client does not create database")
@@ -200,6 +201,11 @@ check(output and output:find("WOWSYNC v1", 1, true), "shared canonical export")
 check(output:find("Client: 1.60.1 build 70338", 1, true)
     and output:find("Interface: 16001", 1, true), "actual allowlisted client build and interface serialized")
 check(output:find("Race: Dwarf", 1, true), "supported Forever profile serializes observed race")
+local launchBuildSnapshot = S.GetSnapshot()
+launchBuildSnapshot.sections.character.data.clientBuild = "70450"
+check(C.IsSupportedForeverBuild("70450", 16001), "build 70450 passes the exact Forever build guard")
+check(S.RenderSection("character", launchBuildSnapshot):find("Race: Dwarf", 1, true),
+    "build 70450 serializes observed race in the character section")
 local unknownBuildSnapshot = S.GetSnapshot()
 unknownBuildSnapshot.sections.character.data.clientBuild = nil
 check(not S.RenderSection("character", unknownBuildSnapshot):find("Race:", 1, true),

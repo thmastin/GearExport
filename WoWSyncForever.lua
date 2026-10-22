@@ -1,7 +1,7 @@
 -- Loaded only by the Forever package. No legacy exporter or gameplay modules.
 local ADDON_NAME, addon = ...
 local C = WoWSyncCompat
-local F = { version = "1.60.1", interface = 16001, supportedBuilds = { ["70291"] = true, ["70338"] = true } }
+local F = { version = "1.60.1", interface = 16001, supportedBuilds = { ["70291"] = true, ["70338"] = true, ["70450"] = true } }
 addon.Forever = F
 -- Forever uses the stable inventory slot IDs. Keep IDs in the export; these
 -- labels are presentation only and are checked against Blizzard's Forever UI
