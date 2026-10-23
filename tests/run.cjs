@@ -19,6 +19,13 @@ process.stderr.write(result.stderr || '');
 if (result.error || result.status !== 0 || result.stderr || !/^PASS: \d+ assertions; 0 gameplay actions\s*$/m.test(result.stdout || '')) {
   process.exitCode = 1;
 }
+const classicEra = spawnSync(process.execPath, [cli, 'tests/classic_era_identity_test.lua'], { encoding: 'utf8' });
+if (classicEra.error) process.stderr.write(classicEra.error.message + '\n');
+process.stdout.write(classicEra.stdout || '');
+process.stderr.write(classicEra.stderr || '');
+if (classicEra.error || classicEra.status !== 0 || classicEra.stderr || !/^PASS: \d+ Classic Era identity\/talent assertions\s*$/m.test(classicEra.stdout || '')) {
+  process.exitCode = 1;
+}
 const retail = spawnSync(process.execPath, [cli, 'tests/retail_test.lua'], { encoding: 'utf8' });
 if (retail.error) process.stderr.write(retail.error.message + '\n');
 process.stdout.write(retail.stdout || '');

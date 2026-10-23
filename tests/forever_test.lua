@@ -146,6 +146,8 @@ local renderedCharacter = S.RenderSection("character", S.GetSnapshot())
 check(renderedCharacter:find("Name: Hallo\nSurname: Surname\nSurnameSource: ", 1, true)
     and renderedCharacter:find("Realm: Test Realm", 1, true), "Forever export includes optional surname without changing first-name field")
 check(renderedCharacter:find("SurnameSource: UnitName%[2%]", 1) ~= nil, "export preserves the unverified runtime API candidate provenance")
+check(not renderedCharacter:find("GUID:", 1, true) and not renderedCharacter:find("TalentStatus:", 1, true),
+    "Forever character output keeps the pre-Era character fields")
 UnitName = function() return "Hallo", "Test Realm" end
 GetUnitName = function() return "Hallo" end
 UnitFullName = function() return "Hallo", "Test Realm" end
