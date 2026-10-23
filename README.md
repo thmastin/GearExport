@@ -1,6 +1,12 @@
 # GearExport
 
+[![CI](https://github.com/thmastin/GearExport/actions/workflows/ci.yml/badge.svg)](https://github.com/thmastin/GearExport/actions/workflows/ci.yml)
+
 GearExport includes WoWSync, a dependency-free World of Warcraft character exporter with one shared `WOWSYNC v1` format. Supported compatibility work covers **Burning Crusade Classic Anniversary**, **Classic Era**, and a **Retail validation build**. Retail live acceptance is pending; see [Retail limitations and audit](RETAIL_COMPATIBILITY.md) and [Retail install/test instructions](RETAIL_TEST_PLAN.md). Legacy Markdown reports remain available for character, equipment, and inventory analysis.
+
+## CI
+
+GitHub Actions runs the existing Lua regression harness with Fengari (Lua 5.3 runtime and Lua 5.1 syntax parsing), then builds and verifies the Retail, Classic Era, TBC Anniversary, and Forever packages on Ubuntu. These checks need Node.js and temporary test dependencies, but no WoW installation or game client; package building and hash verification are local filesystem operations.
 
 TradeSkillMaster is optional. When it is installed, GearExport uses its public API to include market pricing and current-character inventory-location data.
 

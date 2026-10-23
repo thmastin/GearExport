@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-package:
+    name: Lua tests and package verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install test harness dependencies
+        run: npm install --prefix "$RUNNER_TEMP/gearexport-test-deps" --no-save fengari-node-cli luaparse
+      - name: Run Lua regression and source checks
+        run: node tests/run.cjs "$RUNNER_TEMP/gearexport-test-deps/node_modules"
+      - name: Build client packages
+        run: |
+          node scripts/package.cjs Retail
+          node scripts/package.cjs ClassicEra
+          node scripts/package.cjs TBC
+          node scripts/package.cjs Forever
+      - name: Verify package contents and hashes
+        run: node tests/check_packages.cjs
