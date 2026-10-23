@@ -41,6 +41,15 @@ for persistence; session scheduling uses `GetTime()` only in memory.
 
 - `character`: identity display fields, level, faction, moneyCopper, xp/xpMax,
   clientVersion/clientBuild/interface.
+  Classic Era additionally emits `GUID: <UnitGUID("player")>` (or the literal
+  `UNKNOWN`) after the existing character fields. It also emits
+  `TalentStatus: OBSERVED|UNKNOWN`; when observed, a `talentTree` row per
+  `GetNumTalentTabs()` result contains `name` and `pointsSpent` in tab order.
+  An observed zero-point tree is valid, including characters below level 10.
+  Unavailable APIs or malformed tab results produce `TalentStatus: UNKNOWN`
+  and no tree rows. These are Classic Era only; TBC, Retail, and Forever retain
+  their prior text output. The M4 Dashboard adapter field names are `GUID`,
+  `TalentStatus`, and the `talentTree` row columns `name` / `pointsSpent`.
 - `location`: zone, subzone, optional mapID and x/y in percent.
 - `equipment`: `slots[1..19]`, occupied entries only; item identity and structured
   `stats={ {name,value}, ... }` from the shared GearExport interpretation.

@@ -522,6 +522,8 @@ check(rendered:find("[ACCOUNT BANK]\nState: UNKNOWN\nScope: ACCOUNT_WARBAND", 1,
 equal(S.Render(frozen), rendered, "deterministic rendering")
 for _, key in ipairs(S.order) do if not S.structuredOnly[key] then check(rendered:find(S.RenderSection(key, frozen), 1, true), "shared section renderer " .. key) end end
 check(rendered:find("ClientFamily: Retail", 1, true), "Retail metadata rendered")
+check(not rendered:find("GUID:", 1, true) and not rendered:find("TalentStatus:", 1, true),
+    "Retail character output keeps the pre-Era character fields")
 check(rendered:find(itemRef, 1, true), "full itemRef rendered")
 check(rendered:find("[GEAR CANDIDATES]", 1, true), "candidate sidecar rendered additively")
 check(not S.Render(frozen, { "bags", "bank" }):find("[GEAR CANDIDATES]", 1, true), "focused legacy section rendering excludes sidecar")

@@ -162,6 +162,16 @@ renderers.character = function(out, data)
         Field(out, "Compatibility", compatibility)
         if note then Field(out, "CompatibilityNote", note) end
     end
+    if data.guid ~= nil then Field(out, "GUID", data.guid) end
+    if data.talents then
+        Field(out, "TalentStatus", data.talents.status or "UNKNOWN")
+        if data.talents.status == "OBSERVED" then
+            Row(out, "talentTree", "name", "pointsSpent")
+            for _, tree in ipairs(data.talents.trees or {}) do
+                Row(out, "talentTree", tree.name, tree.pointsSpent)
+            end
+        end
+    end
 end
 renderers.location = function(out, data)
     Field(out, "Zone", data.zone)

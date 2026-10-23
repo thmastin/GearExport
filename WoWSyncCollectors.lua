@@ -31,6 +31,36 @@ S.collectors.character = function()
         moneyCopper = GetMoney(), xp = Optional(UnitXP, "player"), xpMax = Optional(UnitXPMax, "player"),
         clientVersion = version, clientBuild = build, interface = interface,
         clientFamily = Compat.IsRetail() and "Retail" or nil }
+    if Compat.IsClassicEra and Compat.IsClassicEra() then
+        local guid
+        if type(UnitGUID) == "function" then
+            local ok, value = pcall(UnitGUID, "player")
+            if ok and type(value) == "string" and value ~= "" then guid = value end
+        end
+        data.guid = guid or "UNKNOWN"
+
+        local talentAPI = type(GetNumTalentTabs) == "function" and type(GetTalentTabInfo) == "function"
+        local talentCount, talentOk
+        if talentAPI then
+            talentOk, talentCount = pcall(GetNumTalentTabs)
+            talentAPI = talentOk and type(talentCount) == "number" and talentCount >= 0
+                and talentCount % 1 == 0
+        end
+        local talents = { status = talentAPI and "OBSERVED" or "UNKNOWN", trees = {} }
+        if talentAPI then
+            for index = 1, talentCount do
+                local ok, name, _, pointsSpent = pcall(GetTalentTabInfo, index)
+                if not ok or type(name) ~= "string" or name == "" or type(pointsSpent) ~= "number"
+                    or pointsSpent < 0 or pointsSpent % 1 ~= 0 then
+                    talents.status = "UNKNOWN"
+                    talents.trees = {}
+                    break
+                end
+                talents.trees[#talents.trees + 1] = { name = name, pointsSpent = pointsSpent }
+            end
+        end
+        data.talents = talents
+    end
     if not data.name or not class or data.level < 1 then return nil, { reason = "Character not ready", retry = true } end
     local played = S.played
     if played and played.guid == UnitGUID("player") then

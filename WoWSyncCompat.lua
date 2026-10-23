@@ -12,6 +12,25 @@ function C.IsRetail()
     return WOW_PROJECT_MAINLINE ~= nil and WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
 end
 
+function C.IsClassicEra()
+    if C.IsRetail() then return false end
+    if type(C.IsForever) == "function" then
+        local ok, isForever = pcall(C.IsForever)
+        if not ok or isForever then return false end
+    end
+    -- Retail and Forever are the existing explicit fallbacks. If the client
+    -- does not expose project identity after those checks, Era and TBC remain
+    -- ambiguous, so do not opt in based on build/interface numbers.
+    if WOW_PROJECT_ID == nil or WOW_PROJECT_CLASSIC == nil then return false end
+    if WOW_PROJECT_ID ~= WOW_PROJECT_CLASSIC then return false end
+    if WOW_PROJECT_BURNING_CRUSADE_CLASSIC ~= nil
+        and WOW_PROJECT_ID == WOW_PROJECT_BURNING_CRUSADE_CLASSIC then return false end
+    if WOW_PROJECT_WRATH_CLASSIC ~= nil and WOW_PROJECT_ID == WOW_PROJECT_WRATH_CLASSIC then return false end
+    if WOW_PROJECT_CATACLYSM_CLASSIC ~= nil and WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC then return false end
+    if WOW_PROJECT_MISTS_CLASSIC ~= nil and WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC then return false end
+    return true
+end
+
 -- Audited on Anniversary, Era and Retail: no arguments or direct return;
 -- TIME_PLAYED_MSG supplies total seconds, then seconds at this level.
 function C.RequestPlayed()
