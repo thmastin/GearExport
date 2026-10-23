@@ -211,6 +211,7 @@ function S.Commit(key, data, meta)
         changedAt = changed and now or old.changedAt,
         revision = ((old and old.revision) or 0) + (changed and 1 or 0),
         completeness = meta.completeness or "complete", reason = meta.reason,
+        partial = meta.partial, slotFailures = meta.slotFailures and S.Copy(meta.slotFailures) or nil,
         source = meta.source or "client", capture = S.capture }
 end
 

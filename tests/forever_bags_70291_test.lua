@@ -84,7 +84,7 @@ return function(S, check, equal)
     C_Container.GetContainerItemInfo = function(_, slot)
         if slot == 1 then return { itemID = 1, itemName = "bad", hyperlink = "item:2", stackCount = 1, isLocked = false } end
     end
-    equal(S.collectors.bags(), nil, "mismatched item ID and hyperlink fail closed")
+    equal(S.collectors.bags().containers[1].slots[1].itemString, nil, "mismatched link never becomes exact identity")
     local exactFallback = "|Hitem:6948:4:5:6|h[Exact Variant]|h"
     C_Container.GetContainerItemInfo = function(bag, slot)
         local source, info = oldInfo(bag, slot), {}
@@ -137,11 +137,11 @@ return function(S, check, equal)
         return oldInfo(bag, slot).hyperlink
     end
     local embeddedFallbackConflict, embeddedFallbackConflictMeta = S.collectors.bags()
-    equal(embeddedFallbackConflict, nil, "conflicting embedded and fallback links reject the entire scan")
-    check(embeddedFallbackConflictMeta.reason:find("reportedItemID=6948", 1, true)
-        and embeddedFallbackConflictMeta.reason:find("embeddedItemID=999", 1, true)
-        and embeddedFallbackConflictMeta.reason:find("fallbackItemID=6948", 1, true)
-        and embeddedFallbackConflictMeta.reason:find("EMBEDDED_AND_FALLBACK_DISAGREE", 1, true),
+    check(embeddedFallbackConflict and embeddedFallbackConflict.containers[1].slots[1].itemString == nil, "conflicting links isolate the slot")
+    check(embeddedFallbackConflictMeta.slotFailures[1].reason:find("reportedItemID=6948", 1, true)
+        and embeddedFallbackConflictMeta.slotFailures[1].reason:find("embeddedItemID=999", 1, true)
+        and embeddedFallbackConflictMeta.slotFailures[1].reason:find("fallbackItemID=6948", 1, true)
+        and embeddedFallbackConflictMeta.slotFailures[1].reason:find("EMBEDDED_AND_FALLBACK_DISAGREE", 1, true),
         "contradiction diagnostic includes slot and both independently parsed IDs")
 
     -- A malformed payload can still expose a base-ID hint. Keep it only as
@@ -157,11 +157,11 @@ return function(S, check, equal)
         return oldInfo(bag, slot).hyperlink
     end
     local malformedConflict, malformedConflictMeta = S.collectors.bags()
-    equal(malformedConflict, nil, "malformed contradictory embedded ID rejects the entire scan")
-    check(malformedConflictMeta.reason:find("embeddedItemID=UNKNOWN", 1, true)
-        and malformedConflictMeta.reason:find("embeddedBaseIDHint=999", 1, true)
-        and malformedConflictMeta.reason:find("fallbackItemID=6948", 1, true)
-        and malformedConflictMeta.reason:find("EMBEDDED_AND_FALLBACK_DISAGREE", 1, true),
+    check(malformedConflict and malformedConflict.containers[1].slots[1].itemString == nil, "malformed contradiction isolates the slot")
+    check(malformedConflictMeta.slotFailures[1].reason:find("embeddedItemID=UNKNOWN", 1, true)
+        and malformedConflictMeta.slotFailures[1].reason:find("embeddedBaseIDHint=999", 1, true)
+        and malformedConflictMeta.slotFailures[1].reason:find("fallbackItemID=6948", 1, true)
+        and malformedConflictMeta.slotFailures[1].reason:find("EMBEDDED_AND_FALLBACK_DISAGREE", 1, true),
         "malformed ID is retained only as a hint in fail-closed diagnostics")
 
     -- A valid embedded hyperlink remains preferred and does not call the
@@ -211,19 +211,19 @@ return function(S, check, equal)
     end
 
     local escapedData, escapedMeta = failingLink("||Hitem:6948:4|h[Private Display]|h")
-    equal(escapedData, nil, "escaped hyperlink delimiters are not treated as item identity")
-    check(escapedMeta.reason:find("shape=ESCAPED_DELIMITER", 1, true)
-        and not escapedMeta.reason:find("Private Display", 1, true),
+    check(escapedData and escapedData.containers[1].slots[1].itemString == nil, "escaped hyperlink delimiters are not treated as item identity")
+    check(escapedMeta.slotFailures[1].reason:find("shape=ESCAPED_DELIMITER", 1, true)
+        and not escapedMeta.slotFailures[1].reason:find("Private Display", 1, true),
         "escaped-link diagnostic identifies structure without recording display text")
     local escapedCloseData, escapedCloseMeta = failingLink("|Hitem:6948:4||h[Private Display]|h")
-    equal(escapedCloseData, nil, "escaped hyperlink close delimiter cannot terminate an item payload")
-    check(escapedCloseMeta.reason:find("embeddedState=MALFORMED_ESCAPE", 1, true)
-        and escapedCloseMeta.reason:find("shape=ESCAPED_DELIMITER", 1, true),
+    check(escapedCloseData and escapedCloseData.containers[1].slots[1].itemString == nil, "escaped close cannot terminate item payload")
+    check(escapedCloseMeta.slotFailures[1].reason:find("embeddedState=MALFORMED_ESCAPE", 1, true)
+        and escapedCloseMeta.slotFailures[1].reason:find("shape=ESCAPED_DELIMITER", 1, true),
         "escaped close delimiter is diagnosed without relaxing parser acceptance")
     local nonItemData, nonItemMeta = failingLink("|Hspell:123|h[Private Display]|h")
-    equal(nonItemData, nil, "non-item hyperlinks do not satisfy item identity")
-    check(nonItemMeta.reason:find("shape=NON_ITEM_HYPERLINK", 1, true)
-        and not nonItemMeta.reason:find("Private Display", 1, true),
+    check(nonItemData and nonItemData.containers[1].slots[1].itemString == nil, "non-item hyperlinks do not satisfy item identity")
+    check(nonItemMeta.slotFailures[1].reason:find("shape=NON_ITEM_HYPERLINK", 1, true)
+        and not nonItemMeta.slotFailures[1].reason:find("Private Display", 1, true),
         "non-item hyperlink diagnostic is sanitized")
     C_Container.GetContainerItemInfo = function(bag, slot)
         local source, info = oldInfo(bag, slot), {}
@@ -236,23 +236,23 @@ return function(S, check, equal)
         return oldInfo(bag, slot).hyperlink
     end
     local wrongTypeData, wrongTypeMeta = S.collectors.bags()
-    equal(wrongTypeData, nil, "non-string slot links do not satisfy exact identity")
-    check(wrongTypeMeta.reason:find("fallbackState=UNSUPPORTED_VALUE_TYPE", 1, true)
-        and wrongTypeMeta.reason:find("type=table;shape=NON_STRING", 1, true)
-        and not wrongTypeMeta.reason:find("must not persist", 1, true),
+    check(wrongTypeData and wrongTypeData.containers[1].slots[1].itemString == nil, "non-string links do not satisfy exact identity")
+    check(wrongTypeMeta.slotFailures[1].reason:find("fallbackState=UNSUPPORTED_VALUE_TYPE", 1, true)
+        and wrongTypeMeta.slotFailures[1].reason:find("type=table;shape=NON_STRING", 1, true)
+        and not wrongTypeMeta.slotFailures[1].reason:find("must not persist", 1, true),
         "non-string API diagnostics record only the type")
     local truncatedData, truncatedMeta = failingLink("|Hitem:6948:4:5")
-    equal(truncatedData, nil, "unterminated item hyperlink is not accepted as a complete variant")
-    check(truncatedMeta.reason:find("embeddedState=TRUNCATED_ITEM_PAYLOAD", 1, true)
-        and truncatedMeta.reason:find("shape=TRUNCATED_ITEM_PAYLOAD", 1, true),
+    check(truncatedData and truncatedData.containers[1].slots[1].itemString == nil, "unterminated link is not accepted as exact variant")
+    check(truncatedMeta.slotFailures[1].reason:find("embeddedState=TRUNCATED_ITEM_PAYLOAD", 1, true)
+        and truncatedMeta.slotFailures[1].reason:find("shape=TRUNCATED_ITEM_PAYLOAD", 1, true),
         "truncated payload has explicit parser and format states")
     local oversized = string.rep("PrivateChatPayload", 40)
     local oversizedData, oversizedMeta = failingLink(oversized)
-    equal(oversizedData, nil, "unrecognized long API values do not become item identities")
-    check(oversizedMeta.reason:find("length=160+", 1, true)
-        and oversizedMeta.reason:find("shape=INSPECTION_LIMIT_REACHED", 1, true)
-        and not oversizedMeta.reason:find("PrivateChatPayload", 1, true)
-        and #oversizedMeta.reason < 1000,
+    check(oversizedData and oversizedData.containers[1].slots[1].itemString == nil, "unrecognized long values do not become identity")
+    check(oversizedMeta.slotFailures[1].reason:find("length=160+", 1, true)
+        and oversizedMeta.slotFailures[1].reason:find("shape=INSPECTION_LIMIT_REACHED", 1, true)
+        and not oversizedMeta.slotFailures[1].reason:find("PrivateChatPayload", 1, true)
+        and #oversizedMeta.slotFailures[1].reason < 1000,
         "diagnostics cap inspected text and persisted output while redacting raw values")
 
     C_Container.GetContainerItemInfo = function(bag, slot)
@@ -263,17 +263,25 @@ return function(S, check, equal)
     end
     C_Container.GetContainerItemLink = nil
     local unknownIdentity, identityMeta = S.collectors.bags()
-    equal(unknownIdentity, nil, "item ID alone never substitutes for a required exact item string")
-    check(identityMeta.reason:find("bag 0 slot 1", 1, true) and identityMeta.reason:find("reportedItemID=6948", 1, true)
-        and identityMeta.reason:find("fallbackAPI=MISSING", 1, true)
-        and identityMeta.reason:find("fallbackState=API_MISSING", 1, true),
-        "failed exact identity names bag/slot and API evidence")
+    check(unknownIdentity and unknownIdentity.containers[1].slots[1].itemString == nil,
+        "item ID alone never substitutes for exact item string, but raw slot is retained")
+    equal(unknownIdentity.containers[1].slots[1].itemIdentityState, "UNKNOWN", "unresolved exact identity is explicit")
+    equal(unknownIdentity.containers[1].slots[1].itemID, 6948, "reported item ID remains safe raw evidence")
+    equal(identityMeta.completeness, "partial", "stable scan with unresolved exact identity is partial")
+    equal(identityMeta.partial, true, "partial flag is surfaced for slot failures")
+    equal(identityMeta.slotFailures[1].bag, 0, "slot failure identifies its bag")
+    equal(identityMeta.slotFailures[1].slot, 1, "slot failure identifies its slot")
+    check(identityMeta.slotFailures[1].reason:find("reportedItemID=6948", 1, true)
+        and identityMeta.slotFailures[1].reason:find("fallbackAPI=MISSING", 1, true)
+        and identityMeta.slotFailures[1].reason:find("fallbackState=API_MISSING", 1, true),
+        "failed exact identity retains sanitized API diagnostics")
     C_Container.GetContainerItemLink = function() return nil end
     local noLinks, noLinksMeta = S.collectors.bags()
-    equal(noLinks, nil, "nil embedded and slot links do not synthesize an item identity")
-    check(noLinksMeta.reason:find("embeddedState=NIL", 1, true)
-        and noLinksMeta.reason:find("fallbackState=NIL_RESULT", 1, true)
-        and noLinksMeta.reason:find("NO_VALID_EXACT_LINK_MATCHES_SLOT_ID", 1, true),
+    check(noLinks and noLinks.containers[1].slots[1].itemString == nil,
+        "nil embedded and slot links preserve raw row without synthesizing identity")
+    check(noLinksMeta.slotFailures[1].reason:find("embeddedState=NIL", 1, true)
+        and noLinksMeta.slotFailures[1].reason:find("fallbackState=NIL_RESULT", 1, true)
+        and noLinksMeta.slotFailures[1].reason:find("NO_VALID_EXACT_LINK_MATCHES_SLOT_ID", 1, true),
         "both unavailable-link diagnostics preserve individual API states")
     C_Container.GetContainerItemLink = nil
     C_Container.GetContainerItemInfo = function(_, slot)

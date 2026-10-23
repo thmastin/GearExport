@@ -120,8 +120,16 @@ return function(S, check, equal)
     equal(closed.itemFacts.statDeltaComparisons.reason:find("not interpreted") ~= nil, true, "stat delta does not become an upgrade conclusion")
     equal(closed.itemFacts.completeness, "complete", "all item metadata API samples are present")
     S.record.sections.bags.completeness = "partial"
+    S.record.sections.bags.data.containers[1].slots[3] = {
+        itemID = 6218, count = 1, name = "Runed Copper Rod", itemIdentityState = "UNKNOWN",
+        itemIdentityReason = "MALFORMED_ITEM_PAYLOAD",
+    }
+    local priorInstantCalls = #instantCalls
     local partialSource = S.collectors.forever70291Evidence().itemFacts
+    equal(#instantCalls - priorInstantCalls, 2, "partial bag scan still samples item APIs for both valid exact carried rows")
+    equal(#partialSource.items, 2, "unknown-identity raw row is excluded from exact item API sampling")
     equal(partialSource.completeness, "partial", "partial inventory source cannot be upgraded by fresh item API samples")
+    S.record.sections.bags.data.containers[1].slots[3] = nil
     S.record.sections.bags.completeness = "complete"
     S.record.sections.bags.observedAt = 1
     local oldSource = S.collectors.forever70291Evidence().itemFacts

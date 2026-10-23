@@ -213,7 +213,7 @@ S.collectors.bags = function()
     if type(api.GetContainerNumSlots) ~= "function" or type(api.GetContainerItemInfo) ~= "function" then
         return Failed("carried-container APIs unavailable", false)
     end
-    local issues, containers, observedSlots = {}, {}, {}
+    local issues, containers, observedSlots, failures = {}, {}, {}, {}
     -- The probe observed the carried range 0..5, capacities for each index,
     -- and every slot in each non-empty container. Fail closed on range drift.
     for bag = 0, 5 do
@@ -237,11 +237,19 @@ S.collectors.bags = function()
                 local id = F.Number("Carried item ID", Field(info, "itemID"), issues)
                 if id == 0 then id = nil end
                 local ref, linkID, linkSource, _, identityDiagnostics = ExactItemReference(api, info, bag, slot, id)
-                if not ref then return Failed(linkID, true) end
                 local count = F.Number("Carried item stack count", Field(info, "stackCount"), issues)
-                if not count or count == 0 then return Failed("carried item quantity unknown", true) end
-                local item = { itemID = id or linkID, itemString = ref, count = count,
-                    itemStringSource = linkSource, itemIdentityState = "OBSERVED_EXACT_ITEM_STRING" }
+                if not ref and (not count or count == 0) then return Failed("carried item quantity unknown", true) end
+                local item = { itemID = ref and (id or linkID) or id, count = count }
+                if ref then
+                    item.itemString, item.itemStringSource = ref, linkSource
+                    item.itemIdentityState = "OBSERVED_EXACT_ITEM_STRING"
+                else
+                    item.itemIdentityState = "UNKNOWN"
+                    item.itemIdentityReason = linkID
+                    item.identityDiagnostics = { reason = linkID }
+                    failures[#failures + 1] = { bag = bag, slot = slot, itemID = id,
+                        reason = linkID }
+                end
                 if identityDiagnostics then
                     item.identityDiagnostics = identityDiagnostics
                     issues[#issues + 1] = "Carried item exact-link fallback used after embedded link was unusable at bag "
@@ -252,6 +260,7 @@ S.collectors.bags = function()
                 container.slots[slot] = item
                 occupied = occupied + 1
                 observedSlots[bag][slot] = { itemID = item.itemID, itemString = item.itemString,
+                    identityState = item.itemIdentityState, identityReason = item.itemIdentityReason,
                     count = item.count, bindingState = item.bindingState, bound = item.bound }
             else
                 observedSlots[bag][slot] = false
@@ -284,7 +293,14 @@ S.collectors.bags = function()
                 local count = F.Number("Carried item verification quantity", Field(info, "stackCount"), issues)
                 local locked = F.Read("Carried item verification lock", Field(info, "isLocked"), 1, "boolean", issues)
                 local bound, bindingState = BindingFacet(info, issues)
-                if not ref or (id or linkID) ~= expected.itemID or ref ~= expected.itemString
+                local identityMatches = expected.identityState == "UNKNOWN"
+                    and not ref and linkID == expected.identityReason
+                    or expected.identityState == "OBSERVED_EXACT_ITEM_STRING"
+                    and ref and ref == expected.itemString
+                local reportedIDMatches = expected.identityState == "UNKNOWN"
+                    and id == expected.itemID or expected.identityState == "OBSERVED_EXACT_ITEM_STRING"
+                    and (id or linkID) == expected.itemID
+                if not identityMatches or not reportedIDMatches
                     or count ~= expected.count or locked ~= false
                     or bindingState ~= expected.bindingState or bound ~= expected.bound then
                     return Failed("carried-container changed during capture at bag " .. bag .. " slot " .. slot, true)
@@ -292,6 +308,7 @@ S.collectors.bags = function()
             end
         end
     end
-    return { containers = containers }, { completeness = #issues > 0 and "partial" or "complete",
+    return { containers = containers }, { completeness = (#issues > 0 or #failures > 0) and "partial" or "complete",
+        partial = #failures > 0 or nil, slotFailures = #failures > 0 and failures or nil,
         reason = #issues > 0 and table.concat(issues, "; ") or nil }
 end
