@@ -2,8 +2,10 @@
 -- snapshot renders identically, and each section can be rendered independently.
 local _, addon = ...
 local S = addon.Sync
+local C = WoWSyncCompat
 local labels = { character = "CHARACTER", location = "LOCATION", equipment = "EQUIPMENT",
-    bags = "BAGS", bank = "BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS" }
+    bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", guildBank = "GUILD BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS", itemMetadata = "ITEM METADATA" }
+labels.forever70291Evidence = "FOREVER CLIENT EVIDENCE"
 
 local function Text(value)
     if value == nil then return "?" end
@@ -17,6 +19,17 @@ local function Row(out, ...)
     for index = 1, select("#", ...) do row[index] = Text(select(index, ...)) end
     out[#out + 1] = table.concat(row, "\t")
 end
+local function RawText(value)
+    if value == nil then return "?" end
+    local text = tostring(value)
+    return text:gsub("\\", "\\\\"):gsub("\t", "\\t"):gsub("\r", "\\r"):gsub("\n", "\\n")
+end
+local function RawRow(out, ...)
+    local row = {}
+    for index = 1, select("#", ...) do row[index] = RawText(select(index, ...)) end
+    out[#out + 1] = table.concat(row, "\t")
+end
+local function RawField(out, key, value) out[#out + 1] = key .. ": " .. RawText(value) end
 local function Field(out, key, value) out[#out + 1] = key .. ": " .. Text(value) end
 local function SortedKeys(map)
     local keys = {}
@@ -32,9 +45,109 @@ local function Stats(item)
 end
 
 local renderers = {}
+local function RenderRawCall(out, prefix, call)
+    RawField(out, prefix .. ".state", call and call.state)
+    RawField(out, prefix .. ".api", call and call.api)
+    RawField(out, prefix .. ".returnCount", call and call.returnCount)
+    if call and call.error then RawField(out, prefix .. ".error", call.error) end
+    if call and call.input then
+        RawField(out, prefix .. ".argumentCount", call.input.argumentCount)
+        for index, value in ipairs(call.input.arguments or {}) do RawRow(out, prefix .. ".argument", index, value) end
+    end
+    if call and call.context then
+        for _, name in ipairs(SortedKeys(call.context)) do RawField(out, prefix .. ".context." .. name, call.context[name]) end
+    end
+    for _, returned in ipairs(call and call.returns or {}) do
+        local value = returned.observation or {}
+        RawRow(out, prefix .. ".return", returned.index, value.state, value.type, value.value)
+    end
+end
+
+renderers.forever70291Evidence = function(out, data)
+    RawField(out, "Provenance", data.provenance)
+    RawField(out, "CapturedAt", data.capturedAt)
+    RawField(out, "Client", (data.client and data.client.version or "?") .. " build " .. (data.client and data.client.build or "?"))
+    RawField(out, "Interface", data.client and data.client.interface)
+    RenderRawCall(out, "GetBuildInfo", data.clientBuildInfo)
+    RawField(out, "SkillLineCoverage", data.skillLineCoverage)
+    RawField(out, "SkillLineCount", data.skillLineCountValue)
+    RenderRawCall(out, "C_SkillInfo.GetNumSkillLines", data.skillLineCount)
+    Row(out, "skillLine", "index", "skillID", "categoryID", "name", "rank", "maxRank", "isHeader", "state", "returnCount", "returnType")
+    for _, line in ipairs(data.skillLines or {}) do
+        RawRow(out, "skillLine", line.index, line.skillID, line.skillLineCategoryID, line.name,
+            line.rank, line.maxRank, line.isHeader, line.state, line.returnCount,
+            line.returnShape and line.returnShape.types[1])
+        for _, field in ipairs(line.rawFields or {}) do
+            local value = field.observation or {}
+            RawRow(out, "skillField", line.index, field.key, field.keyType, value.state, value.type, value.value)
+        end
+        if line.error then RawRow(out, "skillError", line.index, line.error) end
+    end
+    local trainer = data.trainer or {}
+    RawField(out, "TrainerCaptureState", trainer.state)
+    local snapshot = trainer.lastObserved
+    if snapshot then
+        RawField(out, "TrainerObservationState", snapshot.state)
+        RawField(out, "TrainerFrame", snapshot.frame)
+        RawField(out, "TrainerCapturedAt", snapshot.capturedAt)
+        RawField(out, "TrainerServiceCoverage", snapshot.coverage)
+        RawField(out, "TrainerServiceCount", snapshot.serviceCount)
+        RenderRawCall(out, "GetNumTrainerServices", snapshot.serviceCountResult)
+        for _, name in ipairs(SortedKeys(snapshot.apiAvailability)) do
+            RawField(out, "TrainerAPI." .. name, snapshot.apiAvailability[name])
+        end
+        Row(out, "trainerService", "serviceIndex", "API", "state", "returnCount", "returnIndex", "valueState", "valueType", "value")
+        for _, service in ipairs(snapshot.services or {}) do
+            for _, callName in ipairs({ "info", "cost", "skillRequirement" }) do
+                local call = service.calls[callName]
+                RenderRawCall(out, "trainer." .. service.index .. "." .. callName, call)
+                for _, returned in ipairs(call and call.returns or {}) do
+                    local value = returned.observation or {}
+                    RawRow(out, "trainerService", service.index, call.api, call.state,
+                        call.returnCount, returned.index, value.state, value.type, value.value)
+                end
+            end
+            for _, reqCall in ipairs(service.calls.abilityRequirements or {}) do
+                RenderRawCall(out, "trainer." .. service.index .. ".abilityRequirement", reqCall)
+                for _, returned in ipairs(reqCall.returns or {}) do
+                    local value = returned.observation or {}
+                    RawRow(out, "trainerService", service.index, reqCall.api, reqCall.state,
+                        reqCall.returnCount, returned.index, value.state, value.type, value.value)
+                end
+            end
+        end
+    else
+        RawField(out, "TrainerServiceCoverage", "UNKNOWN")
+    end
+    local itemFacts = data.itemFacts or {}
+    RawField(out, "ItemFactsState", itemFacts.state)
+    RawField(out, "ItemFactsCompleteness", itemFacts.completeness)
+    RawField(out, "ItemFactsObservedAt", itemFacts.observedAt)
+    RawField(out, "ItemFactsSource", itemFacts.source)
+    for _, name in ipairs(SortedKeys(itemFacts.apiAvailability)) do RawField(out, "ItemFactsAPI." .. name, itemFacts.apiAvailability[name]) end
+    Row(out, "itemFact", "itemID", "exactItemString", "instantState", "equippableState")
+    for index, fact in ipairs(itemFacts.items or {}) do
+        RawRow(out, "itemFact", fact.itemID, fact.itemString,
+            fact.itemInfoInstant and fact.itemInfoInstant.state,
+            fact.isEquippableItem and fact.isEquippableItem.state)
+        RenderRawCall(out, "itemFact." .. tostring(index) .. "." .. tostring(fact.itemID) .. ".GetItemInfoInstant", fact.itemInfoInstant)
+        RenderRawCall(out, "itemFact." .. tostring(index) .. "." .. tostring(fact.itemID) .. ".IsEquippableItem", fact.isEquippableItem)
+    end
+    RawField(out, "Interpretation", "Raw runtime observations only; no transferability, eligibility, learnability, or readiness inferred")
+    for _, name in ipairs(SortedKeys(data.unknowns)) do RawField(out, "UNKNOWN." .. name, data.unknowns[name]) end
+end
+
 renderers.character = function(out, data)
-    Field(out, "Name", data.name); Field(out, "Realm", data.realm)
+    Field(out, "Name", data.name)
+    if data.clientFamily == "Forever" and C.IsSupportedForeverBuild(data.clientBuild, data.interface) then
+        Field(out, "Surname", data.surname)
+        if data.surname then Field(out, "SurnameSource", data.surnameSource) end
+    end
+    Field(out, "Realm", data.realm)
     Field(out, "Class", data.class); Field(out, "Level", data.level)
+    if data.clientFamily == "Forever" and C.IsSupportedForeverBuild(data.clientBuild, data.interface) then
+        Field(out, "Race", data.race)
+    end
     Field(out, "Faction", data.faction); Field(out, "MoneyCopper", data.moneyCopper)
     Field(out, "PlayedSeconds", data.playedSeconds)
     Field(out, "LevelPlayedSeconds", data.levelPlayedSeconds)
@@ -44,6 +157,11 @@ renderers.character = function(out, data)
     end
     Field(out, "Client", (data.clientVersion or "?") .. " build " .. (data.clientBuild or "?"))
     if data.clientFamily then Field(out, "ClientFamily", data.clientFamily); Field(out, "Interface", data.interface) end
+    if data.clientFamily == "Forever" and C.IsSupportedForeverBuild(data.clientBuild, data.interface) then
+        local compatibility, note = addon.Forever.BuildCompatibility(data.clientBuild)
+        Field(out, "Compatibility", compatibility)
+        if note then Field(out, "CompatibilityNote", note) end
+    end
 end
 renderers.location = function(out, data)
     Field(out, "Zone", data.zone)
@@ -89,7 +207,7 @@ local function Inventory(out, data)
     end)
     Row(out, "itemRef", "name", "qty", "bound", "vendorEachCopper")
     for _, entry in ipairs(rows) do Row(out, Ref(entry.item), entry.item.name, entry.count, entry.item.bound, entry.item.vendorCopper) end
-    if #rows == 0 then Field(out, "Items", "EMPTY") end
+    if #rows == 0 and data.emptyKnown ~= false then Field(out, "Items", "EMPTY") end
 end
 renderers.bags = Inventory
 renderers.bank = function(out, data)
@@ -97,6 +215,24 @@ renderers.bank = function(out, data)
     if data.visit then Field(out, "SnapshotVisit", data.visit.openedAt) end
     if data.purchasedBagSlots then Field(out, "PurchasedBankBagSlots", data.purchasedBagSlots) end
     if data.purchasedTabs then Field(out, "PurchasedBankTabs", data.purchasedTabs) end
+    Inventory(out, data)
+end
+renderers.accountBank = function(out, data)
+    Field(out, "Scope", data.ownerScope or "ACCOUNT_WARBAND")
+    if data.coverage then Field(out, "Coverage", data.coverage) end
+    if data.visit then Field(out, "SnapshotVisit", data.visit.openedAt) end
+    if data.purchasedTabs then Field(out, "PurchasedBankTabs", data.purchasedTabs) end
+    Inventory(out, data)
+end
+renderers.guildBank = function(out, data)
+    Field(out, "Scope", data.ownerScope or "GUILD")
+    local guild = data.guild or {}
+    Field(out, "GuildClubID", guild.clubID)
+    Field(out, "GuildName", guild.name)
+    if data.coverage then Field(out, "Coverage", data.coverage) end
+    if data.visit then Field(out, "SnapshotVisit", data.visit.openedAt) end
+    Row(out, "tab", "name", "viewable", "state", "note")
+    for _, tab in ipairs(data.tabs or {}) do Row(out, tab.id, tab.name, tab.canView, tab.state, tab.reason) end
     Inventory(out, data)
 end
 renderers.professions = function(out, data)
@@ -163,6 +299,43 @@ renderers.trainer = function(out, data, snapshot)
     end
 end
 
+local function MetadataID(item)
+    if type(item) ~= "table" then return nil end
+    if type(item.itemID) == "number" and item.itemID > 0 and item.itemID % 1 == 0 then return item.itemID end
+    return type(item.itemString) == "string" and tonumber(item.itemString:match("^item:(%d+)")) or nil
+end
+
+local function CollectMetadataIDs(snapshot)
+    local ids = {}
+    local function Remember(item)
+        local id = MetadataID(item)
+        if id then ids[id] = true end
+    end
+    local function InventoryData(data)
+        for _, container in ipairs(data and data.containers or {}) do
+            Remember(container.bag)
+            for _, item in pairs(container.slots or {}) do Remember(item) end
+        end
+    end
+    local sections = snapshot.sections or {}
+    for _, item in pairs(sections.equipment and sections.equipment.data and sections.equipment.data.slots or {}) do Remember(item) end
+    InventoryData(sections.bags and sections.bags.data)
+    InventoryData(sections.bank and sections.bank.data)
+    InventoryData(snapshot.accountSections and snapshot.accountSections.bank and snapshot.accountSections.bank.data)
+    InventoryData(snapshot.guildSections and snapshot.guildSections.bank and snapshot.guildSections.bank.data)
+    return SortedKeys(ids)
+end
+
+local function RenderItemMetadata(snapshot)
+    local out, metadata = { "[ITEM METADATA]" }, snapshot.itemMetadata or {}
+    Row(out, "baseItemID", "classID", "subclassID", "bindType", "expansionID", "isCraftingReagent")
+    for _, itemID in ipairs(CollectMetadataIDs(snapshot)) do
+        local entry = metadata[itemID] or {}
+        Row(out, itemID, entry.classID, entry.subclassID, entry.bindType, entry.expansionID, entry.isCraftingReagent)
+    end
+    return table.concat(out, "\n")
+end
+
 local function RenderTrainerSection(snapshot, section)
     local out = { "[TRAINERS]" }
     if not section or not section.data or type(section.data.snapshots) ~= "table"
@@ -179,13 +352,17 @@ local function RenderTrainerSection(snapshot, section)
 end
 
 function S.RenderSection(key, snapshot)
+    if key == "itemMetadata" then return RenderItemMetadata(snapshot) end
     if not renderers[key] then return nil, "Unknown section: " .. tostring(key) end
     if key == "trainer" then
         return RenderTrainerSection(snapshot, snapshot.sections and snapshot.sections.trainer)
     end
     local out = { "[" .. labels[key] .. "]" }
-    local section = snapshot.sections and snapshot.sections[key]
-    local visit = snapshot.visits and snapshot.visits[key]
+    local section = key == "accountBank" and snapshot.accountSections and snapshot.accountSections.bank
+        or key == "guildBank" and snapshot.guildSections and snapshot.guildSections.bank
+        or snapshot.sections and snapshot.sections[key]
+    local visit = (key == "accountBank" or key == "guildBank") and section and section.data and section.data.visit
+        or snapshot.visits and snapshot.visits[key]
     if visit then
         Field(out, "LastVisit", visit.openedAt)
         if visit.name then Field(out, "VisitedNPC", visit.name) end
@@ -194,14 +371,17 @@ function S.RenderSection(key, snapshot)
     end
     if not section or not section.data then
         Field(out, "State", "UNKNOWN")
-        Field(out, "Reason", section and section.lastAttemptError or "Not observed")
+        if key == "accountBank" then Field(out, "Scope", "ACCOUNT_WARBAND") end
+        if key == "guildBank" then Field(out, "Scope", "GUILD") end
+        Field(out, "Reason", section and section.lastAttemptError or key == "guildBank" and snapshot.guildError or "Not observed")
         return table.concat(out, "\n")
     end
-    local access = key == "bank" or key == "trainer"
+    local access = key == "bank" or key == "accountBank" or key == "guildBank" or key == "trainer"
     local sameVisit = not access or visit and section.data.visit and visit.openedAt == section.data.visit.openedAt
         and visit.session == section.data.visit.session
-    local state = access and not (snapshot.access and snapshot.access[key] and sameVisit) and "LAST_SEEN" or "OBSERVED"
-    Field(out, "State", state .. "; " .. section.completeness .. "; observed=" .. Text(section.observedAt))
+    local stale = section.lastAttemptStale or access and not (snapshot.access and snapshot.access[key] and sameVisit)
+    local state = stale and "LAST_SEEN" or "OBSERVED"
+    Field(out, "State", state .. "; " .. Text(section.completeness) .. "; observed=" .. Text(section.observedAt))
     if snapshot.pending and snapshot.pending[key] then Field(out, "Pending", "Refresh pending; showing last observation") end
     if section.reason then Field(out, "CoverageNote", section.reason) end
     if section.lastAttemptError then Field(out, "RefreshIssue", section.lastAttemptError) end
@@ -215,8 +395,8 @@ function S.Render(snapshot, sections)
         "Format: tab-separated columns; ?=unknown; timestamps=Unix seconds; money=copper; itemRef preserves item variants." }
     local includeGearCandidates = sections == nil
     for _, key in ipairs(sections or S.order) do
-        if key == "gearCandidates" then includeGearCandidates = true
-        else
+        if key == "gearCandidates" then includeGearCandidates = true end
+        if key ~= "gearCandidates" and (sections or not (S.structuredOnly and S.structuredOnly[key])) then
             local text, err = S.RenderSection(key, snapshot)
             assert(text, err)
             out[#out + 1] = text

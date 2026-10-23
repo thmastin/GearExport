@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: WoWSync
-## Notes: Forever character, equipment and carried-bag observer; bags live validation pending
-## Version: 2.2
+## Notes: Forever observational WoWSync v1 compatibility package
+## Version: 2.5
 ## SavedVariables: GearExportDB, WoWSyncDB
 ## IconTexture: Interface\AddOns\GearExport\WoWSyncIcon.tga
 ## X-WoWSync-Target: Forever
@@ -10,7 +10,13 @@ WoWSyncCompat.lua
 WoWSyncForever.lua
 WoWSyncCore.lua
 WoWSyncForeverCollectors.lua
-WoWSyncForeverBags.lua
+WoWSyncForever70291.lua
+WoWSyncForeverQuests.lua
+WoWSyncForeverBags70291.lua
+WoWSyncForeverEvidence70291.lua
+WoWSyncForeverBank.lua
 WoWSyncForeverProfessions.lua
+WoWSyncForeverRecipes.lua
+WoWSyncForeverSpells.lua
 WoWSyncRender.lua
 WoWSyncUI.lua

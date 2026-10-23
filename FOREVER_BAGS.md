@@ -1,9 +1,10 @@
-# Forever carried bags: uncommitted validation build
+# Forever carried bags: live-validated
 
-Equipment was committed separately as `edd63a7`. This working change adds only
-carried-bag observation and does not implement bank, professions, spells,
-trainers, playtime or effective equipment stats. It is not live-validated or
-installed automatically.
+This document began as the carried-bag implementation record after equipment
+was committed separately as `edd63a7`. The current Forever completion package
+also contains bank, professions, spells, trainers, playtime, and conservative
+effective-stat support; those collectors have their own evidence and are not
+limited by this historical bags-only scope.
 
 ## Build-specific source evidence
 
@@ -60,11 +61,10 @@ asynchronous cache refresh, restricted/throwing/missing APIs, locked items,
 inconsistent counts, unknown identity/quantity, empty inventory, and preservation
 of previous observations on failure. No real bag contents have been fabricated.
 
-After an explicitly requested installation, compare a fresh `/wowsync` with
-Hallo's carried bags. Check capacity/free counts, bag references, stack counts,
-binding, vendor values and empty slots; re-export after looting or moving a
-stack manually. If data is UNKNOWN, capture these read-only runtime values
-for the affected bag/occupied slot (replace `0, 1` as appropriate):
+Hallo's carried bags were live-validated. The synthetic tests remain the
+regression contract for the API failure and cache cases above. If a future
+client regression yields UNKNOWN, capture these read-only runtime values for
+the affected bag/occupied slot (replace `0, 1` as appropriate):
 
 ```text
 /dump Constants.InventoryConstants.NumBagSlots, Constants.InventoryConstants.NumReagentBagSlots

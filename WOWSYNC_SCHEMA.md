@@ -30,7 +30,8 @@ per-event disk writing. A copied export needs no reload.
 
 Root: `schemaVersion=1`, `settings`, `characters[UnitGUID("player")]`.
 Settings: `showButton` (defaults false), `buttonPosition` (optional).
-Character: `identity`, `sections`, `visits`, `latestExport` (at most one text block).
+Character: `identity`, `sections`, `visits`, `itemMetadata`, `latestExport` (at
+most one text block), and optional `captureProfile` / `archivedCaptures`.
 
 Each section has `data`, `observedAt`, `changedAt`, `revision`, `completeness`,
 `source`, `capture`, and optional `reason`. An unsuccessful read adds
@@ -46,12 +47,35 @@ for persistence; session scheduling uses `GetTime()` only in memory.
 - `bags`, `bank`: ordered `containers`, each with id, capacity, free, family,
   optional equipped bag identity, and sparse `slots[slot]` item records. Items
   retain itemID, full itemString, name/quality/levels/vendorCopper when available,
-  stack count, and optional bound flag. No economic filtering. Bank also has
+  stack count, and optional bound flag. Forever 70245 also retains
+  `bindingState` (`OBSERVED_TRUE`, `OBSERVED_FALSE`, `UNKNOWN`, or `API_ERROR`)
+  separately from the optional boolean `bound` value. For Forever, exact physical
+  location is `sections.bags.data.containers[].id` plus the numeric key in
+  `containers[].slots[slot]`; the item record in that key is the instance observed
+  there. This is the structured source of bag location evidence.
+  The compatible WOWSYNC v1 text `[BAGS]` rows remain aggregated by item variant
+  and do not encode physical slot locations. Consumers requiring source slots
+  must read the structured capture or use a future explicit text-schema extension;
+  they must not infer slot location from aggregated text rows. No economic filtering. Bank also has
   purchasedBagSlots and a copy of the visit context associated with that snapshot.
+  `bank` is always character-owned; Retail Warband storage is not folded into it.
 - `professions`: entries with name/rank/maxRank and identification method.
   Visible legacy skill lines are used without expanding/collapsing the UI.
 - `spells`: player spellbook entries with spellID/name/rank/kind and scope text.
   This is not a crafting-recipe database or pet spellbook.
+- Retail `professionRecipes`: compact, structured-only profession/tier caches.
+  Each successful natural profession initialization records the base profession,
+  active child `skillLineID`, per-profession `observedAt`, client identity, its
+  own coverage counts, and the recipe IDs
+  returned by `C_TradeSkillUI.GetAllRecipeIDs()`. A recipe's `learnedState` is
+  `OBSERVED_TRUE`, `OBSERVED_FALSE`, or `UNKNOWN`; explicit false is never inferred
+  from recipe visibility, craftability, or omission. `coverage.state` is always
+  `PARTIAL` and `candidateCompleteness` is `UNKNOWN`: this is the observed active
+  profession enumeration, not a complete historical or expansion recipe catalogue.
+  Caches are keyed independently by base profession and child skill line. Failed,
+  cold, empty, or other-profession captures preserve prior rows as `LAST_SEEN`;
+  uninitialized professions are never stored as empty. This section is omitted
+  from the human-readable `WOWSYNC v1` text export.
 - `trainer`: `snapshots[category]`, where each observed category retains its visit,
   name, trainerType, services, filters, collapsed, moneyAtVisit, coverage,
   observedAt, completeness, and optional reason. Service fields: name/rank/status/
@@ -60,6 +84,15 @@ for persistence; session scheduling uses `GetTime()` only in memory.
   `WEAPON`, `CLASS`, `TRADE`, or `UNKNOWN`); NPC names are display context only.
   The current adapter cannot reliably obtain trainer spell IDs; indices and names
   are never used to invent them.
+- `itemMetadata`: a separate cache of static base-item facets encountered while
+  collecting the current character's equipment or storage. It is not nested into
+  an item observation and never affects a section's observation/revision/hash.
+
+Forever 70245's `captureProfile` is `Forever:1.60.1:70245:16001`. When an existing
+character record comes from another profile, its sections, item metadata, visits,
+and prior `latestExport` are preserved together in `archivedCaptures`; the active
+profile starts with fresh sections and no cached text export. This prevents an
+older-build observation from being presented as current 70245 evidence.
 
 `visits.bank` records the most recent bank visit. `visits.trainers[category]` records
 the latest visit for each observed trainer category, including openedAt, closedAt,
@@ -75,14 +108,15 @@ container scan instead of publishing a transient inventory state.
 
 ### Additive Retail fields and declared coverage
 
-The schema remains v1 and the same eight sections remain in the same order.
+The schema remains v1: its eight established sections retain their order. Retail
+may add `[ACCOUNT BANK]` immediately after `[BANK]` as a separately scoped,
+additive section.
 Older snapshots without these optional fields render as before:
 
 - `character.clientFamily`: `Retail`, rendered as ClientFamily alongside Interface.
 - `containers[].storage`: CARRIED, REAGENT_BAG or CHARACTER, rendered as
   `ContainerStorage <id>`. Bank only enumerates purchased character tabs; it adds
-  `purchasedTabs` and `coverage`. Account/Warband storage is API-supported but
-  deferred and never aggregated into character storage. Negative Classic bank IDs,
+  `purchasedTabs` and `coverage`. Negative Classic bank IDs,
   separate reagent bank and equipped bank bags do not apply to this Retail target.
 - Item identity remains the complete `itemString`; C_Item supplies modern metadata
   and instance item level. Missing links stay partial even if generic item data is
@@ -158,6 +192,56 @@ recommendations.
 Future account state should own Warband bank and account currencies once with
 independent freshness, rather than duplicate them across GUID-keyed characters.
 No account/alt export mode is introduced by the Retail compatibility target.
+Retail also emits an additive `[ACCOUNT BANK]` section when the Account bank is
+viewable. It is stored once at `WoWSyncDB.account.sections.bank`, not under any
+GUID, and rendered with `Scope: ACCOUNT_WARBAND`. It uses only the returned
+`C_Bank.FetchPurchasedBankTabIDs(Enum.BankType.Account)` IDs and has independent
+freshness/UNKNOWN/LAST_SEEN behavior. It is never aggregated into a character's
+bank.
+
+Retail may also emit `[GUILD BANK]`, separately scoped as `GUILD`. It is keyed
+in SavedVariables by the observed `C_Club.GetGuildClubId()` value, with guild name
+as display metadata only; it is never character- or account-owned storage. A tab
+is OBSERVED only after it was reported `canView=true`, was the sole outstanding
+`QueryGuildBankTab` request, and then received `GUILDBANKBAGSLOTS_CHANGED`.
+An all-nil scan before that response is UNKNOWN; an all-nil scan after it is an
+observed empty permitted tab. `canView=false` is rendered `INACCESSIBLE`, never
+empty. A Guild Bank snapshot is complete only for all tabs currently permitted to
+the observing character; inaccessible guild-owned tabs remain outside its observed
+contents. Failed/closed/timed-out captures are partial and do not replace a prior
+complete guild observation.
+
+### Additive item metadata block
+
+`[ITEM METADATA]` is appended after the established observation sections without
+changing `schemaVersion` or the meaning of any item row. It has exactly one
+tab-separated row per base item ID referenced by equipment, bags, Character Bank,
+Warband Bank, or Guild Bank in the exported snapshot:
+
+```text
+baseItemID  classID  subclassID  bindType  expansionID  isCraftingReagent
+```
+
+Rows sort by numeric `baseItemID`. `?` means that facet was not supplied by the
+client; an observed `isCraftingReagent=false` renders `no`, while true renders
+`yes`. `classID` and `subclassID` may be supplied by `GetItemInfoInstant` while
+full item data is unavailable. `bindType`, `expansionID`, and
+`isCraftingReagent` require the full item-info tuple and remain `?` until it is
+available. The client-returned `expansionID` is a raw numeric fact only: WoWSync
+does not map it to an expansion name, reinterpret sentinel-like values, or infer
+it from an item ID/name/class.
+
+The export envelope's character client version/build/family establishes the
+game-version context for the base ID. Consumers combining exports from different
+products must key metadata by that context plus `baseItemID`; WoWSync does not
+claim that Retail metadata applies to Classic Era, TBC Anniversary, or Forever.
+Readers that do not recognize this additive section can skip it. Existing item
+rows, ownership scopes, quantities, binding observations, and storage hashes are
+unchanged.
+On validated Retail clients, capture is started/stopped from `GuildBankFrame`
+OnShow/OnHide; `GUILDBANKFRAME_OPENED/CLOSED` are supplementary signals and cannot
+be the sole lifecycle source. Closed or unavailable banks preserve a previous
+complete observation as LAST_SEEN rather than claiming current empty storage.
 
 ## Consumer API
 
@@ -175,8 +259,9 @@ No account/alt export mode is introduced by the Retail compatibility target.
 
 Consumers should use these functions, not mutate `WoWSyncDB` or scheduler internals.
 Section keys in default order: character, location, equipment, bags, bank,
-professions, spells, trainer. Future schema versions must be explicitly migrated;
-an unknown version is preserved and synchronization refuses to overwrite it.
+professions, spells, trainer, itemMetadata. Retail additionally inserts
+accountBank and guildBank after bank. Future schema versions must be explicitly
+migrated; an unknown version is preserved and synchronization refuses to overwrite it.
 
 ## Text format
 
@@ -352,3 +437,39 @@ historical per-spec baseline and applies no age-based or `LAST_SEEN` behavior.
 This sidecar is not rendered into WOWSYNC v1; existing `[EQUIPMENT]` and
 `[GEAR CANDIDATES]` text remain unchanged. It contains no Equipment Manager
 association and makes no upgrade, suitability, or allocation conclusion.
+## Retail currencies (additive, SavedVariables only)
+
+Retail adds a per-character `currencies` section at
+`WoWSyncDB.characters[guid].sections.currencies` with the standard section
+envelope (`data`, `observedAt`, `changedAt`, `revision`, `completeness`,
+`source`, `capture`, optional `reason`/`lastAttemptAt`/`lastAttemptError`).
+`observedAt` is the capture time in Unix seconds, like every other section.
+`schemaVersion` remains 1 and the WOWSYNC v1 text does not contain this section
+yet: current importers reject unknown text section headers, so
+`S.structuredOnly` keeps it out of `latestExport`. Classic Era, TBC Anniversary
+and Forever never register the collector.
+
+`data` fields: `formatVersion=1`; `listRead=true` (the list was actually read);
+`listSize` (rows including headers, with every header expanded); optional
+`listFilter` (raw `C_CurrencyInfo.GetCurrencyFilter()` value); `coverage`;
+optional `headerRestoreFailed=true`; and ordered `currencies[]`. Each entry has
+`currencyID`, `listOrder`, optional `header` (top-level expansion/category
+header) and `subHeader` (nested header), plus these CurrencyInfo fields when the
+client supplied them: `name`, `iconFileID`, `quantity`, `maxQuantity`,
+`quantityEarnedThisWeek`, `maxWeeklyQuantity`, `canEarnPerWeek`, `totalEarned`,
+`useTotalEarnedForMaxQty`, `isAccountWide`, `isAccountTransferable`,
+`transferPercentage`. Values are raw client values (a `maxQuantity` of 0 is the
+client's own "no cap" value, not an inference); absent or restricted values are
+omitted, never written as zero.
+
+Section absent, or present without `data`: currencies are UNKNOWN. With
+`listRead=true`, a currency that is not listed was not in the character's
+discovered currency list read at `observedAt`. Rows the client marks
+`discovered=false` (for example account-transferable currencies shown by the
+list filter) are skipped. An empty list is treated as not loaded yet and is
+retried rather than recorded.
+
+Capture runs on login/world entry, SYNC, and throttled `CURRENCY_DISPLAY_UPDATE`
+(a pending refresh is flushed at logout). Collapsed headers are expanded for one
+synchronous read and re-collapsed in reverse order. Currency-only refreshes do
+not re-render `latestExport`.

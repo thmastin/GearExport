@@ -1,11 +1,24 @@
 -- Loaded only by the Forever package. No legacy exporter or gameplay modules.
 local ADDON_NAME, addon = ...
 local C = WoWSyncCompat
-local F = { version = "1.60.1", build = "69913" }
+local F = { version = "1.60.1", interface = 16001, minimumBuild = 70291, verifiedBuilds = { ["70291"] = true, ["70338"] = true, ["70450"] = true } }
 addon.Forever = F
-addon.Readers = { SlotNames = {} }
+-- Forever uses the stable inventory slot IDs. Keep IDs in the export; these
+-- labels are presentation only and are checked against Blizzard's Forever UI
+-- slot constants rather than inferred from an item's class.
+addon.Readers = { SlotNames = {
+    [1] = "Head", [2] = "Neck", [3] = "Shoulder", [4] = "Shirt", [5] = "Chest",
+    [6] = "Waist", [7] = "Legs", [8] = "Feet", [9] = "Wrist", [10] = "Hands",
+    [11] = "Finger 1", [12] = "Finger 2", [13] = "Trinket 1", [14] = "Trinket 2",
+    [15] = "Back", [16] = "Main Hand", [17] = "Off Hand", [18] = "Ranged", [19] = "Tabard",
+} }
 -- This package selects its own adapters even if Blizzard reuses a project ID.
 function C.IsRetail() return false end
+
+function C.IsSupportedForeverBuild(build, interface)
+    return interface == F.interface and type(build) == "string" and build:match("^%d+$") ~= nil
+        and tonumber(build) >= F.minimumBuild
+end
 
 local function Public(value)
     return not (type(issecretvalue) == "function" and issecretvalue(value))
@@ -40,9 +53,21 @@ function C.IsForever()
     local issues = {}
     local version = F.Read("version", GetBuildInfo, 1, "string", issues)
     local build = F.Read("build", GetBuildInfo, 2, "string", issues)
+    local interface = F.Read("interface", GetBuildInfo, 4, "number", issues)
     local metadata = type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
     local target = F.Read("target", metadata, 1, "string", issues, ADDON_NAME, "X-WoWSync-Target")
-    return target == "Forever" and version == F.version and build == F.build
+    local supported = target == "Forever" and version == F.version and C.IsSupportedForeverBuild(build, interface)
+    if supported then
+        -- Collectors and profiles use the actual allowlisted runtime build.
+        -- This keeps observations from distinct builds from sharing freshness.
+        F.build = build
+    end
+    return supported
+end
+
+function F.BuildCompatibility(build)
+    if F.verifiedBuilds[build] then return "VERIFIED_PROFILE" end
+    return "UNVERIFIED_BUILD", "Forever build " .. tostring(build) .. " has not been compatibility-tested; each observation remains API-guarded."
 end
 
 function addon.ReadIdentity()
@@ -58,9 +83,23 @@ function addon.ReadIdentity()
     return guid, name, realm
 end
 
--- Executable symbols alone do not validate the server event payload. Phase 1
--- does not request playtime until a live Forever event trace has been checked.
-function C.RequestPlayed() return false end
+-- Forever retains the documented asynchronous request/event contract.  Nothing
+-- is estimated while a response is outstanding or if either value is absent.
+function C.RequestPlayed()
+    -- The exact Forever 1.60.1 API contract is asynchronous. Core waits for
+    -- TIME_PLAYED_MSG and leaves both values unknown if it never arrives.
+    if type(RequestTimePlayed) ~= "function" then return false end
+    local ok = pcall(RequestTimePlayed)
+    return ok
+end
+
+function C.IsBankViewable()
+    local api = type(C_Bank) == "table" and C_Bank or {}
+    local bankType = type(Enum) == "table" and Enum.BankType and Enum.BankType.Character
+    if type(api.CanViewBank) ~= "function" or type(bankType) ~= "number" then return false end
+    local ok, viewable = pcall(api.CanViewBank, bankType)
+    return ok and Public(viewable) and type(viewable) == "boolean" and viewable
+end
 
 addon.SyncEvents = {
     "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT",
@@ -69,5 +108,13 @@ addon.SyncEvents = {
     "PLAYER_EQUIPMENT_CHANGED", "UNIT_INVENTORY_CHANGED",
     "GET_ITEM_INFO_RECEIVED", "ITEM_DATA_LOAD_RESULT",
     "BAG_UPDATE", "BAG_UPDATE_DELAYED", "ITEM_LOCK_CHANGED",
-    "SKILL_LINES_CHANGED", "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE",
+    "SKILL_LINES_CHANGED", "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE",
+    "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE", "NEW_RECIPE_LEARNED",
+    "SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE", "SPELL_TEXT_UPDATE",
+    "QUEST_ACCEPTED", "QUEST_AUTOCOMPLETE", "QUEST_COMPLETE", "QUEST_DATA_LOAD_RESULT",
+    "QUEST_LOG_CRITERIA_UPDATE", "QUEST_LOG_UPDATE", "QUEST_REMOVED", "QUEST_TURNED_IN",
+    "QUEST_WATCH_LIST_CHANGED", "QUEST_WATCH_UPDATE",
+    "TIME_PLAYED_MSG",
+    "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYERBANKSLOTS_CHANGED", "BANK_TABS_CHANGED",
+    "TRAINER_SHOW", "TRAINER_UPDATE", "TRAINER_DESCRIPTION_UPDATE", "TRAINER_SERVICE_INFO_NAME_UPDATE", "TRAINER_CLOSED",
 }

@@ -211,6 +211,8 @@ equal(S.record.sections.bags.data.containers[1].slots[1].count, 7, "bag changes 
 equal(S.record.sections.bags.revision, revision + 1, "changed content increments revision")
 BankFrame:Show(); event("BANKFRAME_OPENED"); advance(1)
 equal(S.record.sections.bank.data.containers[1].slots[1].count, 5, "bank open captures bank")
+check(not WoWSyncDB.account, "Classic bank never creates Retail account storage")
+check(not S.Render(S.GetSnapshot()):find("[ACCOUNT BANK]", 1, true), "Classic export has no Retail account section")
 local bankObserved = S.record.sections.bank.observedAt
 local bankReads = itemReads
 BankFrame:Hide(); event("BANKFRAME_CLOSED"); bagItems[-1] = {}; advance(1)
@@ -307,8 +309,16 @@ check(callbackText and callbackText:find("[END]", 1, true), "sync generates cons
 equal(GearExportDB.latestExport, oldLatest, "sync does not overwrite legacy latestExport")
 equal(S.record.latestExport.text, callbackText, "single latest consolidated export saved")
 local frozen = callbackText
+local frozenAt = S.record.latestExport.generatedAt
 money = 999; event("PLAYER_MONEY"); advance(1)
-equal(S.record.latestExport.text, frozen, "background events do not rewrite displayed export")
+check(S.record.latestExport.text ~= frozen, "background observations refresh the SavedVariables handoff")
+check(S.record.latestExport.generatedAt > frozenAt, "background handoff advances generatedAt")
+check(S.record.latestExport.text:find("999", 1, true), "auto export contains changed money")
+local logoutBefore = S.record.latestExport.text
+bagItems[0][1].count = 8; event("BAG_UPDATE"); event("PLAYER_LOGOUT")
+check(S.record.latestExport.text ~= logoutBefore, "logout refreshes pending observations before WoW flushes")
+check(S.record.latestExport.text:find("Sample\t10\t", 1, true), "logout handoff contains pending bag change")
+bagItems[0][1].count = 1 -- restore the shared fixture for later compatibility cases
 local oldRecord = S.record
 guid = "Player-1-B"; S.record = nil; event("PLAYER_LOGIN"); advance(1)
 check(S.record ~= oldRecord, "characters isolated by GUID")
@@ -440,6 +450,7 @@ local function serializable(value, seen)
 end
 check(serializable(WoWSyncDB, {}), "SavedVariables contain only acyclic serializable values")
 check(not S.record.history and not S.record.events, "no event-history log retained")
+assert(loadfile("tests/item_metadata_test.lua"))()(S, WoWSyncCompat, check, equal)
 equal(movingCalls, 0, "all edge cases remain observation only")
 local db = WoWSyncDB
 WoWSyncDB = { schemaVersion = 999, characters = { sentinel = true } }; S.record = nil
@@ -502,4 +513,9 @@ C_Map = oldMap
 assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
 GetBuildInfo, GetNumSpellTabs, GetSpellTabInfo, GetNumSkillLines, GetSkillLineInfo =
     originalBuild, originalTabs, originalTabInfo, originalSkillCount, originalSkillInfo
+-- Classic packages never collect Retail currencies even if the namespace exists.
+C_CurrencyInfo = setmetatable({}, { __index = function() error("Classic read Retail currency API") end })
+check(not S.collectors.currencies and not WoWSyncCompat.ReadCurrencyList(), "Classic has no currency capture")
+for _, key in ipairs(S.order) do check(key ~= "currencies", "Classic order excludes currencies") end
+C_CurrencyInfo = nil
 print("PASS: " .. passed .. " assertions; " .. movingCalls .. " gameplay actions")

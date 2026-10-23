@@ -1,4 +1,4 @@
--- Synthetic build-69913 API shapes, not invented Hallo bag contents.
+-- Synthetic build-70009 API shapes, not invented Hallo bag contents.
 return function(S, check, equal, advance)
     local savedContainer, savedItem, savedLocation, savedConstants, savedEnum, savedSecret =
         C_Container, C_Item, ItemLocation, Constants, Enum, issecretvalue

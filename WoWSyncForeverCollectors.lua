@@ -8,7 +8,7 @@ local function Meta(issues)
 end
 
 S.collectors.character = function()
-    local issues = { "Playtime unverified on Forever; capture deferred" }
+    local issues = {}
     local data = {
         name = F.Read("Name", UnitName, 1, "string", issues, "player"),
         realm = F.Read("Realm", GetRealmName, 1, "string", issues),
@@ -23,6 +23,18 @@ S.collectors.character = function()
         interface = F.Read("Interface", GetBuildInfo, 4, "number", issues),
         clientFamily = "Forever",
     }
+    local played = S.played
+    if played then
+        if played.guid ~= UnitGUID("player") then
+            issues[#issues + 1] = "Playtime response belongs to a different character"
+        else
+            data.playedSeconds, data.levelPlayedSeconds = played.total, played.levelSeconds
+            if data.playedSeconds == nil then issues[#issues + 1] = "Total playtime unavailable" end
+            if data.levelPlayedSeconds == nil then issues[#issues + 1] = "Level playtime unavailable" end
+        end
+    else
+        issues[#issues + 1] = "Playtime response not observed"
+    end
     return data, Meta(issues)
 end
 
@@ -46,7 +58,8 @@ S.collectors.location = function()
     return data, Meta(issues)
 end
 
--- Build 69893 uses ItemLocation/C_Item and C_PaperDollInfo. Do not route
+-- Forever 70245 uses ItemLocation/C_Item and C_PaperDollInfo as runtime-observed.
+-- Do not route
 -- through the Classic legacy readers merely because IsRetail() is false.
 S.collectors.equipment = function()
     local data, issues, observed, pending = { slots = {} }, {}, 0, false
@@ -85,16 +98,33 @@ S.collectors.equipment = function()
                 end
                 -- Location-specific level, not the generic item's base level.
                 item.itemLevel = F.Number(label .. " level", itemAPI.GetCurrentItemLevel, issues, location)
-                if link then
-                    item.name = F.Read(label .. " name", itemAPI.GetItemInfo, 1, "string", issues, link)
-                    local required = F.Read(label .. " required level", itemAPI.GetItemInfo, 5, "number", issues, link)
+                -- GetItemLink may be unavailable while the item is loading.
+                -- GetItemInfo accepts an item ID as well as a link; use the
+                -- observed ID as a conservative name/level fallback without
+                -- constructing a variant link or overwriting an observed name.
+                local itemInfoRef = link or (item.itemID and item.itemID > 0 and item.itemID)
+                if itemInfoRef then
+                    item.name = F.Read(label .. " name", itemAPI.GetItemInfo, 1, "string", issues, itemInfoRef)
+                    if item.name then
+                        item.nameSource = "C_Item.GetItemInfo"
+                        item.nameObservedAt = S.Now()
+                    elseif item.itemID and type(itemAPI.RequestLoadItemDataByID) == "function" then
+                        S.requestedForeverItemInfo = S.requestedForeverItemInfo or {}
+                        if not S.requestedForeverItemInfo[item.itemID] then
+                            local requested = pcall(itemAPI.RequestLoadItemDataByID, item.itemID)
+                            if requested then S.requestedForeverItemInfo[item.itemID] = true end
+                        end
+                        pending = true
+                    end
+                    local required = F.Read(label .. " required level", itemAPI.GetItemInfo, 5, "number", issues, itemInfoRef)
                     if required and required >= 0 and required % 1 == 0 then item.requiredLevel = required
                     else issues[#issues + 1] = label .. " required level unknown" end
                 end
                 if #issues > before then pending = true end
-                -- GetItemStats is a LuaValueVariant in this build. Neither its
-                -- runtime shape nor effective equipped semantics is validated.
-                issues[#issues + 1] = label .. " effective stats await Forever runtime validation"
+                -- GetItemStats is collected separately for exact item variants, but this equipped-slot
+                -- collector has no validated Forever-client tooltip comparison for effective values.
+                issues[#issues + 1] = label .. " effective stat semantics unverified for Forever 1.60.1 build " .. tostring(addon.Forever.build)
+                item.stats = nil
             end
         else
             issues[#issues + 1] = label .. " mapping unknown"
@@ -107,6 +137,3 @@ S.collectors.equipment = function()
 end
 
 -- Preserve canonical section order, but never read deferred subsystems.
-for _, key in ipairs({ "spells" }) do
-    S.collectors[key] = function() return nil, { reason = "Not implemented in Forever Phase 1" } end
-end

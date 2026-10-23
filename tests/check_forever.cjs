@@ -6,6 +6,17 @@ assert(/^## X-WoWSync-Target: Forever$/m.test(toc), 'Explicit Forever routing');
 assert(/^## SavedVariables: GearExportDB, WoWSyncDB$/m.test(toc), 'Existing database names');
 const files = toc.split(/\r?\n/).filter(line => line && !line.startsWith('#'));
 assert.deepStrictEqual(files, ['WoWSyncCompat.lua', 'WoWSyncForever.lua', 'WoWSyncCore.lua',
-    'WoWSyncForeverCollectors.lua', 'WoWSyncForeverBags.lua', 'WoWSyncForeverProfessions.lua', 'WoWSyncRender.lua', 'WoWSyncUI.lua'], 'Forever observer load order');
+    'WoWSyncForeverCollectors.lua', 'WoWSyncForever70291.lua', 'WoWSyncForeverQuests.lua', 'WoWSyncForeverBags70291.lua', 'WoWSyncForeverEvidence70291.lua',
+    'WoWSyncForeverBank.lua', 'WoWSyncForeverProfessions.lua', 'WoWSyncForeverRecipes.lua', 'WoWSyncForeverSpells.lua',
+    'WoWSyncRender.lua', 'WoWSyncUI.lua'], 'Forever observer load order');
+assert(!files.includes('WoWSyncForeverTrainers.lua'), 'Unverified legacy trainer tuple adapter remains excluded');
+for (const file of ['WoWSyncForeverBags.lua']) assert(!files.includes(file), 'Other-client collector remains excluded: ' + file);
 for (const file of files) assert(fs.existsSync(file), 'Missing Forever source ' + file);
-console.log('PASS: Forever interface 16001, target marker, SavedVariables and limited load order');
+const foreverGuard = fs.readFileSync('WoWSyncForever.lua', 'utf8');
+assert(/version\s*=\s*"1\.60\.1"/.test(foreverGuard)
+    && /interface\s*=\s*16001/.test(foreverGuard)
+    && /minimumBuild\s*=\s*70291,\s*verifiedBuilds\s*=\s*\{\s*\["70291"\]\s*=\s*true,\s*\["70338"\]\s*=\s*true,\s*\["70450"\]\s*=\s*true\s*\}/.test(foreverGuard),
+    'Runtime guard accepts verified and newer Forever builds while recording the verification set');
+assert(/S\.structuredOnly\.forever70291Evidence\s*=\s*true/.test(fs.readFileSync('WoWSyncForever70291.lua', 'utf8')),
+    'new raw evidence remains outside strict WOWSYNC v1 text');
+console.log('PASS: Forever interface 16001, build-matched guard, target marker, SavedVariables and isolated load order');

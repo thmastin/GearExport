@@ -1,5 +1,6 @@
--- Phase 1 intentionally supplies no bank/item/trainer/spell/profession APIs.
+-- Build 70338 collector fixture. API responses below are synthetic; live compatibility is still a deployment-gated check.
 local passed, actions, requests, seconds = 0, 0, 0, 0
+local addon = {}
 local function check(value, message) assert(value, message); passed = passed + 1 end
 local function equal(a, b, message) check(a == b, message .. ": " .. tostring(a) .. " ~= " .. tostring(b)) end
 local function widget(name)
@@ -21,7 +22,9 @@ function CreateFrame(_, name) return widget(name) end
 UIParent, UISpecialFrames, SlashCmdList = widget(), {}, {}
 function GetTime() return seconds end
 function GetServerTime() return 1789670000 + math.floor(seconds) end
-local version, build, interface = "1.60.1", "69913", 8675309 -- Synthetic interface, not client evidence.
+-- Synthetic environment values match the observed client version/build/interface;
+-- the surrounding mocked APIs are test fixtures, not additional live evidence.
+local version, build, interface = "1.60.1", "70338", 16001
 function GetBuildInfo() return version, build, "test", interface end
 local target = "Forever"
 C_AddOns = { GetAddOnMetadata = function(name, field)
@@ -30,9 +33,13 @@ C_AddOns = { GetAddOnMetadata = function(name, field)
     return target
 end }
 function UnitGUID() return "Player-Forever-Test" end
-function UnitName() return "Hallo" end
+function UnitName() return "Hallo", "Surname" end
+function GetUnitName() return "Hallo Surname" end
+function UnitFullName() return "Hallo", "Surname" end
+function UnitNameUnmodified() return "Hallo", "Surname" end
 function GetRealmName() return "Test Realm" end
 function UnitClass() return "Warrior", "WARRIOR" end
+function UnitRace() return "Dwarf", "Dwarf", 3 end
 function UnitLevel() return 10 end
 function UnitFactionGroup() return "Horde" end
 function GetMoney() return 12345 end
@@ -42,12 +49,19 @@ function GetRealZoneText() return "Test Zone" end
 function GetSubZoneText() return "Test Subzone" end
 C_Map = { GetBestMapForUnit = function() return 1 end,
     GetPlayerMapPosition = function() return { GetXY = function() return 0.125, 0.75 end } end }
-function RequestTimePlayed() requests = requests + 1 end
+function RequestTimePlayed()
+    requests = requests + 1
+    if addon.Sync and addon.Sync.eventFrame.scripts.OnEvent then
+        addon.Sync.eventFrame.scripts.OnEvent(addon.Sync.eventFrame, "TIME_PLAYED_MSG", 3600, 1200)
+    end
+end
 local function action() actions = actions + 1; error("Unexpected gameplay call") end
 BuyTrainerService, UseContainerItem, PickupContainerItem = action, action, action
-local addon = {}
 for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.lua",
-    "WoWSyncForeverCollectors.lua", "WoWSyncForeverBags.lua", "WoWSyncForeverProfessions.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
+    "WoWSyncForeverCollectors.lua", "WoWSyncForever70291.lua", "WoWSyncForeverQuests.lua", "WoWSyncForeverBags70291.lua",
+    "WoWSyncForeverEvidence70291.lua", "WoWSyncForeverBank.lua", "WoWSyncForeverProfessions.lua", "WoWSyncForeverSpells.lua",
+    "WoWSyncForeverRecipes.lua",
+    "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
 local S, C = addon.Sync, WoWSyncCompat
@@ -57,7 +71,9 @@ local function advance(duration)
         if S.eventFrame.scripts.OnUpdate then S.eventFrame.scripts.OnUpdate() end
     end
 end
-check(C.IsForever(), "explicit Forever package and verified version/build")
+check(C.IsForever(), "explicit Forever package and supported exact version/build")
+build = "70291"; check(C.IsForever(), "previously live-validated build remains supported"); build = "70338"
+build = "70450"; check(C.IsForever(), "verified Forever build is supported"); build = "70999"; check(C.IsForever(), "newer unlisted Forever build remains capture-compatible"); build = "70338"
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
 check(not C.IsRetail(), "Forever is not routed as Retail even with a shared project ID")
 target = "Retail"; check(not C.IsForever(), "wrong package rejected"); target = "Forever"
@@ -65,83 +81,195 @@ for _, other in ipairs({ "1.15.9", "2.5.6", "12.1.0" }) do
     version = other; check(not C.IsForever(), "other clients rejected")
 end
 version = "1.60.1"
-for _, other in ipairs({ "69893", "69914", "different" }) do
+for _, other in ipairs({ "69893", "70009", "69914", "different" }) do
     build = other
-    check(not S.Initialize(), "non-current build fails closed: " .. other)
+    check(not S.Initialize(), "below-minimum or malformed build fails closed: " .. other)
     equal(WoWSyncDB, nil, "wrong client does not create database")
     equal(S.error, "The installed WoWSync build is not verified for the running Forever client.",
         "rejection describes verification rather than a package phase")
 end
-build = "69913"
+build = "70338"
+interface = 16000; check(not C.IsForever(), "wrong interface rejected"); interface = 16001
 local realGUID = UnitGUID
 UnitGUID = nil; check(not S.Initialize(), "missing GUID cannot fabricate character")
 UnitGUID = function() error("Unavailable") end; check(not S.Initialize(), "throwing GUID handled")
 UnitGUID = realGUID
+local legacySections = { professions = { data = { entries = { { name = "Stale profession" } } } },
+    bank = { data = { containers = { { id = 6 } } } } }
+local legacyItems = { [6948] = { bindType = 1 } }
+local legacyVisits = { bank = { openedAt = 123 } }
+local legacyExport = { text = "old 70009 WOWSYNC export", generatedAt = 123 }
+WoWSyncDB = { schemaVersion = 1, settings = { preserve = true }, characters = {
+    ["Player-Forever-Test"] = { captureProfile = "Forever:1.60.1:70009:16001",
+        sections = legacySections, itemMetadata = legacyItems, visits = legacyVisits,
+        latestExport = legacyExport },
+} }
 S.eventFrame.scripts.OnEvent(S.eventFrame, "PLAYER_LOGIN")
 advance(1)
 equal(S.record.identity.name, "Hallo", "identity captured")
+equal(S.record.captureProfile, "Forever:1.60.1:70338:16001", "active saved-data profile is scoped to actual allowlisted build")
+local previousBuildRecord = { captureProfile = "Forever:1.60.1:70291:16001",
+    sections = { equipment = { data = { marker = "70291 evidence" } } },
+    latestExport = { text = "70291 export" } }
+addon.PrepareCaptureProfile(previousBuildRecord)
+equal(previousBuildRecord.captureProfile, "Forever:1.60.1:70338:16001", "build change gets its own active profile")
+equal(previousBuildRecord.archivedCaptures[1].sections.equipment.data.marker, "70291 evidence", "previous-build evidence is archived on transition")
+equal(previousBuildRecord.sections.equipment, nil, "previous-build evidence is not presented as current")
+equal(previousBuildRecord.archivedCaptures[1].latestExport.text, "70291 export", "previous-build text export remains archived")
+check(S.record.sections.professions and S.record.sections.professions.data == nil,
+    "legacy profession rows are archived rather than relabeled current when the API is unavailable")
+equal(S.record.archivedCaptures[1].sections, legacySections, "legacy sections remain preserved in archive")
+equal(S.record.archivedCaptures[1].itemMetadata, legacyItems, "legacy item metadata remains preserved")
+equal(S.record.archivedCaptures[1].visits, legacyVisits, "legacy visits remain preserved")
+equal(S.record.archivedCaptures[1].latestExport, legacyExport, "legacy export remains preserved in archive")
+check(S.record.latestExport == nil or S.record.latestExport.text ~= legacyExport.text,
+    "legacy export is invalidated before a fresh build-scoped export")
+equal(WoWSyncDB.settings.preserve, true, "existing global settings remain intact")
 local data = S.record.sections.character.data
 equal(data.name, "Hallo", "name")
+equal(data.surname, "Surname", "surname candidate captured from consistent name APIs")
+check(data.surnameSource:find("UnitName%[2%]", 1) ~= nil, "corroborating surname sources remain explicit")
+equal(data.nameApiEvidence.state, "CORROBORATED", "raw Forever API diagnostics recorded")
+equal(data.nameApiEvidence.calls.UnitName.returnCount, 2, "UnitName return count preserved")
+equal(S.record.identity.surname, "Surname", "SavedVariables identity carries display-only surname")
 equal(data.realm, "Test Realm", "realm")
 equal(data.class, "WARRIOR", "class")
 equal(data.level, 10, "level")
-equal(data.faction, "Horde", "faction")
-equal(data.moneyCopper, 12345, "raw copper")
-equal(data.xp, 413, "raw XP")
-equal(data.xpMax, 72820, "raw max XP")
+equal(data.race, "Dwarf", "race")
+equal(data.faction, "Horde", "faction captured as observed API value")
+equal(data.moneyCopper, 12345, "money captured in exact copper")
+equal(data.xp, 413, "current XP captured")
+equal(data.xpMax, 72820, "XP maximum captured")
 equal(data.clientFamily, "Forever", "Forever never mislabeled Retail")
 equal(data.interface, interface, "interface comes from API, not version arithmetic")
-equal(S.record.sections.location.data.x, 12.5, "map X")
-equal(S.record.sections.location.data.y, 75, "map Y")
-equal(requests, 0, "unverified playtime request never sent")
-for _, event in ipairs({ "TIME_PLAYED_MSG", "BANKFRAME_OPENED", "TRAINER_SHOW", "SPELLS_CHANGED" }) do
-    check(not S.eventFrame.events[event], "deferred event not registered: " .. event)
-end
+local renderedCharacter = S.RenderSection("character", S.GetSnapshot())
+check(renderedCharacter:find("Name: Hallo\nSurname: Surname\nSurnameSource: ", 1, true)
+    and renderedCharacter:find("Realm: Test Realm", 1, true), "Forever export includes optional surname without changing first-name field")
+check(renderedCharacter:find("SurnameSource: UnitName%[2%]", 1) ~= nil, "export preserves the unverified runtime API candidate provenance")
+UnitName = function() return "Hallo", "Test Realm" end
+GetUnitName = function() return "Hallo" end
+UnitFullName = function() return "Hallo", "Test Realm" end
+UnitNameUnmodified = function() return "Hallo", "Test Realm" end
+S.RequestSync(); advance(1)
+equal(S.record.sections.character.data.surname, nil, "realm return is not misclassified as surname")
+UnitName = function() return "Hallo", "OnlyCandidate" end
+GetUnitName = function() return "Hallo" end
+UnitFullName = nil
+UnitNameUnmodified = function() return "Hallo" end
+S.RequestSync(); advance(1)
+equal(S.record.sections.character.data.surname, nil, "single uncorroborated API candidate remains unknown")
+check(#S.record.sections.character.data.nameApiEvidence.candidates == 1, "unverified candidate preserved for live diagnosis")
+UnitName = function() return "Hallo", "Surname" end
+GetUnitName = function() return "Hallo Surname" end
+UnitFullName = function() return "Hallo", "Surname" end
+UnitNameUnmodified = function() return "Hallo", "Surname" end
+S.RequestSync(); advance(1)
+equal(S.record.sections.character.data.surname, "Surname", "corroborated API evidence restores display surname")
+UnitName = function() return nil, "OrphanCandidate" end
+GetUnitName = function() return nil end
+UnitFullName = function() return nil, "OrphanCandidate" end
+UnitNameUnmodified = function() return nil, "OrphanCandidate" end
+S.RequestSync(); advance(1)
+equal(S.record.sections.character.data.name, nil, "missing first-name observation stays unknown")
+equal(S.record.sections.character.data.surname, nil, "surname is not inferred without an observed first name")
+local secretName = {}
+issecretvalue = function(value) return value == secretName end
+UnitName = function() return secretName, "SecretSurname" end
+GetUnitName = function() return secretName end
+UnitFullName = function() return secretName, "SecretSurname" end
+UnitNameUnmodified = function() return secretName, "SecretSurname" end
+S.RequestSync(); advance(1)
+equal(S.record.sections.character.data.surname, nil, "restricted name API values do not become a surname")
+equal(S.record.sections.character.data.nameApiEvidence.calls.UnitName.returns[1].type, "RESTRICTED", "restricted name return is not type-inspected or serialized")
+UnitName = function() return "Hallo", "Surname" end
+GetUnitName = function() return "Hallo Surname" end
+UnitFullName = function() return "Hallo", "Surname" end
+UnitNameUnmodified = function() return "Hallo", "Surname" end
+issecretvalue = nil
+equal(S.record.sections.location.data.zone, "Test Zone", "location collector restored")
+check(requests > 0, "asynchronous playtime request is made")
+S.eventFrame.scripts.OnEvent(S.eventFrame, "TIME_PLAYED_MSG", 3600, 1200)
+S.Process(true)
+advance(0.2)
+equal(S.record.sections.character.data.playedSeconds, 3600, "total played requires and uses time-played event")
+equal(S.record.sections.character.data.levelPlayedSeconds, 1200, "level played requires and uses time-played event")
+for _, event in ipairs({ "TIME_PLAYED_MSG", "BANKFRAME_OPENED", "TRAINER_SHOW" }) do check(S.eventFrame.events[event], "Forever event registered: " .. event) end
 local output
 check(S.Export(function(text) output = text end), "export accepted")
-advance(1)
+advance(3.2) -- allow the bounded export timeout while optional sections are unavailable in this fixture
 check(output and output:find("WOWSYNC v1", 1, true), "shared canonical export")
-check(output:find("PlayedSeconds: ?\nLevelPlayedSeconds: ?", 1, true), "deferred playtime unknown")
-check(output:find("XP: 413/72820", 1, true), "XP ratio")
+check(output:find("Client: 1.60.1 build 70338", 1, true)
+    and output:find("Interface: 16001", 1, true), "actual allowlisted client build and interface serialized")
+check(output:find("Race: Dwarf", 1, true), "supported Forever profile serializes observed race")
+local launchBuildSnapshot = S.GetSnapshot()
+launchBuildSnapshot.sections.character.data.clientBuild = "70450"
+check(C.IsSupportedForeverBuild("70450", 16001), "build 70450 passes the exact Forever build guard")
+check(S.RenderSection("character", launchBuildSnapshot):find("Race: Dwarf", 1, true),
+    "build 70450 serializes observed race in the character section")
+local newerBuildSnapshot = S.GetSnapshot()
+newerBuildSnapshot.sections.character.data.clientBuild = "70999"
+local newerRendered = S.RenderSection("character", newerBuildSnapshot)
+check(newerRendered:find("Race: Dwarf", 1, true), "unlisted newer build retains observed race")
+check(newerRendered:find("Compatibility: UNVERIFIED_BUILD", 1, true) and newerRendered:find("build 70999", 1, true), "newer build is explicitly labelled with its build number")
+local unknownBuildSnapshot = S.GetSnapshot()
+unknownBuildSnapshot.sections.character.data.clientBuild = nil
+check(not S.RenderSection("character", unknownBuildSnapshot):find("Race:", 1, true),
+    "unknown Forever build cannot add an unsupported v1 race field")
+local legacyBuildSnapshot = S.GetSnapshot()
+legacyBuildSnapshot.sections.character.data.clientBuild = "70009"
+check(not S.RenderSection("character", legacyBuildSnapshot):find("Race:", 1, true),
+    "below-minimum build cannot serialize the Forever race field")
+check(output:find("PlayedSeconds: 3600\nLevelPlayedSeconds: 1200", 1, true), "event-backed playtime serializes")
+check(output:find("XP: 413/72820", 1, true), "observed XP serializes")
 check(output:find("[BANK]\nState: UNKNOWN", 1, true), "bank not observed")
-check(output:find("Not implemented in Forever Phase 1", 1, true), "deferred sections explained")
+check(output:find("capture limited to fields enabled by the version-scoped collectors", 1, true), "unprobed fields remain explicitly limited")
 local frozen = S.GetSnapshot()
 local frozenText = S.Render(frozen)
 advance(1); equal(S.Render(frozen), frozenText, "deterministic without clock reads")
 assert(loadfile("tests/forever_equipment_test.lua"))()(S, check, equal, advance)
-assert(loadfile("tests/forever_snapshot_test.lua"))()(S, equal)
-assert(loadfile("tests/forever_bags_test.lua"))()(S, check, equal, advance)
+assert(S.collectors.bags and S.collectors.bank and S.collectors.trainer
+    and S.collectors.professions and S.collectors.spells,
+    "allowlisted Forever profile wires bank, profession, spell, and fail-closed trainer collectors")
+assert(loadfile("tests/forever_bags_70291_test.lua"))()(S, check, equal)
+assert(loadfile("tests/forever_evidence_70291_test.lua"))()(S, check, equal)
 assert(loadfile("tests/forever_professions_test.lua"))()(S, check, equal, advance)
-for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitLevel", "UnitFactionGroup", "GetMoney", "UnitXP", "UnitXPMax" }) do
+assert(loadfile("tests/forever_spells_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/forever_remaining_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/forever_quests_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/forever_recipes_test.lua"))()(S, check, equal)
+for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitRace", "UnitLevel", "UnitFactionGroup", "GetMoney", "UnitXP", "UnitXPMax" }) do
+    _G[key] = function() error("API changed") end
+end
+for _, key in ipairs({ "GetUnitName", "UnitFullName", "UnitNameUnmodified" }) do
     _G[key] = function() error("API changed") end
 end
 S.RequestSync(); advance(1)
 local unknown = S.RenderSection("character", S.GetSnapshot())
-for _, field in ipairs({ "Name", "Realm", "Class", "Level", "Faction", "MoneyCopper" }) do
+for _, field in ipairs({ "Name", "Realm", "Class", "Level" }) do
     check(unknown:find(field .. ": ?", 1, true), "failed field unknown: " .. field)
 end
+check(unknown:find("Race: ?", 1, true), "supported-profile race failure remains unknown")
+check(unknown:find("Surname: ?", 1, true), "surname unavailable is explicit UNKNOWN in text")
 check(unknown:find("XP: ?/?", 1, true), "unavailable XP explicit")
-check(unknown:find("MoneyCopper failed", 1, true), "diagnostic reason retained")
-GetMoney, UnitXP, UnitXPMax, UnitLevel = function() return 0 end, function() return 0 end, function() return 100 end, function() return 1 end
-S.RequestSync(); advance(1)
-equal(S.record.sections.character.data.moneyCopper, 0, "known zero money")
-equal(S.record.sections.character.data.xp, 0, "known zero XP")
+check(unknown:find("Faction: ?", 1, true) and unknown:find("MoneyCopper: ?", 1, true), "unavailable faction and gold stay unknown")
+check(unknown:find("capture limited to fields enabled by the version-scoped collectors", 1, true), "scope diagnostic retained")
 local secret = {}
 issecretvalue = function(value) return value == secret end
-GetMoney = function() return secret end
 UnitLevel = function() return "10" end
-UnitXP = function() return -1 end
-UnitXPMax = nil
+UnitRace = function() return secret end
 C_Map, GetRealZoneText, GetSubZoneText = nil, nil, nil
+RequestTimePlayed = function() requests = requests + 1 end -- simulate a request without its asynchronous response
 S.RequestSync(); advance(1)
-equal(S.record.sections.character.data.moneyCopper, nil, "restricted value unknown")
 equal(S.record.sections.character.data.level, nil, "changed type unknown")
-equal(S.record.sections.character.data.xp, nil, "negative XP rejected")
-equal(S.record.sections.character.data.xpMax, nil, "missing XP API unknown")
-equal(S.record.sections.location.data.zone, nil, "absent location unknown")
-equal(S.record.sections.location.completeness, "partial", "location diagnostics")
+equal(S.record.sections.character.data.race, nil, "restricted race unknown")
+equal(S.record.sections.character.data.surname, nil, "failed name APIs leave surname unknown")
+equal(S.record.identity.surname, nil, "failed current capture clears stale display surname")
+equal(S.record.sections.location.data.zone, nil, "failed location observation stays unknown")
 equal(SLASH_WOWSYNC1, "/wowsync", "command preserved")
 check(not SlashCmdList.GEAREXPORT and not SlashCmdList.BANKCLEANUP, "no legacy/action commands loaded")
 equal(actions, 0, "no gameplay actions")
-equal(requests, 0, "no unvalidated requests")
+check(requests > 0, "time-played request is sent")
+equal(S.record.sections.character.data.playedSeconds, nil, "missing asynchronous response leaves playtime UNKNOWN")
+check(not S.collectors.currencies and not C.ReadCurrencyList(), "Forever has no currency capture")
+for _, key in ipairs(S.order) do check(key ~= "currencies", "Forever order excludes currencies") end
 print("PASS: " .. passed .. " Forever assertions; 0 gameplay actions")

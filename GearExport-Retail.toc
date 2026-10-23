@@ -1,7 +1,7 @@
 ## Interface: 120100
-## Title: WoWSync (Retail - validation build)
-## Notes: Shared WOWSYNC v1 character export; Retail live validation pending
-## Version: 2.2-retail-dev
+## Title: WoWSync
+## Notes: Shared WOWSYNC v1 character export for Retail
+## Version: 2.3-retail-dev
 ## SavedVariables: GearExportDB, WoWSyncDB
 ## IconTexture: Interface\AddOns\GearExport\WoWSyncIcon.tga
 
@@ -9,5 +9,7 @@ WoWSyncCompat.lua
 GearExport.lua
 WoWSyncCore.lua
 WoWSyncCollectors.lua
+WoWSyncStateCollectors.lua
 WoWSyncRender.lua
 WoWSyncUI.lua
+WoWSyncGuildBankDiagnostic.lua

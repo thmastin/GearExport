@@ -28,6 +28,11 @@ return function(S, equal)
     for name, value in pairs(replacements) do saved[name] = _G[name]; _G[name] = value end
     for key, label in pairs({ character = "CHARACTER", location = "LOCATION" }) do
         local expected = assert(text:match("%[" .. label .. "%]\n(.-)\n\n"))
+        if key == "character" then
+            -- The captured gameplay values remain the fixture; the completion
+            -- pass replaces the old deferred-playtime diagnostic only.
+            expected = expected:gsub("Playtime unverified on Forever; capture deferred", "Playtime response not observed")
+        end
         local data, meta = S.collectors[key]()
         local snapshot = { sections = { [key] = { data = data,
             completeness = meta.completeness, reason = meta.reason,

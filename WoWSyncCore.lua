@@ -1,10 +1,29 @@
 -- Observation only. No inventory/trainer action APIs belong in WoWSync.
 local ADDON_NAME, addon = ...
 local S = { apiVersion = 1, schemaVersion = 1, collectors = {}, dirty = {},
-    order = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer" },
-    bankOpen = false, trainerOpen = false, sessions = { bank = 0, trainer = 0 } }
+    order = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer", "itemMetadata" },
+    bankOpen = false, guildBankOpen = false, trainerOpen = false, sessions = { bank = 0, accountBank = 0, guildBank = 0, trainer = 0 } }
+if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
+    table.insert(S.order, 6, "accountBank")
+    table.insert(S.order, 7, "guildBank")
+    S.order[#S.order + 1] = "currencies"
+    S.order[#S.order + 1] = "combatSpecialization"
+    S.order[#S.order + 1] = "professionSpecializations"
+    S.order[#S.order + 1] = "professionRecipes"
+    S.order[#S.order + 1] = "reputation"
+elseif WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever() then
+    S.order[#S.order + 1] = "quests"
+    S.order[#S.order + 1] = "professionRecipes"
+end
+-- Captured into SavedVariables only: the WOWSYNC v1 text omits these sections so
+-- existing importers, which reject unknown section headers, keep working.
+S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true }
 addon.Sync = S
 S.captureOrder = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer", "gearCandidates" }
+for _, key in ipairs({ "accountBank", "guildBank", "currencies", "combatSpecialization",
+    "professionSpecializations", "reputation", "quests", "professionRecipes" }) do
+    S.captureOrder[#S.captureOrder + 1] = key
+end
 WoWSync = S
 
 function S.Copy(value)
@@ -59,27 +78,145 @@ function S.Initialize()
     db.schemaVersion = 1
     db.settings = type(db.settings) == "table" and db.settings or {}
     db.characters = type(db.characters) == "table" and db.characters or {}
+    if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
+        -- Account/Warband storage belongs to this SavedVariables account scope,
+        -- not to whichever character happened to make the observation.
+        db.account = type(db.account) == "table" and db.account or {}
+        db.account.sections = type(db.account.sections) == "table" and db.account.sections or {}
+        db.account.visits = type(db.account.visits) == "table" and db.account.visits or {}
+        db.guilds = type(db.guilds) == "table" and db.guilds or {}
+        S.account, S.guilds = db.account, db.guilds
+    else S.account, S.guilds, S.guild = nil, nil, nil end
     local record = db.characters[guid]
     if type(record) ~= "table" then record = {}; db.characters[guid] = record end
+    if addon.PrepareCaptureProfile then addon.PrepareCaptureProfile(record) end
     if not addon.ReadIdentity then name, realm = UnitName("player"), GetRealmName() end
     record.identity = { guid = guid, name = name, realm = realm }
     record.sections = type(record.sections) == "table" and record.sections or {}
     record.visits = type(record.visits) == "table" and record.visits or {}
+    record.itemMetadata = type(record.itemMetadata) == "table" and record.itemMetadata or {}
     NormalizeTrainer(record)
     S.record = record
+    S.sessionStartedAt = S.Now()
     S.settings = db.settings
     S.error = nil
     return true
 end
 
+function S.RememberItemMetadata(itemID, metadata)
+    if type(itemID) ~= "number" or itemID <= 0 or itemID % 1 ~= 0 or type(metadata) ~= "table" then return end
+    local present = false
+    for _, key in ipairs({ "classID", "subclassID", "bindType", "expansionID", "isCraftingReagent" }) do
+        if metadata[key] ~= nil then present = true; break end
+    end
+    if not present then return end
+    local known = S.record.itemMetadata[itemID]
+    if type(known) ~= "table" then known = {}; S.record.itemMetadata[itemID] = known end
+    for _, key in ipairs({ "classID", "subclassID", "bindType", "expansionID", "isCraftingReagent" }) do
+        if metadata[key] ~= nil then known[key] = metadata[key] end
+    end
+end
+
+local function OwnerFor(key)
+    if key == "accountBank" or key == "accountReputation" then return S.account end
+    if key == "guildBank" then return S.guild end
+    return S.record
+end
+
+local function StoredKey(key)
+    if key == "accountBank" or key == "guildBank" then return "bank" end
+    if key == "accountReputation" then return "reputation" end
+    return key
+end
+
 function S.Commit(key, data, meta)
-    local old = S.record.sections[key]
+    local owner, storedKey = OwnerFor(key), StoredKey(key)
+    if not owner then return end
+    if key == "reputation" and S.account and type(data) == "table" then
+        local accountData, characterData = S.Copy(data), S.Copy(data)
+        accountData.ownerScope, characterData.ownerScope = "ACCOUNT_WARBAND", "CHARACTER_OR_UNKNOWN"
+        accountData.factions, characterData.factions = {}, {}
+        accountData.majorFactions, characterData.majorFactions = {}, {}
+        for _, faction in ipairs(data.factions or {}) do
+            if faction.ownerScope == "ACCOUNT_WARBAND" then accountData.factions[#accountData.factions + 1] = faction
+            else characterData.factions[#characterData.factions + 1] = faction end
+        end
+        for _, major in ipairs(data.majorFactions or {}) do
+            if major.ownerScope == "ACCOUNT_WARBAND" then accountData.majorFactions[#accountData.majorFactions + 1] = major
+            else characterData.majorFactions[#characterData.majorFactions + 1] = major end
+        end
+        S.Commit("accountReputation", accountData, meta)
+        data = characterData
+    end
+    local old = owner.sections[storedKey]
     local now = S.Now()
+    -- A partial progression scan may add fresher facts, but omission is never
+    -- evidence of removal. Carry absent identities forward with explicit
+    -- LAST_SEEN provenance; a failed scan takes S.Attempt and leaves data intact.
+    if old and type(old.data) == "table" and type(data) == "table"
+        and (key == "professionSpecializations" or key == "reputation" or key == "accountReputation") then
+        local idField = (key == "reputation" or key == "accountReputation") and { factions = "factionID", majorFactions = "majorFactionID" }
+            or { professions = "baseSkillLineID", tiers = "skillLineID", trees = "treeID", nodes = "nodeID", currencies = "currencyID" }
+        local function merge(previous, current, field)
+            if type(previous) ~= "table" or type(current) ~= "table" then return current end
+            local result = S.Copy(current)
+            local handled = {}
+            for listKey, idKey in pairs(idField) do
+                if type(previous[listKey]) == "table" or type(current[listKey]) == "table" then
+                    handled[listKey] = true
+                    local byID, output = {}, {}
+                    for _, row in ipairs(current[listKey] or {}) do if type(row) == "table" and row[idKey] ~= nil then byID[row[idKey]] = row end end
+                    for _, prior in ipairs(previous[listKey] or {}) do
+                        if type(prior) == "table" and prior[idKey] ~= nil then
+                            local fresh = byID[prior[idKey]]
+                            if fresh then
+                                output[#output + 1] = merge(prior, fresh)
+                                byID[prior[idKey]] = nil
+                            else
+                                local last = S.Copy(prior); last.evidence = "LAST_SEEN"; last.lastSeenAt = old.observedAt or old.data.observedAt
+                                output[#output + 1] = last
+                            end
+                        end
+                    end
+                    for _, row in ipairs(current[listKey] or {}) do if type(row) == "table" and byID[row[idKey]] then output[#output + 1] = row end end
+                    result[listKey] = output
+                end
+            end
+            for k, prior in pairs(previous) do
+                if result[k] == nil and k ~= "observedAt" then
+                    local last = S.Copy(prior)
+                    if type(last) == "table" then last.evidence = "LAST_SEEN"; last.lastSeenAt = old.observedAt or old.data.observedAt end
+                    result[k] = last
+                elseif not handled[k] and type(prior) == "table" and type(result[k]) == "table" and not idField[k] then
+                    result[k] = merge(prior, result[k])
+                end
+            end
+            return result
+        end
+        data = merge(old.data, data)
+    elseif old and key == "combatSpecialization" and type(old.data) == "table" and type(data) == "table" then
+        local merged = S.Copy(data)
+        for _, field in ipairs({ "activeSpec", "talentConfig", "heroTalent" }) do
+            if type(merged[field]) ~= "table" or merged[field].evidence ~= "OBSERVED" then
+                local prior = S.Copy(old.data[field] or {})
+                if next(prior) then prior.evidence = "LAST_SEEN"; prior.lastSeenAt = old.observedAt or old.data.observedAt end
+                merged[field] = next(prior) and prior or merged[field]
+            end
+        end
+        data = merged
+    end
     local changed = not old or not Equal(old.data, data)
-    S.record.sections[key] = { data = data, observedAt = now,
+    if key == "character" and type(data) == "table" and type(S.record.identity) == "table" then
+        -- Surname is display metadata only. Keep the first-name identity key
+        -- and GUID stable, and clear an earlier value when the current API
+        -- observation cannot establish a surname.
+        S.record.identity.surname = type(data.surname) == "string" and data.surname ~= "" and data.surname or nil
+    end
+    owner.sections[storedKey] = { data = data, observedAt = now,
         changedAt = changed and now or old.changedAt,
         revision = ((old and old.revision) or 0) + (changed and 1 or 0),
         completeness = meta.completeness or "complete", reason = meta.reason,
+        partial = meta.partial, slotFailures = meta.slotFailures and S.Copy(meta.slotFailures) or nil,
         source = meta.source or "client", capture = S.capture }
 end
 
@@ -101,10 +238,104 @@ function S.CommitTrainer(category, data, meta)
         source = meta.source or "client", capture = S.capture, lastCategory = category }
 end
 
-function S.Attempt(key, reason)
-    local old = S.record.sections[key]
-    if not old then old = { completeness = "unknown", revision = 0 }; S.record.sections[key] = old end
+local function ProfessionRecipeKey(row)
+    if type(row) ~= "table" or type(row.baseSkillLineID) ~= "number" or type(row.skillLineID) ~= "number" then return nil end
+    return tostring(row.baseSkillLineID) .. ":" .. tostring(row.skillLineID)
+end
+
+function S.CommitProfessionRecipes(data, meta)
+    local owner = S.record
+    if not owner or type(data) ~= "table" or type(data.professions) ~= "table" or #data.professions ~= 1 then return end
+    local fresh = data.professions[1]
+    fresh.observedAt = data.observedAt or S.Now()
+    fresh.sessionObservedAt = S.sessionStartedAt
+    local key = ProfessionRecipeKey(fresh)
+    if not key or type(fresh.recipes) ~= "table" or #fresh.recipes == 0 then return end
+    local old = owner.sections.professionRecipes
+    local oldData = old and type(old.data) == "table" and old.data or {}
+    local rows, currentPrior = {}, nil
+    for _, prior in ipairs(oldData.professions or {}) do
+        if ProfessionRecipeKey(prior) == key then currentPrior = prior
+        else
+            local last = S.Copy(prior)
+            last.evidence = "LAST_SEEN"
+            last.lastSeenAt = last.lastSeenAt or last.observedAt or oldData.observedAt
+            for _, recipe in ipairs(last.recipes or {}) do
+                recipe.evidence = "LAST_SEEN"
+                recipe.lastSeenAt = recipe.lastSeenAt or recipe.observedAt or prior.observedAt or oldData.observedAt
+            end
+            rows[#rows + 1] = last
+        end
+    end
+
+    local priorByID = {}
+    for _, recipe in ipairs(currentPrior and currentPrior.recipes or {}) do
+        if type(recipe) == "table" and type(recipe.recipeID) == "number" then priorByID[recipe.recipeID] = recipe end
+    end
+    local currentByID, mergedRecipes = {}, {}
+    for _, recipe in ipairs(fresh.recipes) do
+        if type(recipe) == "table" and type(recipe.recipeID) == "number" then currentByID[recipe.recipeID] = recipe end
+    end
+    for _, prior in ipairs(currentPrior and currentPrior.recipes or {}) do
+        if not currentByID[prior.recipeID] then
+            local last = S.Copy(prior)
+            last.evidence = "LAST_SEEN"
+            last.lastSeenAt = last.lastSeenAt or last.observedAt or currentPrior.observedAt
+            mergedRecipes[#mergedRecipes + 1] = last
+        end
+    end
+    for _, recipe in ipairs(fresh.recipes) do
+        local row = S.Copy(recipe)
+        local prior = priorByID[row.recipeID]
+        if row.learnedState == "OBSERVED_TRUE" or row.learnedState == "OBSERVED_FALSE" then
+            row.evidence = "OBSERVED"
+            row.observedAt = fresh.observedAt
+        elseif prior and (prior.learnedState == "OBSERVED_TRUE" or prior.learnedState == "OBSERVED_FALSE") then
+            row.learned, row.learnedState = prior.learned, prior.learnedState
+            row.evidence = "LAST_SEEN"
+            row.lastSeenAt = prior.lastSeenAt or prior.observedAt or currentPrior.observedAt
+        else
+            row.learned = nil
+            row.learnedState = "UNKNOWN"
+            row.evidence = "UNKNOWN"
+        end
+        mergedRecipes[#mergedRecipes + 1] = row
+    end
+    fresh.recipes = mergedRecipes
+    fresh.evidence = "OBSERVED"
+    rows[#rows + 1] = fresh
+
+    local merged = S.Copy(data)
+    merged.professions = rows
+    local now = S.Now()
+    local changed = not old or not Equal(old.data, merged)
+    owner.sections.professionRecipes = { data = merged, observedAt = now,
+        changedAt = changed and now or old.changedAt,
+        revision = ((old and old.revision) or 0) + (changed and 1 or 0),
+        completeness = meta.completeness or "partial", reason = meta.reason,
+        source = meta.source or "client", capture = S.capture }
+end
+
+function S.Attempt(key, reason, stale)
+    local owner, storedKey = OwnerFor(key), StoredKey(key)
+    if not owner then return end
+    local old = owner.sections[storedKey]
+    if not old then old = { completeness = "unknown", revision = 0 }; owner.sections[storedKey] = old end
     old.lastAttemptAt, old.lastAttemptError = S.Now(), reason
+    if stale and old.data then old.lastAttemptStale = true end
+    if key == "professionRecipes" and old.data and type(old.data.professions) == "table" then
+        for _, profession in ipairs(old.data.professions) do
+            if profession.sessionObservedAt ~= S.sessionStartedAt then
+                profession.evidence = "LAST_SEEN"
+                profession.lastSeenAt = profession.lastSeenAt or profession.observedAt or old.data.observedAt
+                for _, recipe in ipairs(profession.recipes or {}) do
+                    recipe.evidence = "LAST_SEEN"
+                    recipe.lastSeenAt = recipe.lastSeenAt or recipe.observedAt or profession.observedAt or old.data.observedAt
+                end
+            end
+        end
+        old.lastAttemptStale = true
+    end
 end
 
 local function CommitGearCandidates(data, meta)
@@ -146,11 +377,14 @@ S.CommitGearCandidates = CommitGearCandidates
 
 function S.Mark(key, delay)
     if not S.collectors[key] then return end
-    if key == "bank" and not S.bankOpen or key == "trainer" and not S.trainerOpen then return end
+    if (key == "bank" or key == "accountBank") and not S.bankOpen
+        or key == "guildBank" and not S.guildBankOpen or key == "trainer" and not S.trainerOpen
+        or addon.Forever and key == "professionRecipes" and not S.professionRecipeOpen then return end
     local now = GetTime()
     local pending = S.dirty[key]
     if not pending then pending = { first = now, tries = 0 }; S.dirty[key] = pending end
     pending.due = math.min(now + (delay or 0.35), pending.first + 1.5)
+    if not S.structuredOnly[key] then S.autoExportPending = true end
     S.Wake()
 end
 
@@ -173,8 +407,9 @@ end
 
 function S.GetSnapshot()
     if not S.Initialize() then return nil end
+    if not S.guild and S.ResolveGuildBankOwner then S.ResolveGuildBankOwner() end
     local snapshot = { identity = S.Copy(S.record.identity), sections = S.Copy(S.record.sections),
-        visits = S.Copy(S.record.visits) }
+        visits = S.Copy(S.record.visits), itemMetadata = S.Copy(S.record.itemMetadata) }
     if WoWSyncCompat and WoWSyncCompat.IsRetail() then
         snapshot.gearCandidates = S.Copy(S.record.gearCandidates)
         local equipment = snapshot.sections.equipment
@@ -193,6 +428,16 @@ function S.GetSnapshot()
     snapshot.generatedAt = S.Now()
     snapshot.access = { bank = S.bankOpen and (not WoWSyncCompat or WoWSyncCompat.IsBankViewable()), trainer = S.trainerOpen,
         trainerCategory = S.trainerCategory }
+    if S.account then
+        snapshot.accountSections = S.Copy(S.account.sections)
+        snapshot.access.accountBank = S.bankOpen and WoWSyncCompat.IsBankViewable("ACCOUNT")
+    end
+    if S.guild then
+        snapshot.guildSections = S.Copy(S.guild.sections)
+        snapshot.guildIdentity = S.Copy(S.guild.identity)
+        snapshot.access.guildBank = S.guildBankOpen
+    end
+    snapshot.guildError = S.guildError
     snapshot.pending = {}
     for key in pairs(S.dirty) do snapshot.pending[key] = true end
     return snapshot
@@ -200,7 +445,8 @@ end
 
 function S.GetSection(key)
     if not S.Initialize() then return nil end
-    return S.Copy(S.record.sections[key])
+    local owner = OwnerFor(key)
+    return owner and S.Copy(owner.sections[StoredKey(key)]) or nil
 end
 
 local frame = CreateFrame("Frame")
@@ -218,6 +464,10 @@ local function RefreshLatestExport()
         latestExport.specEquipmentObservation = S.Copy(snapshot.specEquipmentObservation)
     end
     S.record.latestExport = latestExport
+    S.autoExportPending = nil
+    for key in pairs(S.dirty) do
+        if not S.structuredOnly[key] then S.autoExportPending = true; break end
+    end
     S.lastRenderError = nil
     return text
 end
@@ -236,6 +486,8 @@ local function Process(force)
                     S.CommitTrainer(data.category, data.snapshot, meta)
                 elseif key == "gearCandidates" then
                     CommitGearCandidates(data, meta)
+                elseif key == "professionRecipes" then
+                    S.CommitProfessionRecipes(data, meta)
                 else
                     S.Commit(key, data, meta)
                     if key == "equipment" then
@@ -258,9 +510,9 @@ local function Process(force)
             elseif key == "gearCandidates" then
                 S.record.gearCandidatesLastAttemptAt = S.Now()
                 S.record.gearCandidatesLastAttemptError = meta.reason or "Candidate data unavailable"
-            else S.Attempt(key, meta.reason or "Data unavailable") end
+            else S.Attempt(key, meta.reason or "Data unavailable", meta.stale) end
             if meta.retry and not force and pending.tries < 4
-                and (key ~= "bank" or S.bankOpen) and (key ~= "trainer" or S.trainerOpen) then
+                and ((key ~= "bank" and key ~= "accountBank") or S.bankOpen) and (key ~= "trainer" or S.trainerOpen) then
                 pending.tries = pending.tries + 1
                 pending.due = now + 0.5
                 S.dirty[key] = pending
@@ -271,14 +523,17 @@ end
 S.Process = Process
 
 local function Tick()
+    if S.GuildBankTick then S.GuildBankTick(GetTime()) end
     Process(false)
     if S.exportRequest and (not next(S.dirty) and not S.playedPending or GetTime() >= S.exportRequest.deadline) then
         local callback = S.exportRequest.callback
         S.exportRequest = nil
         local text = RefreshLatestExport()
         if text then callback(text) end
+    elseif S.autoExportPending and not next(S.dirty) then
+        RefreshLatestExport()
     end
-    if not next(S.dirty) and not S.exportRequest then frame:SetScript("OnUpdate", nil) end
+    if not next(S.dirty) and not S.exportRequest and not (S.GuildBankActive and S.GuildBankActive()) then frame:SetScript("OnUpdate", nil) end
 end
 function S.Wake() frame:SetScript("OnUpdate", Tick) end
 
@@ -295,18 +550,22 @@ local function Visit(key)
     local ok, location = pcall(S.collectors.location)
     local visit = { openedAt = S.Now(), location = ok and location or nil,
         name = UnitName("npc"), guid = UnitGUID("npc"), session = S.sessions[key] }
-    if key == "trainer" then S.currentTrainerVisit = visit else S.record.visits[key] = visit end
+    if key == "trainer" then S.currentTrainerVisit = visit
+    elseif key == "accountBank" then S.account.visits.bank = visit
+    elseif key == "guildBank" then S.guild.visits.bank = visit
+    else S.record.visits[key] = visit end
 end
 
 local function Close(key)
     if not S.record then return end
-    local visit = key == "trainer" and S.currentTrainerVisit or S.record.visits[key]
+    local owner, storedKey = OwnerFor(key), StoredKey(key)
+    local visit = key == "trainer" and S.currentTrainerVisit or owner.visits[storedKey]
     if key == "trainer" and visit then
         local category = S.trainerCategory or "UNKNOWN"
         S.record.visits.trainers[category] = visit
         S.currentTrainerVisit = nil
     end
-    local section = S.record.sections[key]
+    local section = owner.sections[storedKey]
     local observed = section
     if key == "trainer" and section and section.data and section.data.snapshots then
         observed = section.data.snapshots[S.trainerCategory or "UNKNOWN"]
@@ -319,6 +578,7 @@ local function Close(key)
     if S.dirty[key] then S.Attempt(key, "Closed before pending capture settled") end
     S.dirty[key] = nil
 end
+S.BeginVisit, S.EndVisit = Visit, Close
 
 local events = addon.SyncEvents or {
     "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT",
@@ -345,8 +605,16 @@ local function MarkGearCandidates()
 end
 
 frame:SetScript("OnEvent", function(_, event, arg, arg2)
+    if event:match("^GUILDBANK") then
+        S.guildEventCounts = S.guildEventCounts or {}
+        S.guildEventCounts[event] = (S.guildEventCounts[event] or 0) + 1
+        S.lastGuildEvent = event
+    end
     if event == "ADDON_LOADED" then
         if arg == ADDON_NAME then S.Initialize(); if S.InitializeUI then S.InitializeUI() end end
+        -- Blizzard_GuildBankUI is LoadOnDemand.  Its ADDON_LOADED signal is the
+        -- earliest clean point to hook GuildBankFrame before it is shown.
+        if arg == "Blizzard_GuildBankUI" and S.InstallGuildBankHooks then S.InstallGuildBankHooks() end
     elseif event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         S.RequestSync(); if S.InitializeUI then S.InitializeUI() end
     elseif event == "TIME_PLAYED_MSG" then
@@ -362,32 +630,79 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.Mark("character")
     elseif event == "PLAYER_LOGOUT" then
         if S.record then
-            Process(true)
+            pcall(Process, true)
             if S.record.latestExport then RefreshLatestExport() end
         end
     elseif event == "BANKFRAME_OPENED" then
-        S.bankOpen = true; Visit("bank"); S.Mark("bank"); S.Mark("bags"); MarkGearCandidates()
+        S.bankOpen = true; Visit("bank"); if S.collectors.accountBank then Visit("accountBank") end; S.Mark("bank"); S.Mark("accountBank"); S.Mark("bags"); MarkGearCandidates()
     elseif event == "BANKFRAME_CLOSED" then
-        S.bankOpen = false; Close("bank"); S.Mark("bags"); MarkGearCandidates()
+        S.bankOpen = false; Close("bank"); if S.collectors.accountBank then Close("accountBank") end; S.Mark("bags")
+    elseif event == "GUILDBANKFRAME_OPENED" then
+        if S.InstallGuildBankHooks then S.InstallGuildBankHooks() end
+        if S.GuildBankOpened then S.GuildBankOpened("event-open") end
+    elseif event == "GUILDBANKFRAME_CLOSED" then
+        if S.GuildBankClosed then S.GuildBankClosed("event-close") end
     elseif event == "TRAINER_SHOW" then
         S.trainerOpen = true; Visit("trainer"); S.Mark("trainer"); S.Mark("spells")
     elseif event == "TRAINER_CLOSED" then
         S.trainerOpen = false; Close("trainer"); S.trainerCategory = nil
+    elseif addon.Forever and event == "TRADE_SKILL_SHOW" then
+        S.professionRecipeOpen = true; S.Mark("professionRecipes")
+    elseif addon.Forever and event == "TRADE_SKILL_CLOSE" then
+        S.professionRecipeOpen = false
     elseif event:match("^TRAINER_") then
         S.Mark("trainer")
     elseif event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED"
-        or event == "PLAYERBANKSLOTS_CHANGED" or event == "PLAYERBANKBAGSLOTS_CHANGED" or event == "BANK_TABS_CHANGED" then
+        or event == "PLAYERBANKSLOTS_CHANGED" or event == "PLAYERBANKBAGSLOTS_CHANGED" then
         S.Mark("bags"); S.Mark("bank"); MarkGearCandidates()
+    elseif event == "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED" then
+        S.Mark("accountBank")
+    elseif event == "GUILDBANKBAGSLOTS_CHANGED" or event == "GUILDBANK_UPDATE_TABS" or event == "GUILDBANK_ITEM_LOCK_CHANGED" then
+        if S.GuildBankEvent then S.GuildBankEvent(event, arg, arg2) end
+    elseif event == "BANK_TABS_CHANGED" or event == "BANK_TAB_SETTINGS_UPDATED" then
+        if arg == nil or arg == (Enum and Enum.BankType and Enum.BankType.Character) then S.Mark("bank") end
+        if arg == nil or arg == (Enum and Enum.BankType and Enum.BankType.Account) then S.Mark("accountBank") end
+        MarkGearCandidates()
     elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "UNIT_INVENTORY_CHANGED" and arg == "player" then
         S.Mark("equipment"); S.Mark("bags"); MarkGearCandidates()
     elseif event == "SKILL_LINES_CHANGED" or event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE"
         or event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELL_TEXT_UPDATE"
         or event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then
         S.Mark("professions"); S.Mark("spells"); S.Mark("trainer")
+        if event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then S.Mark("professionRecipes") end
+        if event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELLS_CHANGED" then S.Mark("combatSpecialization") end
+        if event == "SKILL_LINES_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE" then S.Mark("professionSpecializations") end
+    elseif event == "NEW_RECIPE_LEARNED" then
+        S.Mark("professionRecipes")
+    elseif event == "QUEST_ACCEPTED" or event == "QUEST_AUTOCOMPLETE" or event == "QUEST_COMPLETE"
+        or event == "QUEST_DATA_LOAD_RESULT" or event == "QUEST_LOG_CRITERIA_UPDATE"
+        or event == "QUEST_LOG_UPDATE" or event == "QUEST_REMOVED" or event == "QUEST_TURNED_IN"
+        or event == "QUEST_WATCH_LIST_CHANGED" or event == "QUEST_WATCH_UPDATE" then
+        S.Mark("quests")
+    elseif event == "TRAIT_CONFIG_UPDATED" or event == "TRAIT_SUB_TREE_CHANGED" then
+        S.Mark("combatSpecialization"); S.Mark("professionSpecializations")
+    elseif event == "TRAIT_TREE_CURRENCY_INFO_UPDATED" or event == "SKILL_LINE_SPECS_RANKS_CHANGED"
+        or event == "SKILL_LINE_SPECS_UNLOCKED" then
+        S.Mark("professionSpecializations")
+    elseif event == "UPDATE_FACTION" or event == "FACTION_STANDING_CHANGED"
+        or event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" or event == "MAJOR_FACTION_UNLOCKED" then
+        S.Mark("reputation")
     elseif event == "GET_ITEM_INFO_RECEIVED" or event == "ITEM_DATA_LOAD_RESULT" then
         if S.record then
-            for _, key in ipairs({ "bags", "bank", "equipment" }) do
-                local section = S.record.sections[key]
+            if type(arg) == "number" and S.requestedForeverItemInfo then S.requestedForeverItemInfo[arg] = nil end
+            if type(arg) == "number" and S.foreverRecipeItemRequests and S.foreverRecipeItemRequests[arg] then
+                S.foreverRecipeItemLoadResults = S.foreverRecipeItemLoadResults or {}
+                S.foreverRecipeItemLoadResults[arg] = {
+                    state = type(arg2) == "boolean" and (arg2 and "LOAD_SUCCEEDED" or "LOAD_FAILED") or "LOAD_RESULT_UNKNOWN",
+                    success = type(arg2) == "boolean" and arg2 or nil,
+                    observedAt = S.Now(), event = event,
+                }
+                if S.professionRecipeOpen then S.Mark("professionRecipes") end
+            end
+            local keys = { "bags", "bank", "equipment" }
+            if S.account then keys[#keys + 1] = "accountBank" end
+            for _, key in ipairs(keys) do
+                local section = OwnerFor(key).sections[StoredKey(key)]
                 if section and section.completeness == "partial" then S.Mark(key) end
             end
             MarkGearCandidates()
@@ -396,5 +711,51 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.Mark("location")
     elseif event == "PLAYER_MONEY" or event == "PLAYER_LEVEL_UP" or event == "PLAYER_XP_UPDATE" then
         S.Mark("character")
+    elseif event == "CURRENCY_DISPLAY_UPDATE" then
+        -- A payload-less update just after our own header expansion is not a
+        -- currency change; real changes name the currency and always refresh.
+        if arg ~= nil or not S.currencyReadAt or GetTime() - S.currencyReadAt > 0.5 then S.Mark("currencies") end
     end
 end)
+
+SLASH_WOWSYNC1 = "/wowsync"
+SlashCmdList["WOWSYNC"] = function(argument)
+    local raw = tostring(argument or "")
+    local command = (raw:match("^%s*(%S*)") or ""):lower()
+    if command == "/wowsync" or command == "wowsync" then
+        command = (raw:match("^%s*%S+%s+(%S*)") or ""):lower()
+    end
+    local function say(text) print("WoWSync: " .. text) end
+    if command == "status" or command == "stat" then
+        local snapshot = S.GetSnapshot and S.GetSnapshot()
+        if not snapshot then say(S.error or "Not ready"); return end
+        for _, key in ipairs(S.order) do
+            local section = key == "accountBank" and snapshot.accountSections and snapshot.accountSections.bank
+                or key == "guildBank" and snapshot.guildSections and snapshot.guildSections.bank
+                or snapshot.sections[key]
+            say(key .. ": " .. (section and section.completeness or "unknown")
+                .. ", observed=" .. tostring(section and section.observedAt or "never")
+                .. (snapshot.pending[key] and ", pending" or "")
+                .. (section and section.lastAttemptError and (", " .. section.lastAttemptError) or ""))
+        end
+        local latest = S.record and S.record.latestExport
+        say("latestExport: generatedAt=" .. tostring(latest and latest.generatedAt or "none")
+            .. (S.autoExportPending and ", autoRefreshPending" or "")
+            .. (S.lastRenderError and (", renderError=" .. S.lastRenderError) or ""))
+        return
+    end
+    if command == "minimap" or command == "map" then
+        if type(S.SlashMinimap) == "function" then S.SlashMinimap(); return end
+        say("Minimap UI missing."); return
+    end
+    if command == "button" then
+        if type(S.SlashButton) == "function" then S.SlashButton(); return end
+        say("Floating button UI missing."); return
+    end
+    if command == "" or command == "export" then
+        if type(S.SlashExport) == "function" then S.SlashExport(); return end
+        say("Core loaded. Export UI missing - use /wowsync status. Try /gearx as a load check.")
+        return
+    end
+    say("/wowsync [export] - refresh handoff. /wowsync status - freshness. /wowsync minimap - toggle minimap button (left=sync, right=reload UI). /wowsync button - toggle floating SYNC. Natural /reload flushes SavedVariables for the Dashboard.")
+end

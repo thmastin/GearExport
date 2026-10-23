@@ -4,27 +4,25 @@ GearExport includes WoWSync, a dependency-free World of Warcraft character expor
 
 TradeSkillMaster is optional. When it is installed, GearExport uses its public API to include market pricing and current-character inventory-location data.
 
-**Forever Phase 1** provides a limited character/location export, live-validated
-on Hallo in beta `1.60.1` build `69893`, interface `16001`. Build with
+**Forever compatibility** provides a dedicated observational export for client
+`1.60.1`, exact builds `70291`, `70338`, and `70450`, interface `16001`. Build 70291's
+capture path is live-validated on Hallo. Build 70338 is allowlisted after its
+matching Forever UI-source API contract review; WoWSync has not yet run in-game
+on 70338 or 70450. Unknown builds remain rejected. The supported capture path includes character
+identity/build, equipped items, carried bags, and structured raw skill/runtime
+evidence. The WOWSYNC v1 export and same-refresh `WoWSyncDB` were compared after
+the live `/wowsync` capture. Location, faction, currency, playtime, XP,
+professions, spells, banks and trainer services remain unknown or unobserved;
+equipment effective stats and skill/trainer interpretations are not inferred.
+See [70291 runtime evidence](FOREVER_EVIDENCE_70291.md) and the historical
+[70245 scoped capture record](FOREVER_PHASE3.md). Build with
 `node scripts/package.cjs Forever`; the package is `dist/Forever/GearExport`
 and targets `_classic_beta_/Interface/AddOns`. It excludes BankCleanup and the
-legacy exporter. See [Forever scope and live validation](FOREVER_PHASE1.md)
-for deferred features and validation details.
+legacy exporter.
 
-The current Forever build adds live-validated equipment observation; effective
-stats remain unknown pending runtime evidence. See [Phase 2 equipment checks](FOREVER_PHASE2.md).
-The character/location pipeline is live-validated at levels 1 and 4. Equipment
-slot presence, references, names and levels are live-validated on Hallo.
-The current package guard accepts only Forever `1.60.1` build `69913`, with
-interface `16001` confirmed in-game. Earlier captures retain their original
-build `69893` metadata.
-
-The separate [Forever bags validation build](FOREVER_BAGS.md) adds carried-bag
-observation. Bags remain pending live validation; the equipment-only release
-is recorded separately in the commit history.
-
-The uncommitted [Forever professions validation build](FOREVER_PROFESSIONS.md)
-uses the build-69913 trade-skill API and awaits live validation.
+The older [Forever bags](FOREVER_BAGS.md), [professions](FOREVER_PROFESSIONS.md),
+and [known spells](FOREVER_SPELLS.md) reports describe earlier build-specific
+work. They are historical and do not enable those collectors on 70291.
 
 ## Installation
 
@@ -35,11 +33,68 @@ addon identity remain valid. The unchanged source PNG and conversion notes are
 preserved in the repository's `assets` directory.
 
 For a single-client package, run `node scripts/package.cjs TBC`,
-`node scripts/package.cjs ClassicEra`, or `node scripts/package.cjs Retail` from
-the repository. Copy the resulting `dist/<target>/GearExport` folder into that
-client's `Interface/AddOns` directory. Each package has one selected
-`GearExport.toc`; Retail excludes BankCleanup. Retail targets `_retail_`, Era
-targets `_classic_era_`, and TBC Anniversary targets `_anniversary_`.
+`node scripts/package.cjs ClassicEra`, `node scripts/package.cjs Retail`, or
+`node scripts/package.cjs Forever` from the repository. Copy the resulting
+`dist/<target>/GearExport` folder into that client's `Interface/AddOns`
+directory. Each package has one selected `GearExport.toc`; Retail excludes
+BankCleanup. Retail targets `_retail_`, Era targets `_classic_era_`, TBC
+Anniversary targets `_anniversary_`, and Forever targets `_classic_beta_`.
+
+Forever's package is larger (~28 files) because it ships Forever adapter Lua and
+Forever docs and omits the legacy exporter, collectors, and BankCleanup. The
+other flavors are thinner TOC subsets of the same shared root (~18 files). See
+`scripts/package.cjs` for the exact file lists per target.
+
+### Deploying Forever on Windows
+
+Use this single command from a normal Windows session to build and deploy the
+Forever package:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\dev\wow-addons\GearExport\scripts\deploy-forever.ps1" -Destination "D:\World of Warcraft\_classic_beta_\Interface\AddOns\GearExport"
+```
+
+`-ExecutionPolicy Bypass` applies only to that PowerShell process; it does not
+change machine or user policy. The script calls the existing package builder,
+then checks the package manifest's target, interface, exact file set, SHA256
+hashes, Forever TOC marker, and literal version/build guard. It preserves the
+guard from the current package source and requires all tracked source changes
+to be committed. Untracked files are ignored and preserved. The backup record
+includes the source commit and package manifest hash. It rejects destinations
+that do not end in `_classic_beta_\Interface\AddOns\GearExport`, destinations
+inside this repository, redirected symlink/junction path components, a running
+`WowB.exe` Forever client, or a target executable whose version/build does not
+exactly match the package guard.
+
+The deployment workflow preserves the exact Forever runtime allowlist
+`1.60.1 / 70291, 70338, 70450 / interface 16001` and compares the target `WowB.exe`
+FileVersion against that allowlist before changing the installation.
+
+Before changing the installation, deployment creates a complete copy of the
+existing `GearExport` directory under
+`%LOCALAPPDATA%\GearExport\ForeverDeploymentBackups` and writes a hash manifest
+for that copy. It stages and verifies the new package, replaces only the
+`GearExport` directory, then checks that the installed recursive file set and
+all manifest hashes exactly match the package. Obsolete files are removed by
+exact-set synchronization; there is no maintained obsolete-module list.
+SavedVariables and sibling addon directories are outside the deployment target.
+Historical backup directories are retained.
+
+If installation or post-install verification fails, deployment restores the
+previous directory from the backup and verifies its original file set and
+hashes. It reports both deployment and rollback status. If rollback cannot be
+verified, the backup, previous-install directory, or staging directory is left
+in place and its path is printed for recovery. Success is reported only after
+the installed package passes exact-set and SHA256 verification.
+
+If Codex command policy blocks deployment, do not retry with modified policy or
+another command form. Open a normal Windows PowerShell window and run the exact
+command above. For a different valid Forever installation path, change only
+the `-Destination` value while keeping the `_classic_beta_\Interface\AddOns\GearExport`
+suffix. If preflight reports a running client, close Forever and retry. If it
+reports an invalid destination, confirm the client flavor and folder layout.
+If package validation fails, keep the installation closed and resolve the
+reported source/package mismatch before retrying. Node.js must be on `PATH`.
 
 The following source-tree installation example is for Anniversary/Classic:
 
@@ -96,14 +151,18 @@ WoW addons cannot write directly to the operating-system clipboard, so one manua
 
 WoWSync captures current character, equipment, carried inventory, professions, and
 player spellbook state automatically. Opening a bank or trainer captures its
-accessible data; changes are coalesced rather than stored as an event history.
+accessible data; changes are coalesced rather than stored as an event history. After
+an observed bag, bank, money, equipment, zone, level, profession, or spell change
+settles, WoWSync quietly rebuilds that character's `latestExport` in memory.
 Bank and each observed trainer-category snapshot remain available after the window
 closes, with independent observation times and coverage clearly labeled.
 
-Play normally, then run `/wowsync` and copy the single block from `WOWSYNC v1` through
-`[END]`. A brief refresh completes before the text is selected. Normal SYNC does
-not reload. The displayed block stays stable while copying; press SYNC to refresh
-it again. `/wowsync button` enables an optional unobtrusive launcher that can be dragged.
+Play normally; then `/reload`, logout, or exit when you want WoW to flush SavedVariables
+to disk, and the Dashboard `watch:saved` loop can import the refreshed handoff. No
+`/wowsync` is required before that flush. `/wowsync` remains the explicit force-refresh
+and clipboard handoff: it waits briefly for accessible state, selects the consolidated
+block from `WOWSYNC v1` through `[END]`, and does not reload. `/wowsync button` enables
+an optional unobtrusive launcher that can be dragged.
 
 The export uses compact tab-separated columns, item references that preserve
 variants, spell IDs where available, exact copper amounts, and independent sections.

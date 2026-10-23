@@ -1,6 +1,6 @@
 ## Interface: 11509
 ## Title: WoWSync
-## Notes: Copyable Markdown character and item exporter with WoWSync
+## Notes: Shared WOWSYNC v1 character export for Classic Era
 ## Version: 2.2
 ## SavedVariables: GearExportDB, WoWSyncDB
 ## IconTexture: Interface\AddOns\GearExport\WoWSyncIcon.tga

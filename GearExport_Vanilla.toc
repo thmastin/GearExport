@@ -1,0 +1,14 @@
+## Interface: 11509
+## Title: WoWSync
+## Notes: Shared WOWSYNC v1 character export for Classic Era
+## Version: 2.2
+## SavedVariables: GearExportDB, WoWSyncDB
+## IconTexture: Interface\AddOns\GearExport\WoWSyncIcon.tga
+
+WoWSyncCompat.lua
+GearExport.lua
+BankCleanup.lua
+WoWSyncCore.lua
+WoWSyncCollectors.lua
+WoWSyncRender.lua
+WoWSyncUI.lua

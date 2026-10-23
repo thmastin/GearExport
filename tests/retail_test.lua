@@ -9,7 +9,40 @@ Enum = { BagIndex = { Backpack = 0, ReagentBag = 5 }, BankType = { Character = 0
     TooltipDataLineType = { ItemBinding = 20 }, TooltipDataItemBinding = { Soulbound = 3, BnetAccount = 2, BindToAccountUntilEquipped = 10 } }
 local itemRef = "item:240001:7440:213743:0:0:0:0:0:90:0:0:16:4:10354:10299:6652:12030:2:28:2462:38:8"
 local link = "|cffa335ee|H" .. itemRef .. "|h[Crafted Sample]|h|r"
-local pending, bankView, requests, locationsValid = false, true, 0, true
+local pending, bankView, accountBankView, requests, locationsValid = false, true, true, 0, true
+local guildClubID, guildClubReady, guildRespond, guildQueryFails, guildPending, guildQueryCount = 777, true, true, false, nil, 0
+local guildLoaded = {}
+local guildTabs = {
+    { name = "Materials", canView = true, items = { [1] = link, [2] = link } },
+    { name = "Empty", canView = true, items = {} },
+    { name = "Officers", canView = false, items = { [1] = link } },
+}
+C_Club = { GetGuildClubId = function() return guildClubReady and guildClubID or nil end }
+function GetGuildInfo() return "Test Guild", "Guild Master", 0 end
+function GetNumGuildBankTabs() return #guildTabs end
+function GetCurrentGuildBankTab() return 1 end
+function GetGuildBankTabInfo(tab)
+    local entry = guildTabs[tab]
+    if not entry then return end
+    return entry.name, "icon" .. tab, entry.canView, true, -1, -1, false
+end
+function GetGuildBankItemInfo(tab, slot)
+    local entry = guildTabs[tab]
+    if not (entry and guildLoaded[tab]) then return end
+    if entry.missingLink and entry.missingLink[slot] then return 1, 2, false, false, 1 end
+    if not entry.items[slot] then return nil, 0, false, false, 0 end
+    return 1, 2, false, false, 1
+end
+function GetGuildBankItemLink(tab, slot)
+    local entry = guildTabs[tab]
+    return entry and guildLoaded[tab] and entry.items[slot] or nil
+end
+function QueryGuildBankTab(tab)
+    guildQueryCount = guildQueryCount + 1
+    if guildPending then error("concurrent Guild Bank query") end
+    if guildQueryFails then error("query unavailable") end
+    guildPending = tab
+end
 local expectedLocation
 ItemLocation = {
     CreateFromBagAndSlot = function(self, bagID, slotIndex)
@@ -39,7 +72,8 @@ C_Item = {
     GetItemInfo = function(ref)
         check(ref ~= nil, "item reference supplied")
         if pending then return nil end
-        return "Crafted Sample", link, 4, 200, 80, "Armor", "Plate", 1, baseEquipLocation, 1, 4321, 4, 4, 8, 10, nil, false
+        return "Crafted Sample", link, 4, 200, 80, "Armor", "Plate", 1, baseEquipLocation, 1, 4321,
+            7, 11, 0, 11, nil, true
     end,
     GetItemID = function(loc) requireValidLocation(loc); return 240001 end,
     DoesItemExist = function(loc) requireValidLocation(loc); return true end,
@@ -70,16 +104,28 @@ C_TooltipInfo = {
     end,
 }
 C_PlayerInfo = { CanUseItem = function(id) equal(id, 240001, "current character query uses base ID"); return true end }
+function GetItemInfoInstant(ref) return 240001, "Armor", "Plate", "INVTYPE_HEAD", 1, 7, 11 end
 C_Bank = {
-    CanViewBank = function(kind) equal(kind, Enum.BankType.Character, "only character bank read"); return bankView end,
-    FetchPurchasedBankTabIDs = function(kind) equal(kind, Enum.BankType.Character, "purchased character IDs"); return { 6, 8 } end,
-    FetchNumPurchasedBankTabs = function() return 2 end,
+    CanViewBank = function(kind)
+        if kind == Enum.BankType.Character then return bankView end
+        if kind == Enum.BankType.Account then return accountBankView end
+        error("unexpected bank type")
+    end,
+    FetchPurchasedBankTabIDs = function(kind)
+        if kind == Enum.BankType.Character then return { 6, 8 } end
+        if kind == Enum.BankType.Account then return { 12, 15 } end
+        error("unexpected bank type")
+    end,
+    FetchNumPurchasedBankTabs = function(kind)
+        if kind == Enum.BankType.Character then return 2 end
+        if kind == Enum.BankType.Account then return 2 end
+    end,
     AutoDepositItemsIntoBank = action, PurchaseBankTab = action, DepositMoney = action,
 }
 C_Container = {
-    GetContainerNumSlots = function(bag) check(bag >= 0 and bag <= 8, "no Classic/account bank IDs"); return bag == 0 and 16 or bag == 5 and 36 or bag == 6 and 98 or bag == 8 and 98 or 0 end,
+    GetContainerNumSlots = function(bag) check(bag >= 0 and bag <= 16, "no Classic negative bank IDs"); return bag == 0 and 16 or bag == 5 and 36 or bag == 6 and 98 or bag == 8 and 98 or bag == 12 and 98 or bag == 15 and 98 or 0 end,
     GetContainerItemInfo = function(bag, slot)
-        if (bag == 0 or bag == 5 or bag == 6) and slot == 1 then
+        if (bag == 0 or bag == 5 or bag == 6 or bag == 12) and slot == 1 then
             return { itemID = 240001, hyperlink = link, stackCount = 2, isLocked = false, isBound = true }
         end
     end,
@@ -87,7 +133,7 @@ C_Container = {
     PickupContainerItem = action, UseContainerItem = action, SplitContainerItem = action,
 }
 function C_Container.GetContainerNumFreeSlots(bag)
-    return C_Container.GetContainerNumSlots(bag) - ((bag == 0 or bag == 5 or bag == 6) and 1 or 0), bag == 5 and 2048 or 0
+    return C_Container.GetContainerNumSlots(bag) - ((bag == 0 or bag == 5 or bag == 6 or bag == 12) and 1 or 0), bag == 5 and 2048 or 0
 end
 function GetInventoryItemLink(_, slot) if slot == 1 then return link end end
 function GetInventoryItemID(_, slot) if slot == 1 then return 240001 end end
@@ -129,10 +175,14 @@ equal(#bags, 6, "Retail bag range includes reagent bag")
 equal(bags[6], 5, "reagent ID")
 equal(bank[2], 8, "use actual purchased IDs, not guessed contiguous range")
 bankView = false; _, bank = C.GetBankRanges(); equal(bank, nil, "unviewable bank unknown"); bankView = true
+local _, accountBank = C.GetBankRanges("ACCOUNT")
+equal(accountBank[2], 15, "account bank uses returned IDs, not character tabs")
+accountBankView = false; _, accountBank = C.GetBankRanges("ACCOUNT"); equal(accountBank, nil, "unviewable account bank unknown"); accountBankView = true
 equal(C.GetContainerBagIdentity(6), nil, "bank tab is not an equipped bag")
 equal(C.GetContainerInfo(5, 1).stackCount, 2, "modern container table")
-check(C.GetBankCoverage():find("ACCOUNT/Warband", 1, true), "account coverage explicit")
+check(C.GetBankCoverage("ACCOUNT"):find("ACCOUNT/Warband", 1, true), "account coverage explicit")
 equal(C.GetPurchasedBankSlots(), 2, "purchased tabs")
+equal(C.GetPurchasedBankSlots("ACCOUNT"), 2, "account purchased tabs")
 equal(C.GetItemLevel(link, 200), 289, "instance item level")
 check(C.IsItemDataReady(240001), "modern item readiness")
 pending = true; check(not C.IsItemDataReady(240001), "async item not ready")
@@ -155,19 +205,32 @@ equal(C.TrainerCategory({ trainer = {}, services = {} }), "UNKNOWN", "empty trai
 -- Load the complete selected package, with a UI fixture and no Classic API shims.
 local frames, seconds, playerGUID = {}, 0, "Player-Retail-A"
 local function widget(name)
-    local w = { shown = true, scripts = {}, events = {}, text = "", name = name }
+    local w = { shown = true, scripts = {}, hooks = {}, events = {}, text = "", name = name }
     setmetatable(w, { __index = function(_, key)
         if key == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
         if key == "GetNumLines" or key == "NumLines" then return function() return 1 end end
         if key == "GetText" then return function(self) return self.text end end
         if key == "SetText" then return function(self, text) self.text = text; if self.scripts.OnTextChanged then self.scripts.OnTextChanged(self) end end end
         if key == "SetScript" then return function(self, event, fn) self.scripts[event] = fn end end
+        if key == "HookScript" then return function(self, event, fn)
+            self.hooks[event] = self.hooks[event] or {}; self.hooks[event][#self.hooks[event] + 1] = fn
+        end end
         if key == "RegisterEvent" then return function(self, event)
             if event == "PLAYERBANKBAGSLOTS_CHANGED" then error("removed event") end
             self.events[event] = true
         end end
-        if key == "Show" then return function(self) self.shown = true end end
-        if key == "Hide" then return function(self) self.shown = false end end
+        if key == "Show" then return function(self)
+            if self.shown then return end
+            self.shown = true
+            if self.scripts.OnShow then self.scripts.OnShow(self) end
+            for _, fn in ipairs(self.hooks.OnShow or {}) do fn(self) end
+        end end
+        if key == "Hide" then return function(self)
+            if not self.shown then return end
+            self.shown = false
+            if self.scripts.OnHide then self.scripts.OnHide(self) end
+            for _, fn in ipairs(self.hooks.OnHide or {}) do fn(self) end
+        end end
         if key == "IsShown" or key == "IsVisible" then return function(self) return self.shown end end
         if key == "CreateTexture" or key == "CreateFontString" then return function() return widget() end end
         return function() end
@@ -179,6 +242,7 @@ end
 function CreateFrame(_, name) return widget(name) end
 UIParent = widget("UIParent")
 BankFrame = widget("BankFrame"); BankFrame:Hide()
+GuildBankFrame = nil
 ClassTrainerFrame = widget("ClassTrainerFrame")
 UISpecialFrames, SlashCmdList = {}, {}
 ChatFontNormal, GameFontNormal = {}, {}
@@ -209,8 +273,64 @@ function GetTrainerServiceTypeFilter() return true end
 function GetTrainerServiceSkillReq() return trainerCategory, 1, true end
 function GetTrainerServiceNumAbilityReq() return 0 end
 BuyTrainerService, BuyMerchantItem, SendMail, EquipItemByName, CastSpellByName = action, action, action, action, action
+-- Retail currency list: nested, partly collapsed headers and one undiscovered row.
+local currencyRows = {
+    { name = "Midnight", isHeader = true, isHeaderExpanded = true, currencyListDepth = 0 },
+    { name = "Season 1", isHeader = true, isHeaderExpanded = false, currencyListDepth = 1 },
+    { currencyID = 3008, name = "Valorstones", currencyListDepth = 2, discovered = true, iconFileID = 5868902,
+        quantity = 1500, maxQuantity = 2000, quantityEarnedThisWeek = 0, maxWeeklyQuantity = 0, canEarnPerWeek = false,
+        totalEarned = 0, useTotalEarnedForMaxQty = false, isAccountWide = false, isAccountTransferable = false },
+    { currencyID = 3290, name = "Gilded Crest", currencyListDepth = 2, discovered = true, iconFileID = 5872049,
+        quantity = 45, maxQuantity = 180, quantityEarnedThisWeek = 30, maxWeeklyQuantity = 90, canEarnPerWeek = true,
+        totalEarned = 90, useTotalEarnedForMaxQty = true, isAccountWide = false, isAccountTransferable = true, transferPercentage = 90 },
+    { currencyID = 3100, name = "Hidden Transferable", currencyListDepth = 1, discovered = false, quantity = 0 },
+    { name = "Legacy", isHeader = true, isHeaderExpanded = false, currencyListDepth = 0 },
+    { currencyID = 1792, name = "Honor", currencyListDepth = 1, discovered = true, iconFileID = 1455894,
+        quantity = 0, maxQuantity = 15000, isAccountWide = true, isAccountTransferable = false, listWithoutID = true },
+}
+local currencyToggles = 0
+local function visibleCurrencyRows()
+    local rows, hiddenBelow = {}, nil
+    for _, row in ipairs(currencyRows) do
+        if not (hiddenBelow and row.currencyListDepth > hiddenBelow) then
+            hiddenBelow = nil
+            rows[#rows + 1] = row
+            if row.isHeader and not row.isHeaderExpanded then hiddenBelow = row.currencyListDepth end
+        end
+    end
+    return rows
+end
+local function currencyCopy(row, withoutID)
+    local copy = {}
+    for key, value in pairs(row) do if key ~= "listWithoutID" then copy[key] = value end end
+    if withoutID then copy.currencyID = nil end
+    return copy
+end
+C_CurrencyInfo = {
+    GetCurrencyListSize = function() return #visibleCurrencyRows() end,
+    GetCurrencyListInfo = function(index)
+        local row = visibleCurrencyRows()[index]
+        return row and currencyCopy(row, row.listWithoutID) or nil
+    end,
+    ExpandCurrencyList = function(index, expand)
+        local row = visibleCurrencyRows()[index]
+        check(row and row.isHeader, "only currency headers are expanded/collapsed")
+        row.isHeaderExpanded = expand; currencyToggles = currencyToggles + 1
+    end,
+    GetCurrencyListLink = function(index)
+        local row = visibleCurrencyRows()[index]
+        return row and row.currencyID and ("|cffffffff|Hcurrency:" .. row.currencyID .. ":0|h[" .. row.name .. "]|h|r") or nil
+    end,
+    GetCurrencyIDFromLink = function(value) return tonumber(value:match("currency:(%d+)")) end,
+    GetCurrencyInfo = function(id)
+        for _, row in ipairs(currencyRows) do if row.currencyID == id then return currencyCopy(row) end end
+    end,
+    GetCurrencyFilter = function() return 1 end,
+    PickupCurrency = action, SetCurrencyUnused = action, SetCurrencyBackpack = action,
+    SetCurrencyBackpackByID = action, RequestCurrencyFromAccountCharacter = action, SetCurrencyFilter = action,
+}
 local addon = {}
-for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
+for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncStateCollectors.lua", "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
 local S = addon.Sync
@@ -218,12 +338,17 @@ local function event(name, arg) S.eventFrame.scripts.OnEvent(S.eventFrame, name,
 local function advance(duration)
     for _ = 1, math.ceil(duration / 0.1) do
         seconds = seconds + 0.1
+        if guildPending and guildRespond then
+            local tab = guildPending; guildPending = nil; guildLoaded[tab] = true
+            event("GUILDBANKBAGSLOTS_CHANGED")
+        end
         if S.eventFrame.scripts.OnUpdate then S.eventFrame.scripts.OnUpdate() end
     end
 end
 event("ADDON_LOADED", "GearExport"); event("PLAYER_LOGIN"); advance(1)
 check(S.unsupportedEvents.PLAYERBANKBAGSLOTS_CHANGED, "removed event tolerated")
 check(S.optionalEvents.BANK_TABS_CHANGED, "Retail bank tab event registered")
+check(S.optionalEvents.GUILDBANKBAGSLOTS_CHANGED, "Retail Guild Bank response event registered")
 equal(S.record.sections.character.data.clientFamily, "Retail", "Retail identity")
 equal(S.record.sections.character.data.interface, 120100, "Retail interface")
 equal(S.record.sections.character.data.moneyCopper, 123456789, "gold remains copper")
@@ -381,6 +506,11 @@ WOW_PROJECT_ID = 2
 equal(C.CollectGearCandidates(), nil, "candidate collector is Retail-only")
 equal(S.GetSnapshot().gearCandidates, nil, "Retail sidecar is not exposed for another client family")
 WOW_PROJECT_ID = retailProject
+equal(S.record.itemMetadata[240001].classID, 7, "Retail item metadata stores full-info class ID")
+equal(S.record.itemMetadata[240001].subclassID, 11, "Retail item metadata stores full-info subclass ID")
+equal(S.record.itemMetadata[240001].bindType, 0, "Retail item metadata stores raw bind type")
+equal(S.record.itemMetadata[240001].expansionID, 11, "Retail item metadata stores raw expansion ID")
+equal(S.record.itemMetadata[240001].isCraftingReagent, true, "Retail item metadata stores explicit reagent truth")
 equal(#S.record.sections.spells.data.entries, 5, "deduplicated learned spells including profession abilities")
 equal(S.record.sections.spells.data.entries[5].spellID, 1005, "profession spell outside class tab ranges")
 equal(#S.record.sections.professions.data.entries, 3, "canonical professions")
@@ -388,8 +518,9 @@ equal(S.record.sections.bank, nil, "closed bank not fabricated")
 local frozen = S.GetSnapshot()
 local rendered = S.Render(frozen)
 check(rendered:find("WOWSYNC v1", 1, true) == 1 and rendered:find("[END]", 1, true), "same canonical envelope")
+check(rendered:find("[ACCOUNT BANK]\nState: UNKNOWN\nScope: ACCOUNT_WARBAND", 1, true), "unobserved account bank retains explicit scope")
 equal(S.Render(frozen), rendered, "deterministic rendering")
-for _, key in ipairs(S.order) do check(rendered:find(S.RenderSection(key, frozen), 1, true), "shared section renderer " .. key) end
+for _, key in ipairs(S.order) do if not S.structuredOnly[key] then check(rendered:find(S.RenderSection(key, frozen), 1, true), "shared section renderer " .. key) end end
 check(rendered:find("ClientFamily: Retail", 1, true), "Retail metadata rendered")
 check(rendered:find(itemRef, 1, true), "full itemRef rendered")
 check(rendered:find("[GEAR CANDIDATES]", 1, true), "candidate sidecar rendered additively")
@@ -413,7 +544,162 @@ for _, candidate in ipairs(S.record.gearCandidates.candidates) do
     if candidate.observedLocation.type == "BANK_SLOT" then bankCandidateSeen = true end
 end
 check(bankCandidateSeen, "viewable Character Bank candidates included")
-check(S.Render(S.GetSnapshot()):find("ACCOUNT/Warband API-supported but deferred", 1, true), "explicit account limitation")
+local combinedBankText = S.Render(S.GetSnapshot())
+check(combinedBankText:find("[ACCOUNT BANK]", 1, true) and combinedBankText:find("Scope: ACCOUNT_WARBAND", 1, true),
+    "account bank is captured and rendered separately")
+-- Retail currencies: SavedVariables only, headers restored, unknown fields absent.
+local currencies = S.record.sections.currencies
+check(S.optionalEvents.CURRENCY_DISPLAY_UPDATE, "Retail currency event registered")
+check(currencies and currencies.completeness == "complete" and currencies.observedAt, "currency list observed on login")
+equal(currencies.data.listRead, true, "currency list read flag")
+equal(currencies.data.formatVersion, 1, "currency section format version")
+equal(#currencies.data.currencies, 3, "discovered currencies only")
+local valor, crest, honor = currencies.data.currencies[1], currencies.data.currencies[2], currencies.data.currencies[3]
+equal(valor.currencyID, 3008, "currency ID from list info")
+equal(valor.header, "Midnight", "top-level currency header")
+equal(valor.subHeader, "Season 1", "nested currency header")
+equal(valor.listOrder, 1, "currency list order")
+equal(valor.quantityEarnedThisWeek, 0, "observed zero kept")
+equal(valor.iconFileID, 5868902, "currency icon")
+equal(crest.useTotalEarnedForMaxQty, true, "season cap semantics")
+equal(crest.totalEarned, 90, "season total earned")
+equal(crest.transferPercentage, 90, "transfer percentage")
+equal(crest.listOrder, 2, "second currency order")
+equal(honor.currencyID, 1792, "currency ID from list link")
+equal(honor.header, "Legacy", "collapsed header expanded for read")
+equal(honor.subHeader, nil, "no nested header for top-level group")
+equal(honor.maxWeeklyQuantity, nil, "missing currency field stays absent")
+equal(honor.transferPercentage, nil, "missing transfer percentage stays absent")
+equal(honor.isAccountWide, true, "account-wide flag")
+equal(currencies.data.listSize, 7, "fully expanded list size")
+equal(currencies.data.listFilter, 1, "currency list filter recorded")
+check(currencyRows[2].isHeaderExpanded == false and currencyRows[6].isHeaderExpanded == false, "collapsed currency headers restored")
+check(currencyToggles >= 4, "currency headers expanded then re-collapsed")
+check(not rendered:find("Valorstones", 1, true) and not rendered:find("CURRENC", 1, true), "currencies stay out of v1 text")
+advance(3) -- settle earlier bank and candidate refreshes before isolating the currency-only update
+local latestAt, currencyRevision = S.record.latestExport and S.record.latestExport.generatedAt, currencies.revision
+check(latestAt, "latest export generated before currency refresh")
+currencyRows[3].quantity = 1600
+seconds = seconds + 5
+event("CURRENCY_DISPLAY_UPDATE", 3008); advance(0.5)
+equal(S.record.sections.currencies.data.currencies[1].quantity, 1600, "currency update refreshes quantity")
+equal(S.record.sections.currencies.revision, currencyRevision + 1, "currency change revision")
+equal(S.record.latestExport.generatedAt, latestAt, "currency-only update does not re-render text")
+event("CURRENCY_DISPLAY_UPDATE"); check(not S.dirty.currencies, "own header toggle echo ignored")
+advance(1); event("CURRENCY_DISPLAY_UPDATE"); check(S.dirty.currencies, "later payload-less update refreshes"); advance(1)
+local savedCurrencyAPI = C_CurrencyInfo
+C_CurrencyInfo = nil
+event("CURRENCY_DISPLAY_UPDATE", 3008); advance(1)
+check(S.record.sections.currencies.lastAttemptError and S.record.sections.currencies.data.listRead, "missing currency API keeps last observation")
+C_CurrencyInfo = savedCurrencyAPI
+event("CURRENCY_DISPLAY_UPDATE", 3008); advance(1)
+equal(S.record.sections.currencies.lastAttemptError, nil, "successful currency read clears error")
+check(not S.guildHooksInstalled, "Guild Bank frame absent from initial Retail addon lifecycle does not fail")
+GuildBankFrame = widget("GuildBankFrame"); GuildBankFrame:Hide()
+-- The LoadOnDemand UI can become visible before GearExport discovers its frame.
+-- Installing hooks must start exactly one capture for that already-shown interaction.
+GuildBankFrame:Show()
+event("ADDON_LOADED", "Blizzard_GuildBankUI")
+check(S.guildHooksInstalled, "Guild Bank frame hooks install when Blizzard UI loads")
+check(S.guildBankOpen and S.guildCapture, "already-shown Guild Bank frame starts production capture")
+GuildBankFrame:Hide()
+check(not S.guildBankOpen, "Guild Bank frame OnHide closes an already-shown capture")
+equal(#GuildBankFrame.hooks.OnShow, 1, "Guild Bank OnShow hook is installed once")
+equal(#GuildBankFrame.hooks.OnHide, 1, "Guild Bank OnHide hook is installed once")
+event("ADDON_LOADED", "Blizzard_GuildBankUI")
+equal(#GuildBankFrame.hooks.OnShow, 1, "Guild Bank hook installation is idempotent")
+guildClubReady = false
+GuildBankFrame:Show(); event("GUILDBANKBAGSLOTS_CHANGED"); advance(0.5)
+check(S.guildLifecycle.shows >= 1, "Guild Bank frame OnShow reaches production collector")
+equal(guildQueryCount, 0, "natural slot event without explicit request cannot query or observe")
+equal(guildQueryCount, 0, "Guild Bank waits for delayed Club identity")
+check(S.guildCapture and not S.guildCapture.started, "Guild Bank initialization remains pending while Club identity is unavailable")
+guildClubReady = true; advance(2)
+local guild = WoWSyncDB.guilds["club:777"].sections.bank
+check(guild and guild.completeness == "complete", "all viewable Guild Bank tabs confirmed")
+equal(guild.data.ownerScope, "GUILD", "Guild Bank ownership is explicit")
+equal(#guild.data.containers, 2, "only viewable Guild Bank tabs become containers")
+equal(guild.data.tabs[2].state, "OBSERVED", "queried all-nil tab is observed empty")
+equal(guild.data.tabs[3].state, "INACCESSIBLE", "unviewable Guild Bank tab is never empty")
+equal(guildQueryCount, 2, "Guild Bank queries serialize viewable tabs only")
+local guildText = S.RenderSection("guildBank", S.GetSnapshot())
+check(guildText:find("[GUILD BANK]", 1, true) and guildText:find("Scope: GUILD", 1, true), "Guild Bank renders separately")
+check(guildText:find("INACCESSIBLE", 1, true), "Guild Bank export preserves inaccessible tab")
+local guildObserved = guild.observedAt
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildClubID, guildRespond, guildQueryFails, guildLoaded, guildQueryCount = 780, true, true, {}, 0
+GuildBankFrame:Show(); event("GUILDBANKFRAME_OPENED"); advance(1)
+local queryFailed = WoWSyncDB.guilds["club:780"].sections.bank
+check(queryFailed and queryFailed.completeness == "partial", "Guild Bank query failure is partial")
+check(not S.RenderSection("guildBank", S.GetSnapshot()):find("Items: EMPTY", 1, true), "failed Guild Bank query is not empty")
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildQueryFails = false
+guildClubID, guildRespond, guildLoaded, guildQueryCount = 781, false, {}, 0
+GuildBankFrame:Show(); event("GUILDBANKFRAME_OPENED"); advance(0.5); event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+local closed = WoWSyncDB.guilds["club:781"].sections.bank
+check(closed and closed.completeness == "partial", "Guild Bank close during capture is partial")
+check(not S.RenderSection("guildBank", S.GetSnapshot()):find("Items: EMPTY", 1, true), "closed Guild Bank capture is not empty")
+guildClubID, guildRespond, guildLoaded, guildQueryCount = 778, false, {}, 0
+GuildBankFrame:Show(); event("GUILDBANKFRAME_OPENED"); advance(6)
+local timedOut = WoWSyncDB.guilds["club:778"].sections.bank
+check(timedOut and timedOut.completeness == "partial", "Guild Bank query timeout is partial, not empty")
+check(not S.RenderSection("guildBank", S.GetSnapshot()):find("Items: EMPTY", 1, true), "unconfirmed all-nil Guild Bank is not empty")
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildClubID, guildRespond, guildLoaded, guildQueryCount = 777, false, {}, 0
+GuildBankFrame:Show(); event("GUILDBANKFRAME_OPENED"); advance(6)
+equal(WoWSyncDB.guilds["club:777"].sections.bank.observedAt, guildObserved, "incomplete refresh retains prior complete Guild Bank")
+check(WoWSyncDB.guilds["club:777"].sections.bank.lastAttemptError, "incomplete Guild Bank refresh recorded")
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildTabs = { { name = "No Access", canView = false, items = {} } }
+guildClubID, guildRespond, guildLoaded, guildQueryCount = 779, true, {}, 0
+GuildBankFrame:Show(); event("GUILDBANKFRAME_OPENED"); advance(1)
+local inaccessible = WoWSyncDB.guilds["club:779"].sections.bank
+check(inaccessible and inaccessible.completeness == "complete", "zero permitted tabs completes permission observation")
+equal(guildQueryCount, 0, "inaccessible Guild Bank tabs are never queried")
+check(not S.RenderSection("guildBank", S.GetSnapshot()):find("Items: EMPTY", 1, true), "no permitted tabs is not an empty Guild Bank")
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildTabs = { { name = "Identity Pending", canView = true, items = {}, missingLink = { [7] = true } } }
+guildClubID, guildRespond, guildLoaded, guildQueryCount = 782, true, {}, 0
+GuildBankFrame:Show(); advance(1)
+local identityPending = WoWSyncDB.guilds["club:782"].sections.bank
+check(identityPending and identityPending.completeness == "partial", "populated Guild Bank slot without link remains partial")
+equal(S.guildLastValidation[1].detail.reason, "item-link-missing", "first Guild Bank validation failure is retained")
+equal(S.guildLastValidation[1].detail.slot, 7, "first Guild Bank validation failure retains slot")
+check(identityPending.reason:find("item%-link%-missing"), "partial Guild Bank reason is never silently nil")
+event("GUILDBANKFRAME_CLOSED"); GuildBankFrame:Hide()
+guildTabs = {
+    { name = "Materials", canView = true, items = { [1] = link, [2] = link } },
+    { name = "Empty", canView = true, items = {} },
+    { name = "Officers", canView = false, items = { [1] = link } },
+}
+guildClubID, guildRespond, guildLoaded = 777, true, {}
+BankFrame:Show(); event("BANKFRAME_OPENED"); advance(1)
+equal(#S.record.sections.bank.data.containers, 2, "character purchased tabs only")
+equal(#WoWSyncDB.account.sections.bank.data.containers, 2, "account bank is stored outside character record")
+equal(WoWSyncDB.account.sections.bank.data.ownerScope, "ACCOUNT_WARBAND", "account bank scope explicit")
+local accountText = S.RenderSection("accountBank", S.GetSnapshot())
+check(accountText:find("[ACCOUNT BANK]", 1, true) and accountText:find("Scope: ACCOUNT_WARBAND", 1, true), "separate account bank rendering")
+local accountObserved = WoWSyncDB.account.sections.bank.observedAt
+event("BANK_TABS_CHANGED", Enum.BankType.Character); advance(1)
+equal(WoWSyncDB.account.sections.bank.observedAt, accountObserved, "character tab event does not refresh account bank")
+accountBankView = false; event("BANK_TABS_CHANGED", Enum.BankType.Account); advance(3)
+equal(WoWSyncDB.account.sections.bank.observedAt, accountObserved, "unviewable account bank preserves last seen")
+check(S.RenderSection("accountBank", S.GetSnapshot()):find("LAST_SEEN", 1, true), "unviewable account bank is never empty")
+accountBankView = true
+local originalAccountIDs, originalAccountCount = C_Bank.FetchPurchasedBankTabIDs, C_Bank.FetchNumPurchasedBankTabs
+C_Bank.FetchPurchasedBankTabIDs = function(kind) if kind == Enum.BankType.Account then return {} end; return originalAccountIDs(kind) end
+C_Bank.FetchNumPurchasedBankTabs = function(kind) if kind == Enum.BankType.Account then return 0 end; return originalAccountCount(kind) end
+event("BANK_TABS_CHANGED", Enum.BankType.Account); advance(1)
+equal(#WoWSyncDB.account.sections.bank.data.containers, 0, "returned empty account tab set is observed empty")
+check(S.RenderSection("accountBank", S.GetSnapshot()):find("Items: EMPTY", 1, true), "observed account empty renders empty")
+C_Bank.FetchPurchasedBankTabIDs = function(kind) if kind == Enum.BankType.Account then return { 12, 12 } end; return originalAccountIDs(kind) end
+C_Bank.FetchNumPurchasedBankTabs = function(kind) if kind == Enum.BankType.Account then return 2 end; return originalAccountCount(kind) end
+local emptyAccountObserved = WoWSyncDB.account.sections.bank.observedAt
+event("BANK_TABS_CHANGED", Enum.BankType.Account); advance(3)
+equal(WoWSyncDB.account.sections.bank.observedAt, emptyAccountObserved, "duplicate account tab IDs preserve last observation")
+C_Bank.FetchPurchasedBankTabIDs, C_Bank.FetchNumPurchasedBankTabs = originalAccountIDs, originalAccountCount
+event("BANK_TABS_CHANGED", Enum.BankType.Account); advance(1)
+equal(#WoWSyncDB.account.sections.bank.data.containers, 2, "settled account bank replaces prior empty observation")
 local bankObserved = S.record.sections.bank.observedAt
 bankView = false; event("BANK_TABS_CHANGED"); advance(3)
 equal(S.record.sections.bank.observedAt, bankObserved, "unviewable bank preserves last seen data")
@@ -472,7 +758,7 @@ SlashCmdList.WOWSYNC(""); advance(4)
 check(S.record.latestExport.text:find("WOWSYNC v1", 1, true) == 1, "UI copyable canonical export")
 local stable = S.record.latestExport.text
 event("PLAYER_MONEY"); advance(1)
-equal(S.record.latestExport.text, stable, "copy text stable after background refresh")
+check(S.record.latestExport.text ~= stable, "background observations refresh latest export")
 for _, command in ipairs({ "GEAREXPORT", "GEARITEMEXPORT", "GEARINVENTORYEXPORT", "GEARTRAINEREXPORT" }) do
     SlashCmdList[command](command == "GEARITEMEXPORT" and "240001" or "")
     check(GearExportDB.latestExport, "Retail legacy command " .. command)
@@ -577,9 +863,11 @@ check(oldRender:find("[PROFESSIONS]", 1, true), "schema sections retained")
 assert(loadfile("tests/played_test.lua"))()(S, check, equal, advance, addon)
 assert(loadfile("tests/retail_played_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/spec_equipment_test.lua"))()(S, check, equal, advance, event, addon)
+assert(loadfile("tests/state_domains_test.lua"))()(S, check, equal)
+assert(loadfile("tests/profession_recipes_test.lua"))()(S, check, equal)
 local savedDB = WoWSyncDB
 local reloaded = {}
-for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncRender.lua" }) do
+for _, file in ipairs({ "GearExport.lua", "WoWSyncCore.lua", "WoWSyncCollectors.lua", "WoWSyncStateCollectors.lua", "WoWSyncRender.lua" }) do
     assert(loadfile(file))("GearExport", reloaded)
 end
 reloaded.Sync.Initialize()
