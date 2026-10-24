@@ -18,6 +18,7 @@ WoWSyncForeverBank.lua
 WoWSyncForeverProfessions.lua
 WoWSyncForeverRecipes.lua
 WoWSyncForeverSpells.lua
+WoWSyncTalentTabs.lua
 WoWSyncClassicProgression.lua
 WoWSyncRender.lua
 WoWSyncUI.lua

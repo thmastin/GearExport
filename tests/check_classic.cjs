@@ -11,7 +11,7 @@ assert(/## Interface:\s*20506/.test(tbcToc), 'TBC TOC interface must remain 2050
 assert(/## Interface:\s*120100/.test(retailToc), 'GearExport.toc remains the Retail flavor');
 for (const toc of [classicToc, tbcToc]) {
   assert(toc.includes('WoWSyncCompat.lua'), 'Both TOCs must load WoWSyncCompat');
-  for (const file of ['WoWSyncCore.lua', 'WoWSyncCollectors.lua', 'WoWSyncRender.lua', 'WoWSyncUI.lua']) {
+  for (const file of ['WoWSyncCore.lua', 'WoWSyncTalentTabs.lua', 'WoWSyncCollectors.lua', 'WoWSyncRender.lua', 'WoWSyncUI.lua']) {
     assert(toc.includes(file), `${file} missing from TOC`);
   }
   assert(toc.includes('WoWSyncClassicProgression.lua'), 'Classic progression collectors missing from TOC');
