@@ -274,6 +274,8 @@ migrated; an unknown version is preserved and synchronization refuses to overwri
 
 ## Text format
 
+Classic-family exports append `[TALENTS]`, `[QUESTS]`, `[REPUTATION]`, and `[KNOWN RECIPES]` sections. These sections carry an observation state and a compact pointer to their structured payload in `WoWSyncDB`; the full rows (talent tabs/ranks, active quest log/objectives, faction standing, or recipes observed while a profession window is open) are stored under the character section data. A failed refresh preserves the prior payload as `LAST_SEEN`; missing APIs start as `UNKNOWN`. Completed quest history is skipped because Classic clients do not expose a bounded, reliable full history API. Reputation collection temporarily expands collapsed headers, enumerates factions, and collapses those headers again in reverse order.
+
 `WOWSYNC v1`, generation time and format legend, independently renderable sections,
 then `[END]`. Tables are tab-separated with explicit headers. `?` means unknown;
 `EMPTY` is reserved for observed empty slots/containers. Backslash, tab, CR, and LF

@@ -14,6 +14,7 @@ for (const toc of [classicToc, tbcToc]) {
   for (const file of ['WoWSyncCore.lua', 'WoWSyncCollectors.lua', 'WoWSyncRender.lua', 'WoWSyncUI.lua']) {
     assert(toc.includes(file), `${file} missing from TOC`);
   }
+  assert(toc.includes('WoWSyncClassicProgression.lua'), 'Classic progression collectors missing from TOC');
 }
 assert(fs.readFileSync('WoWSyncCompat.lua', 'utf8').includes('ITEM_DATA_LOAD_RESULT'),
   'Compatibility layer must handle delayed item data');

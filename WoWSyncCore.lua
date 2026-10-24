@@ -17,11 +17,11 @@ elseif WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever() t
 end
 -- Captured into SavedVariables only: the WOWSYNC v1 text omits these sections so
 -- existing importers, which reject unknown section headers, keep working.
-S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true }
+S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true, talents = true }
 addon.Sync = S
 S.captureOrder = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer", "gearCandidates" }
 for _, key in ipairs({ "accountBank", "guildBank", "currencies", "combatSpecialization",
-    "professionSpecializations", "reputation", "quests", "professionRecipes" }) do
+    "professionSpecializations", "reputation", "quests", "professionRecipes", "talents" }) do
     S.captureOrder[#S.captureOrder + 1] = key
 end
 WoWSync = S
@@ -401,6 +401,9 @@ function S.RequestSync()
     if not S.Initialize() then return false, S.error or "Character is not ready yet." end
     S.RequestPlayed()
     for _, key in ipairs(S.order) do S.Mark(key, 0.15) end
+    if not (WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail()) then
+        for _, key in ipairs({ "talents", "quests", "reputation" }) do if S.collectors[key] then S.Mark(key, 0.15) end end
+    end
     if WoWSyncCompat and WoWSyncCompat.IsRetail() then S.Mark("gearCandidates", 0.15) end
     return true
 end
@@ -589,7 +592,7 @@ local events = addon.SyncEvents or {
     "PLAYER_EQUIPMENT_CHANGED", "UNIT_INVENTORY_CHANGED", "SKILL_LINES_CHANGED",
     "SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE", "PLAYER_MONEY", "PLAYER_LEVEL_UP",
     "PLAYER_XP_UPDATE", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
-    "GET_ITEM_INFO_RECEIVED", "TIME_PLAYED_MSG",
+    "GET_ITEM_INFO_RECEIVED", "TIME_PLAYED_MSG", "CHARACTER_POINTS_CHANGED",
 }
 S.unsupportedEvents = {}
 for _, event in ipairs(events) do
@@ -628,6 +631,9 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.playedPending = nil
         S.RequestPlayed()
         S.Mark("character")
+        S.Mark("talents")
+    elseif event == "CHARACTER_POINTS_CHANGED" then
+        S.Mark("talents")
     elseif event == "PLAYER_LOGOUT" then
         if S.record then
             pcall(Process, true)
@@ -646,10 +652,12 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.trainerOpen = true; Visit("trainer"); S.Mark("trainer"); S.Mark("spells")
     elseif event == "TRAINER_CLOSED" then
         S.trainerOpen = false; Close("trainer"); S.trainerCategory = nil
-    elseif addon.Forever and event == "TRADE_SKILL_SHOW" then
+    elseif (addon.Forever or not (WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail()) and S.collectors.professionRecipes) and event == "TRADE_SKILL_SHOW" then
         S.professionRecipeOpen = true; S.Mark("professionRecipes")
-    elseif addon.Forever and event == "TRADE_SKILL_CLOSE" then
+    elseif (addon.Forever or not (WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail()) and S.collectors.professionRecipes) and (event == "TRADE_SKILL_CLOSE" or event == "CRAFT_CLOSE") then
         S.professionRecipeOpen = false
+    elseif event == "CRAFT_SHOW" then
+        S.professionRecipeOpen = true; S.Mark("professionRecipes")
     elseif event:match("^TRAINER_") then
         S.Mark("trainer")
     elseif event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED"
