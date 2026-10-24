@@ -29,9 +29,9 @@ S.collectors.talents = function()
         and S.record.sections.character.data.talents.status == "OBSERVED"
         and S.record.sections.character.data.talents.trees or nil
     for tab = 1, math.min(tabCount, 10) do
-        local nameState, name, _, points = safeCall(GetTalentTabInfo, tab)
+        local nameState, tabID, name, points = addon.TalentTabs.Read(tab)
         if nameState ~= "OBSERVED" then partial = true end
-        local row = { name = name, pointsSpent = type(points) == "number" and points or nil, talents = {} }
+        local row = { tabID = tabID, name = name, pointsSpent = type(points) == "number" and points or nil, talents = {} }
         -- Keep the parser-stable CHARACTER talentTree values authoritative for Era.
         -- The detailed section reuses those exact points whenever that capture succeeded.
         if legacyTrees then

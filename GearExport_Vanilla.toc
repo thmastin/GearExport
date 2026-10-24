@@ -9,6 +9,7 @@ WoWSyncCompat.lua
 GearExport.lua
 BankCleanup.lua
 WoWSyncCore.lua
+WoWSyncTalentTabs.lua
 WoWSyncCollectors.lua
 WoWSyncRender.lua
 WoWSyncUI.lua

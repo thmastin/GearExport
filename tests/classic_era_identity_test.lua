@@ -26,6 +26,7 @@ function GetTalentTabInfo(index) return trees[index][1], nil, trees[index][2] en
 local addon = { Sync = { collectors = {} }, Readers = { SlotNames = {} } }
 local function load(path) assert(loadfile(path))("GearExport", addon) end
 load("WoWSyncCompat.lua")
+load("WoWSyncTalentTabs.lua")
 load("WoWSyncCollectors.lua")
 load("WoWSyncRender.lua")
 local C, S = WoWSyncCompat, addon.Sync
@@ -41,6 +42,26 @@ check(output:find("TalentStatus: OBSERVED", 1, true) ~= nil, "talents are observ
 check(output:find("talentTree\tname\tpointsSpent", 1, true) ~= nil, "talent tree parser columns are explicit")
 check(output:find("talentTree\tArms\t31", 1, true) ~= nil, "tree name and points are emitted")
 check(output:find("talentTree\tFury\t0", 1, true) ~= nil, "zero point tree is observed")
+
+-- Exact Classic Era 1.15.9 / 70003 live tuples supplied for the regression.
+trees = { { "Affliction", 1 } }
+GetTalentTabInfo = function()
+    return 302, "Affliction", "", 136145, 1, "WarlockCurses", 0, true
+end
+local liveData = S.collectors.character()
+equal(liveData.talents.status, "OBSERVED", "modern live tab tuple is recognized")
+equal(liveData.talents.trees[1].tabID, 302, "modern tuple tabID is retained")
+equal(liveData.talents.trees[1].name, "Affliction", "modern tuple name is retained")
+equal(liveData.talents.trees[1].pointsSpent, 1, "modern tuple points are read from slot five")
+GetTalentTabInfo = function() return "Affliction", nil, 1 end
+liveData = S.collectors.character()
+equal(liveData.talents.status, "OBSERVED", "legacy tab tuple remains recognized")
+equal(liveData.talents.trees[1].tabID, nil, "legacy tuple has no fabricated tabID")
+GetTalentTabInfo = function() return true, "Affliction", nil, nil, 1 end
+liveData = S.collectors.character()
+equal(liveData.talents.status, "UNKNOWN", "unknown tab tuple shape fails closed")
+trees = { { "Arms", 31 }, { "Fury", 0 }, { "Protection", 0 } }
+GetTalentTabInfo = function(index) return trees[index][1], nil, trees[index][2] end
 
 GetBuildInfo = function() return "1.15.10", "60101", "", 11510 end
 output = S.RenderSection("character", snapshot())

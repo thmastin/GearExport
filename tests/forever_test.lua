@@ -60,19 +60,20 @@ BuyTrainerService, UseContainerItem, PickupContainerItem = action, action, actio
 for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.lua",
     "WoWSyncForeverCollectors.lua", "WoWSyncForever70291.lua", "WoWSyncForeverQuests.lua", "WoWSyncForeverBags70291.lua",
     "WoWSyncForeverEvidence70291.lua", "WoWSyncForeverBank.lua", "WoWSyncForeverProfessions.lua", "WoWSyncForeverSpells.lua",
-    "WoWSyncForeverRecipes.lua", "WoWSyncClassicProgression.lua",
+    "WoWSyncForeverRecipes.lua", "WoWSyncTalentTabs.lua", "WoWSyncClassicProgression.lua",
     "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end
 local S, C = addon.Sync, WoWSyncCompat
 check(S.collectors.talents ~= nil, "Forever registers Classic talent detail collector")
 GetNumTalentTabs = function() return 1 end
-GetTalentTabInfo = function() return "Affliction", nil, 2 end
+GetTalentTabInfo = function() return 302, "Affliction", "", 136145, 2, "WarlockCurses", 0, true end
 GetNumTalents = function() return 1 end
 GetTalentInfo = function() return "Improved Corruption", nil, 1, 1, 2, 5 end
 UnitCharacterPoints = function() return 1 end
 local foreverTalentData = S.collectors.talents()
 equal(foreverTalentData.tabs[1].pointsSpent, 2, "Forever rank detail records points spent per tab")
+equal(foreverTalentData.tabs[1].tabID, 302, "Forever uses the shared adapter for modern tab IDs")
 equal(foreverTalentData.tabs[1].talents[1].rank, 2, "Forever rank detail records current talent rank")
 local function advance(duration)
     for _ = 1, math.ceil(duration / 0.1) do

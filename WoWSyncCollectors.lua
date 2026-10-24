@@ -49,14 +49,13 @@ S.collectors.character = function()
         local talents = { status = talentAPI and "OBSERVED" or "UNKNOWN", trees = {} }
         if talentAPI then
             for index = 1, talentCount do
-                local ok, name, _, pointsSpent = pcall(GetTalentTabInfo, index)
-                if not ok or type(name) ~= "string" or name == "" or type(pointsSpent) ~= "number"
-                    or pointsSpent < 0 or pointsSpent % 1 ~= 0 then
+                local state, tabID, name, pointsSpent = addon.TalentTabs.Read(index)
+                if state ~= "OBSERVED" then
                     talents.status = "UNKNOWN"
                     talents.trees = {}
                     break
                 end
-                talents.trees[#talents.trees + 1] = { name = name, pointsSpent = pointsSpent }
+                talents.trees[#talents.trees + 1] = { tabID = tabID, name = name, pointsSpent = pointsSpent }
             end
         end
         data.talents = talents

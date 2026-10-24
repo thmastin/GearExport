@@ -8,6 +8,7 @@
 WoWSyncCompat.lua
 GearExport.lua
 WoWSyncCore.lua
+WoWSyncTalentTabs.lua
 WoWSyncCollectors.lua
 WoWSyncRender.lua
 WoWSyncUI.lua
