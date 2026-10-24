@@ -23,6 +23,12 @@ function GetTradeSkillNumReagents() return 1 end
 function GetTradeSkillReagentInfo() return "Linen Cloth",nil,2,true,"item:2589" end
 assert(loadfile("WoWSyncClassicProgression.lua"))("GearExport",addon)
 local d=S.collectors.talents(); assert(d.totalSpent==3 and d.unspent==2 and d.tabs[1].talents[1].rank==2)
+assert(loadfile("WoWSyncRender.lua"))("GearExport",addon)
+local talentText=S.RenderSection("talents",{schemaVersion=1,sections={talents={data=d,observedAt=123,completeness="complete"}}})
+assert(talentText:find("talent\t1\tImproved Corruption\t1\t1\t2\t5",1,true),"exported M5 talent section includes rank-level detail")
+S.record.sections.character={data={talents={status="OBSERVED",trees={{name="Affliction",pointsSpent=3}}}}}
+d=S.collectors.talents(); assert(d.tabs[1].pointsSpent==3,"rank detail matches the parser-stable Era tree points")
+S.record.sections.character=nil
 d=S.collectors.quests(); assert(d.quests[1].questID==77 and d.quests[1].objectives[1].text=="Collect 3" and d.completedHistory:find("SKIPPED"))
 d=S.collectors.reputation(); assert(d.factions[1].barValue==1000)
 d=S.collectors.professionRecipes(); assert(d.recipes[1].itemID==2589 and d.recipes[1].reagents[1].count==2)

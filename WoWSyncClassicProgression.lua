@@ -24,10 +24,21 @@ S.collectors.talents = function()
     local countState, tabCount = safeCall(GetNumTalentTabs)
     if countState ~= "OBSERVED" or type(tabCount) ~= "number" then return nil, { reason = "Talent tabs " .. countState, stale = true } end
     local tabs, total, partial = {}, 0, false
+    local legacyTrees = C.IsClassicEra and C.IsClassicEra() and S.record and S.record.sections.character
+        and S.record.sections.character.data and S.record.sections.character.data.talents
+        and S.record.sections.character.data.talents.status == "OBSERVED"
+        and S.record.sections.character.data.talents.trees or nil
     for tab = 1, math.min(tabCount, 10) do
         local nameState, name, _, points = safeCall(GetTalentTabInfo, tab)
         if nameState ~= "OBSERVED" then partial = true end
         local row = { name = name, pointsSpent = type(points) == "number" and points or nil, talents = {} }
+        -- Keep the parser-stable CHARACTER talentTree values authoritative for Era.
+        -- The detailed section reuses those exact points whenever that capture succeeded.
+        if legacyTrees then
+            for _, legacy in ipairs(legacyTrees) do
+                if legacy.name == row.name then row.pointsSpent = legacy.pointsSpent; break end
+            end
+        end
         if row.pointsSpent then total = total + row.pointsSpent end
         local ns, n = safeCall(GetNumTalents, tab)
         if ns ~= "OBSERVED" or type(n) ~= "number" then partial = true

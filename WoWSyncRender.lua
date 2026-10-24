@@ -391,7 +391,21 @@ function S.RenderSection(key, snapshot)
     if key == "talents" or key == "quests" or key == "reputation" or key == "professionRecipes" then
         Field(out, "State", (section.lastAttemptStale and "LAST_SEEN" or "OBSERVED") .. "; " .. Text(section.completeness) .. "; observed=" .. Text(section.observedAt))
         if section.lastAttemptError then Field(out, "RefreshIssue", section.lastAttemptError) end
-        Field(out, "Data", "Structured section is available in SavedVariables")
+        local data = section.data
+        if key == "talents" then
+            Field(out, "TotalSpent", data.totalSpent); Field(out, "TotalSpentEvidence", data.totalSpentEvidence)
+            Field(out, "Unspent", data.unspent); Field(out, "UnspentEvidence", data.unspentEvidence)
+            Row(out, "tab", "name", "pointsSpent")
+            for tabIndex, tab in ipairs(data.tabs or {}) do
+                Row(out, "tab", tab.name, tab.pointsSpent)
+                Row(out, "talent", tabIndex, "name", "tier", "column", "rank", "maxRank")
+                for _, talent in ipairs(tab.talents or {}) do
+                    Row(out, "talent", tabIndex, talent.name, talent.tier, talent.column, talent.rank, talent.maxRank)
+                end
+            end
+        else
+            Field(out, "Data", "Structured section is available in SavedVariables")
+        end
         return table.concat(out, "\n")
     end
     local access = key == "bank" or key == "accountBank" or key == "guildBank" or key == "trainer"
