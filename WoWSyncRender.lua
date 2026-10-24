@@ -4,7 +4,8 @@ local _, addon = ...
 local S = addon.Sync
 local C = WoWSyncCompat
 local labels = { character = "CHARACTER", location = "LOCATION", equipment = "EQUIPMENT",
-    bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", guildBank = "GUILD BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS", itemMetadata = "ITEM METADATA" }
+    bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", guildBank = "GUILD BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS", itemMetadata = "ITEM METADATA",
+    talents = "TALENTS", quests = "QUESTS", reputation = "REPUTATION", professionRecipes = "KNOWN RECIPES" }
 labels.forever70291Evidence = "FOREVER CLIENT EVIDENCE"
 
 local function Text(value)
@@ -45,6 +46,7 @@ local function Stats(item)
 end
 
 local renderers = {}
+for _, key in ipairs({ "talents", "quests", "reputation", "professionRecipes" }) do renderers[key] = function() end end
 local function RenderRawCall(out, prefix, call)
     RawField(out, prefix .. ".state", call and call.state)
     RawField(out, prefix .. ".api", call and call.api)
@@ -386,6 +388,12 @@ function S.RenderSection(key, snapshot)
         Field(out, "Reason", section and section.lastAttemptError or key == "guildBank" and snapshot.guildError or "Not observed")
         return table.concat(out, "\n")
     end
+    if key == "talents" or key == "quests" or key == "reputation" or key == "professionRecipes" then
+        Field(out, "State", (section.lastAttemptStale and "LAST_SEEN" or "OBSERVED") .. "; " .. Text(section.completeness) .. "; observed=" .. Text(section.observedAt))
+        if section.lastAttemptError then Field(out, "RefreshIssue", section.lastAttemptError) end
+        Field(out, "Data", "Structured section is available in SavedVariables")
+        return table.concat(out, "\n")
+    end
     local access = key == "bank" or key == "accountBank" or key == "guildBank" or key == "trainer"
     local sameVisit = not access or visit and section.data.visit and visit.openedAt == section.data.visit.openedAt
         and visit.session == section.data.visit.session
@@ -410,6 +418,11 @@ function S.Render(snapshot, sections)
             local text, err = S.RenderSection(key, snapshot)
             assert(text, err)
             out[#out + 1] = text
+        end
+    end
+    if not sections and not (C and C.IsRetail and C.IsRetail()) then
+        for _, key in ipairs({ "talents", "quests", "reputation", "professionRecipes" }) do
+            local text, err = S.RenderSection(key, snapshot); assert(text, err); out[#out + 1] = text
         end
     end
     if includeGearCandidates and snapshot.gearCandidates then

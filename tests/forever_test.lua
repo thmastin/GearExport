@@ -60,7 +60,7 @@ BuyTrainerService, UseContainerItem, PickupContainerItem = action, action, actio
 for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.lua",
     "WoWSyncForeverCollectors.lua", "WoWSyncForever70291.lua", "WoWSyncForeverQuests.lua", "WoWSyncForeverBags70291.lua",
     "WoWSyncForeverEvidence70291.lua", "WoWSyncForeverBank.lua", "WoWSyncForeverProfessions.lua", "WoWSyncForeverSpells.lua",
-    "WoWSyncForeverRecipes.lua",
+    "WoWSyncForeverRecipes.lua", "WoWSyncClassicProgression.lua",
     "WoWSyncRender.lua", "WoWSyncUI.lua" }) do
     assert(loadfile(file))("GearExport", addon)
 end

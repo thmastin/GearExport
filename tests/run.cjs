@@ -40,3 +40,8 @@ process.stderr.write(forever.stderr || '');
 if (forever.error || forever.status !== 0 || forever.stderr || !/^PASS: \d+ Forever assertions; 0 gameplay actions\s*$/m.test(forever.stdout || '')) {
   process.exitCode = 1;
 }
+const classicProgression = spawnSync(process.execPath, [cli, 'tests/classic_progression_test.lua'], { encoding: 'utf8' });
+if (classicProgression.error) process.stderr.write(classicProgression.error.message + '\n');
+process.stdout.write(classicProgression.stdout || '');
+process.stderr.write(classicProgression.stderr || '');
+if (classicProgression.error || classicProgression.status !== 0 || classicProgression.stderr || !/PASS: Classic progression collectors/.test(classicProgression.stdout || '')) process.exitCode = 1;
