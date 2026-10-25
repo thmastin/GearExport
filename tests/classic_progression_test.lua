@@ -20,6 +20,7 @@ TradeSkillFrame={IsShown=function() return false end}
 function GetTradeSkillLine() return "Cooking", 75, 150 end
 function GetNumTradeSkills() return 1 end
 function GetTradeSkillInfo() return "Linen Belt","optimal",1,false,0,1,1,1,0,"item:2589" end
+function GetTradeSkillItemLink() return "|cffffffff|Hitem:2589:0:0:0:0:0:0:0|h[Linen Belt]|h|r" end
 function GetTradeSkillNumReagents() return 1 end
 function GetTradeSkillReagentInfo() return "Linen Cloth",nil,2,true,"item:2589" end
 assert(loadfile("WoWSyncTalentTabs.lua"))("GearExport",addon)
@@ -42,6 +43,7 @@ d=S.collectors.reputation(); assert(d.factions[1].barValue==1000)
 S.professionRecipeOpen=true
 d=S.collectors.professionRecipes()
 assert(d.professions[1].professionName=="Cooking" and d.professions[1].recipes[1].itemID==2589
+    and d.professions[1].recipes[1].itemLink:find("item:2589",1,true)
     and d.professions[1].recipes[1].reagents[1].count==2,
     "tracked open state captures recipes even while the load-on-demand frame is hidden")
 local oldCount, oldInfo, oldNumReagents = GetNumTradeSkills, GetTradeSkillInfo, GetTradeSkillNumReagents
@@ -61,6 +63,14 @@ GetTradeSkillReagentInfo=function(i,j)
 end
 local _, missingReagentMeta=S.collectors.professionRecipes()
 assert(missingReagentMeta.completeness=="partial", "unreadable recipe reagent keeps capture partial")
+GetTradeSkillReagentInfo=function() return "Linen Cloth",nil,2,true,"item:2589" end
+local goodItemLink = GetTradeSkillItemLink
+GetTradeSkillItemLink=function() return nil end
+local noLink, noLinkMeta=S.collectors.professionRecipes()
+assert(noLinkMeta.completeness=="complete" and noLinkMeta.reason:find("itemID is unknown",1,true)
+    and noLink.professions[1].recipes[1].itemID==nil and noLink.professions[1].recipes[1].itemLink==nil,
+    "missing recipe output link stays unknown and does not alone make capture partial")
+GetTradeSkillItemLink=goodItemLink
 GetNumTradeSkills,GetTradeSkillInfo,GetTradeSkillNumReagents=oldCount,oldInfo,oldNumReagents
 GetTradeSkillReagentInfo=function() return "Linen Cloth",nil,2,true,"item:2589" end
 local getTradeSkillLine=GetTradeSkillLine
