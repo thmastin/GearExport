@@ -125,14 +125,17 @@ S.collectors.professionRecipes = function()
     end
     local ns, n = safeCall(GetNumTradeSkills)
     if ns ~= "OBSERVED" or type(n) ~= "number" or n <= 0 then return nil, { reason="Recipe list "..ns..(n == 0 and " (empty)" or ""), stale=true } end
-    local recipes, partial = {}, false
+    local recipes, partial, missingItemLink = {}, false, false
     for i=1,math.min(n,1000) do
-        local state,name,kind,_,_,_,_,_,_,_,link = safeCall(GetTradeSkillInfo,i)
+        local state,name,kind = safeCall(GetTradeSkillInfo,i)
         if state=="OBSERVED" and kind=="header" then
             -- Category rows are not recipes and do not indicate missing capture data.
         elseif state=="OBSERVED" then
+            local linkState, link = safeCall(GetTradeSkillItemLink, i)
+            if linkState ~= "OBSERVED" or type(link) ~= "string" or link == "" then link = nil; missingItemLink = true end
             local itemID=type(link)=="string" and tonumber(link:match("item:(%d+)"))
-            if type(name)~="string" or name=="" or not itemID then partial=true end
+            if not itemID or itemID <= 0 then itemID = nil; missingItemLink = true end
+            if type(name)~="string" or name=="" then partial=true end
             local rs, rc = safeCall(GetTradeSkillNumReagents,i); local reagents={}
             if rs=="OBSERVED" and type(rc)=="number" and rc>=0 and rc<=30 then
                 for j=1,rc do
@@ -149,7 +152,8 @@ S.collectors.professionRecipes = function()
     end
     return {formatVersion=1,evidence="OBSERVED",observedAt=S.Now(),clientFamily=family(),
         professions={{ name=professionName, professionName=professionName, observedAt=S.Now(), recipes=recipes }}},
-        {completeness=partial and "partial" or "complete"}
+        {completeness=partial and "partial" or "complete",
+            reason=missingItemLink and "One or more recipe output item links are unavailable; itemID is unknown for those recipes" or nil}
 end
 if addon.Forever then
     if foreverQuests then S.collectors.quests = foreverQuests end
