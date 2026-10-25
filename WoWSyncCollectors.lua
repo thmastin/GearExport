@@ -19,6 +19,19 @@ function S.Item(link, itemID)
             bindType, expansionID, isCraftingReagent))
     end
     item.name, item.quality, item.itemLevel, item.requiredLevel = name, quality, level, requiredLevel
+    item.classID, item.subClassID, item.equipLoc = classID, subclassID, select(9, Compat.GetItemInfo(link or itemID))
+    if not name then
+        item.quality, item.classID, item.subClassID, item.equipLoc, item.requiredLevel = nil, nil, nil, nil, nil
+    end
+    if not name or quality == nil or classID == nil or subclassID == nil or item.equipLoc == nil or requiredLevel == nil then
+        item.itemMetadataState = "UNKNOWN"
+    else
+        item.itemMetadataState = "OBSERVED"
+    end
+    if classID == 9 and type(GetLocale) == "function" and GetLocale() == "enUS" then
+        local ok, recipe, known = pcall(Compat.ReadRecipeTooltip or function() end, link or itemID)
+        if ok then item.requiredProfession, item.requiredSkill, item.recipeAlreadyKnown = recipe and recipe.profession, recipe and recipe.skill, known end
+    end
     item.vendorCopper = vendor
     return item
 end
@@ -87,6 +100,7 @@ local function Containers(bank, scope)
     if bank then bags = bankRanges end
     if not bags then return nil, { reason = "Container view unavailable", retry = true } end
     local data = { containers = {}, coverage = bank and Compat.GetBankCoverage(scope) or nil }
+    if not bank then data.formatVersion = 2 end
     if bank then data.ownerScope = scope == "ACCOUNT" and "ACCOUNT_WARBAND" or "CHARACTER" end
     local incomplete, locked, seenContainers = false, false, {}
     for _, bag in ipairs(bags) do
@@ -124,7 +138,7 @@ local function Containers(bank, scope)
                 local item = S.Item(link, id)
                 item.count, item.bound = info.stackCount, info.isBound
                 container.slots[slot] = item
-                if not item.name or not item.itemString then incomplete = true end
+                if not item.name or not item.itemString or item.itemMetadataState == "UNKNOWN" then incomplete = true end
                 if info.isLocked then locked = true end
             end
         end

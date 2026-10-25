@@ -240,6 +240,21 @@ S.collectors.bags = function()
                 local count = F.Number("Carried item stack count", Field(info, "stackCount"), issues)
                 if not ref and (not count or count == 0) then return Failed("carried item quantity unknown", true) end
                 local item = { itemID = ref and (id or linkID) or id, count = count }
+                local infoFn = type(C_Item) == "table" and C_Item.GetItemInfo or GetItemInfo
+                if type(infoFn) == "function" then
+                    local infoOK, name, itemLink, quality, itemLevel, requiredLevel, minLevel, itemType, subType,
+                        maxStack, equipLoc, texture, classID, subClassID = pcall(infoFn, ref or id)
+                    if infoOK then
+                        if not name then quality, classID, subClassID, equipLoc, requiredLevel = nil, nil, nil, nil, nil end
+                        item.quality, item.classID, item.subClassID, item.equipLoc, item.requiredLevel = quality, classID, subClassID, equipLoc, requiredLevel
+                        item.itemMetadataState = name and quality ~= nil and classID ~= nil and subClassID ~= nil and equipLoc ~= nil and requiredLevel ~= nil and "OBSERVED" or "UNKNOWN"
+                        if item.itemMetadataState == "UNKNOWN" then issues[#issues + 1] = "Carried item metadata unknown" end
+                        if classID == 9 and type(WoWSyncCompat.ReadRecipeTooltip) == "function" and type(GetLocale) == "function" and GetLocale() == "enUS" then
+                            local tipOK, recipe, known = pcall(WoWSyncCompat.ReadRecipeTooltip, ref or id)
+                            if tipOK then item.requiredProfession, item.requiredSkill, item.recipeAlreadyKnown = recipe and recipe.profession, recipe and recipe.skill, known end
+                        end
+                    else item.itemMetadataState = "UNKNOWN"; issues[#issues + 1] = "Carried item metadata unknown" end
+                else item.itemMetadataState = "UNKNOWN"; issues[#issues + 1] = "Carried item metadata unknown" end
                 if ref then
                     item.itemString, item.itemStringSource = ref, linkSource
                     item.itemIdentityState = "OBSERVED_EXACT_ITEM_STRING"
@@ -308,7 +323,7 @@ S.collectors.bags = function()
             end
         end
     end
-    return { containers = containers }, { completeness = (#issues > 0 or #failures > 0) and "partial" or "complete",
+    return { containers = containers, formatVersion = 2 }, { completeness = (#issues > 0 or #failures > 0) and "partial" or "complete",
         partial = #failures > 0 or nil, slotFailures = #failures > 0 and failures or nil,
         reason = #issues > 0 and table.concat(issues, "; ") or nil }
 end
