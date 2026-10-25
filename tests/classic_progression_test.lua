@@ -16,7 +16,8 @@ function GetNumQuestLeaderBoards() return 1 end
 function GetQuestLogLeaderBoard() return "Collect 3",nil,nil,false end
 function GetNumFactions() return 1 end
 function GetFactionInfo() return "Test Faction",nil,4,0,3000,1000,2000,false,nil,nil,nil,false,false end
-TradeSkillFrame={IsShown=function() return true end}
+TradeSkillFrame={IsShown=function() return false end}
+function GetTradeSkillLine() return "Cooking", 75, 150 end
 function GetNumTradeSkills() return 1 end
 function GetTradeSkillInfo() return "Linen Belt","optimal",1,false,0,1,1,1,0,"item:2589" end
 function GetTradeSkillNumReagents() return 1 end
@@ -38,7 +39,21 @@ d=S.collectors.talents(); assert(d.tabs[1].name==nil and d.tabs[1].pointsSpent==
 GetTalentTabInfo=function() return "Affliction",nil,3 end
 d=S.collectors.quests(); assert(d.quests[1].questID==77 and d.quests[1].objectives[1].text=="Collect 3" and d.completedHistory:find("SKIPPED"))
 d=S.collectors.reputation(); assert(d.factions[1].barValue==1000)
-d=S.collectors.professionRecipes(); assert(d.recipes[1].itemID==2589 and d.recipes[1].reagents[1].count==2)
+S.professionRecipeOpen=true
+d=S.collectors.professionRecipes()
+assert(d.professions[1].professionName=="Cooking" and d.professions[1].recipes[1].itemID==2589
+    and d.professions[1].recipes[1].reagents[1].count==2,
+    "tracked open state captures recipes even while the load-on-demand frame is hidden")
+local getTradeSkillLine=GetTradeSkillLine
+GetTradeSkillLine=function() return nil end
+local missingLine, missingLineMeta=S.collectors.professionRecipes()
+assert(missingLine==nil and missingLineMeta.reason:find("Profession identity",1,true),
+    "missing profession identity does not produce recipe data")
+GetTradeSkillLine=getTradeSkillLine
+S.professionRecipeMode="CRAFT"
+local craft, craftMeta=S.collectors.professionRecipes()
+assert(craft==nil and craftMeta.reason:find("UNKNOWN",1,true), "Craft APIs unavailable remains explicitly UNKNOWN")
+S.professionRecipeMode=nil
 for _, key in ipairs({"talents","quests","reputation","professionRecipes"}) do
     S.record.sections[key]={data={sentinel=true},observedAt=99}
 end

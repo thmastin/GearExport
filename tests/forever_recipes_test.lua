@@ -64,6 +64,28 @@ return function(S, check, equal)
     end
 
     check(S.collectors.professionRecipes ~= nil, "Forever recipe collector registered")
+
+    -- The shared core must keep named Classic profession groups when another
+    -- profession is captured, even though Classic has no skill-line IDs.
+    local oldNamedSection, oldSessionStartedAt, oldCapture = S.record.sections.professionRecipes, S.sessionStartedAt, S.capture
+    S.sessionStartedAt = "recipe-test-session"
+    S.capture = 1
+    S.CommitProfessionRecipes({ observedAt = 1, professions = {
+        { name = "Cooking", professionName = "Cooking", recipes = { { name = "Linen Bread" } } },
+    } }, { completeness = "complete" })
+    S.capture = 2
+    S.CommitProfessionRecipes({ observedAt = 2, professions = {
+        { name = "Blacksmithing", professionName = "Blacksmithing", recipes = { { name = "Copper Bracers" } } },
+    } }, { completeness = "complete" })
+    local namedGroups = S.record.sections.professionRecipes.data.professions
+    equal(#namedGroups, 2, "capturing a second named profession retains the first group")
+    local namedByProfession = {}
+    for _, profession in ipairs(namedGroups) do namedByProfession[profession.professionName] = profession end
+    check(namedByProfession.Cooking ~= nil and namedByProfession.Blacksmithing ~= nil,
+        "named Classic profession groups remain independently addressable")
+    S.record.sections.professionRecipes = oldNamedSection
+    S.sessionStartedAt, S.capture = oldSessionStartedAt, oldCapture
+
     setFixture({})
     local cold, coldMeta = S.collectors.professionRecipes()
     equal(cold, nil, "empty/unhydrated candidate enumeration is not an empty learned set")

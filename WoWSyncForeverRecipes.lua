@@ -490,6 +490,7 @@ end
 
 S.collectors.professionRecipes = function()
     local api = type(C_TradeSkillUI) == "table" and C_TradeSkillUI or {}
+    if S.professionRecipeMode == "CRAFT" then return nil, { reason = "Craft window APIs are not supported; recipe capture is UNKNOWN", retry = false, stale = true } end
     if not S.professionRecipeOpen then return nil, { reason = "Open the character's Forever profession panel before /wowsync; no recipe panel is currently observed", retry = false, stale = true } end
     if type(api.IsTradeSkillLinked) ~= "function" then return nil, { reason = "Cannot verify that the open profession panel belongs to this character", retry = false, stale = true } end
     local linkedState, linked = safe(api.IsTradeSkillLinked)

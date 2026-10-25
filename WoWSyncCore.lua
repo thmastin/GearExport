@@ -239,6 +239,9 @@ function S.CommitTrainer(category, data, meta)
 end
 
 local function ProfessionRecipeKey(row)
+    if type(row) == "table" and type(row.professionName or row.name) == "string" and not row.baseSkillLineID then
+        return "name:" .. (row.professionName or row.name)
+    end
     if type(row) ~= "table" or type(row.baseSkillLineID) ~= "number" or type(row.skillLineID) ~= "number" then return nil end
     return tostring(row.baseSkillLineID) .. ":" .. tostring(row.skillLineID)
 end
@@ -268,6 +271,17 @@ function S.CommitProfessionRecipes(data, meta)
         end
     end
 
+    if key:match("^name:") then
+        rows[#rows + 1] = fresh
+        local merged = S.Copy(data)
+        merged.professions = rows
+        local now = S.Now()
+        local changed = not old or not Equal(old.data, merged)
+        owner.sections.professionRecipes = { data = merged, observedAt = now,
+            changedAt = changed and now or old.changedAt, revision = ((old and old.revision) or 0) + (changed and 1 or 0),
+            completeness = meta.completeness or "partial", reason = meta.reason, source = "client", capture = S.capture }
+        return
+    end
     local priorByID = {}
     for _, recipe in ipairs(currentPrior and currentPrior.recipes or {}) do
         if type(recipe) == "table" and type(recipe.recipeID) == "number" then priorByID[recipe.recipeID] = recipe end
@@ -525,6 +539,24 @@ local function Process(force)
 end
 S.Process = Process
 
+local function CaptureProfessionRecipesNow()
+    if not S.Initialize() then
+        S.Attempt("professionRecipes", S.error or "Character is not ready", true)
+        return
+    end
+    S.dirty.professionRecipes = nil
+    S.capture = (S.capture or 0) + 1
+    local collector = S.collectors.professionRecipes
+    if type(collector) ~= "function" then
+        S.Attempt("professionRecipes", "Profession recipe collector unavailable during TRADE_SKILL_SHOW", true)
+        return
+    end
+    local ok, data, meta = pcall(collector)
+    meta = ok and (meta or {}) or { reason = "Collector error: " .. tostring(data), stale = true }
+    if ok and data then S.CommitProfessionRecipes(data, meta)
+    else S.Attempt("professionRecipes", meta.reason or "Data unavailable", meta.stale) end
+end
+
 local function Tick()
     if S.GuildBankTick then S.GuildBankTick(GetTime()) end
     Process(false)
@@ -593,6 +625,7 @@ local events = addon.SyncEvents or {
     "SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE", "PLAYER_MONEY", "PLAYER_LEVEL_UP",
     "PLAYER_XP_UPDATE", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
     "GET_ITEM_INFO_RECEIVED", "TIME_PLAYED_MSG", "CHARACTER_POINTS_CHANGED",
+    "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "TRADE_SKILL_CLOSE", "CRAFT_SHOW", "CRAFT_CLOSE",
 }
 S.unsupportedEvents = {}
 for _, event in ipairs(events) do
@@ -652,12 +685,22 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         S.trainerOpen = true; Visit("trainer"); S.Mark("trainer"); S.Mark("spells")
     elseif event == "TRAINER_CLOSED" then
         S.trainerOpen = false; Close("trainer"); S.trainerCategory = nil
-    elseif (addon.Forever or not (WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail()) and S.collectors.professionRecipes) and event == "TRADE_SKILL_SHOW" then
-        S.professionRecipeOpen = true; S.Mark("professionRecipes")
+    elseif event == "TRADE_SKILL_SHOW" and (addon.Forever or ((not WoWSyncCompat or not WoWSyncCompat.IsRetail or not WoWSyncCompat.IsRetail()) and S.collectors.professionRecipes)) then
+        S.professionRecipeOpen = true
+        S.professionRecipeMode = "TRADE_SKILL"
+        local line, count = "unavailable", "unavailable"
+        if type(GetTradeSkillLine) == "function" then local ok, value = pcall(GetTradeSkillLine); line = ok and tostring(value) or "error" end
+        if type(GetNumTradeSkills) == "function" then local ok, value = pcall(GetNumTradeSkills); count = ok and tostring(value) or "error" end
+        print("WoWSync recipe debug: TRADE_SKILL_SHOW received; line=" .. line
+            .. "; GetNumTradeSkills=" .. count .. "; professionRecipeOpen=" .. tostring(S.professionRecipeOpen)
+            .. "; collector=" .. tostring(type(S.collectors.professionRecipes) == "function"))
+        CaptureProfessionRecipesNow()
+    elseif event == "TRADE_SKILL_UPDATE" and S.professionRecipeOpen then
+        S.Mark("professionRecipes", 0.35)
     elseif (addon.Forever or not (WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail()) and S.collectors.professionRecipes) and (event == "TRADE_SKILL_CLOSE" or event == "CRAFT_CLOSE") then
-        S.professionRecipeOpen = false
+        S.professionRecipeOpen = false; S.professionRecipeMode = nil
     elseif event == "CRAFT_SHOW" then
-        S.professionRecipeOpen = true; S.Mark("professionRecipes")
+        S.professionRecipeOpen = true; S.professionRecipeMode = "CRAFT"; S.Mark("professionRecipes", 0)
     elseif event:match("^TRAINER_") then
         S.Mark("trainer")
     elseif event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED"
