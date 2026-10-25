@@ -50,6 +50,32 @@ function C.GetItemInfo(reference)
     return Optional(C.IsRetail() and C_Item and C_Item.GetItemInfo or GetItemInfo, reference)
 end
 
+function C.ReadRecipeTooltip(reference)
+    if type(GetLocale) ~= "function" or GetLocale() ~= "enUS" then return nil end
+    if not C.recipeTooltip and type(CreateFrame) == "function" then
+        C.recipeTooltip = CreateFrame("GameTooltip", "GearExportRecipeTooltip", UIParent, "GameTooltipTemplate")
+        if C.recipeTooltip.SetOwner then C.recipeTooltip:SetOwner(UIParent, "ANCHOR_NONE") end
+    end
+    local tip = C.recipeTooltip
+    if type(tip) ~= "table" then return nil end
+    if tip.SetOwner then tip:SetOwner(UIParent, "ANCHOR_NONE") end
+    local link = type(reference) == "string" and reference:find("item:", 1, true) and reference or ("item:" .. tostring(reference))
+    if tip.SetHyperlink then tip:SetHyperlink(link) elseif tip.SetItemByID then tip:SetItemByID(tonumber(reference)) else return nil end
+    local profession, skill, known
+    local count = tip.NumLines and tip:NumLines() or 0
+    for i = 1, count do
+        local line = _G[tip:GetName() .. "TextLeft" .. i]
+        local text = line and line:GetText()
+        if text then
+            local p, n = text:match("Requires ([%a ]+) %((%d+)%)")
+            if p and n then profession, skill = p, tonumber(n) end
+            if text:find("Already known", 1, true) then known = true end
+        end
+    end
+    if tip.Hide then tip:Hide() end
+    return profession and { profession = profession, skill = skill } or nil, known
+end
+
 local function MetadataNumber(value)
     if issecretvalue and issecretvalue(value) then return nil end
     if type(value) ~= "number" or value ~= value or value < 0

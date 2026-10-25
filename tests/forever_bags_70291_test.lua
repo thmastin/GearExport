@@ -2,6 +2,11 @@
 -- synthetic item rows are presented as additional live Hallo observations.
 return function(S, check, equal)
     local oldAPI = C_Container
+    local oldGetItemInfo = GetItemInfo
+    GetItemInfo = function(id)
+        local numeric = type(id) == "number" and id or tonumber(type(id) == "string" and id:match("item:(%d+)"))
+        if numeric then return "Synthetic item", "item:" .. numeric, 1, 1, 1, 0, "Miscellaneous", "Junk", 1, "", 0, 15, 0 end
+    end
     local capacities = { [0] = 20, [1] = 6, [2] = 6, [3] = 6, [4] = 0, [5] = 0 }
     local inventory = {
         [0] = {
@@ -19,6 +24,11 @@ return function(S, check, equal)
     equal(data.containers[1].free, 18, "free slots derived from full observed scan")
     equal(data.containers[1].slots[1].itemString, "item:6948::::::::8:1485::75:::::::", "full item string retained")
     equal(data.containers[1].slots[1].bound, true, "binding facet retained")
+    equal(data.containers[1].slots[1].quality, 1, "cached bag item quality captured")
+    equal(data.containers[1].slots[1].classID, 15, "cached bag item class captured")
+    equal(data.containers[1].slots[1].subClassID, 0, "cached bag item subclass captured")
+    equal(data.containers[1].slots[1].itemMetadataState, "OBSERVED", "cached metadata marked observed")
+    equal(data.formatVersion, 2, "bag payload format version bumped")
     equal(data.containers[1].slots[2].count, 3, "physical stack count retained")
     equal(data.containers[1].slots[2].bound, false, "explicit false binding retained")
     equal(meta.completeness, "complete", "fully scanned synthetic 70245 bag snapshot")
@@ -306,5 +316,14 @@ return function(S, check, equal)
     local stale = S.RenderSection("bags", S.GetSnapshot())
     check(stale:find("State: LAST_SEEN", 1, true), "previous bag evidence is not labeled current after failure")
     check(stale:find("RefreshIssue:", 1, true), "failed capture reason is exported")
-    C_Container, issecretvalue = oldAPI, nil
+    GetItemInfo = function() return nil end
+    C_Container.GetContainerNumSlots = function(bag) return capacities[bag] end
+    C_Container.GetContainerItemInfo = oldInfo
+    local uncached = S.collectors.bags()
+    local unknown = uncached.containers[1].slots[1]
+    equal(unknown.quality, nil, "uncached item quality remains absent")
+    equal(unknown.classID, nil, "uncached item class remains absent")
+    equal(unknown.requiredLevel, nil, "uncached required level remains absent")
+    equal(unknown.itemMetadataState, "UNKNOWN", "uncached row explicitly marked unknown")
+    GetItemInfo, C_Container, issecretvalue = oldGetItemInfo, oldAPI, nil
 end

@@ -65,6 +65,21 @@ for _, file in ipairs({ "WoWSyncCompat.lua", "WoWSyncForever.lua", "WoWSyncCore.
     assert(loadfile(file))("GearExport", addon)
 end
 local S, C = addon.Sync, WoWSyncCompat
+local oldLocale, oldCreateFrame = GetLocale, CreateFrame
+GetLocale = function() return "enUS" end
+CreateFrame = function(_, name)
+    return { GetName = function() return name end, SetOwner = function() end, SetHyperlink = function() end,
+        NumLines = function() return 2 end, Hide = function() end }
+end
+GearExportRecipeTooltipTextLeft1 = { GetText = function() return "Requires Alchemy (125)" end }
+GearExportRecipeTooltipTextLeft2 = { GetText = function() return "Already known" end }
+local recipe, known = C.ReadRecipeTooltip("item:999")
+equal(recipe.profession, "Alchemy", "recipe tooltip profession parsed")
+equal(recipe.skill, 125, "recipe tooltip required skill parsed")
+equal(known, true, "recipe tooltip already-known state parsed")
+GetLocale = function() return "frFR" end
+equal(C.ReadRecipeTooltip("item:999"), nil, "non-enUS recipe tooltip remains unknown")
+GetLocale, CreateFrame = oldLocale, oldCreateFrame
 check(S.collectors.talents ~= nil, "Forever registers Classic talent detail collector")
 GetNumTalentTabs = function() return 1 end
 GetTalentTabInfo = function() return 302, "Affliction", "", 136145, 2, "WarlockCurses", 0, true end
