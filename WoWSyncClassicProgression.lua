@@ -147,6 +147,6 @@ if addon.Forever then
     if foreverRecipes then S.collectors.professionRecipes = foreverRecipes end
 end
 
-for _, event in ipairs({ "CHARACTER_POINTS_CHANGED", "UPDATE_FACTION", "QUEST_LOG_UPDATE", "QUEST_LOG_CRITERIA_UPDATE", "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "CRAFT_SHOW", "TRADE_SKILL_CLOSE", "CRAFT_CLOSE" }) do
+for _, event in ipairs({ "CHARACTER_POINTS_CHANGED", "UPDATE_FACTION", "QUEST_LOG_UPDATE", "QUEST_LOG_CRITERIA_UPDATE" }) do
     pcall(S.eventFrame.RegisterEvent, S.eventFrame, event)
 end

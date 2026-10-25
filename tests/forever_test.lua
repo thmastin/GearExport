@@ -206,6 +206,30 @@ advance(0.2)
 equal(S.record.sections.character.data.playedSeconds, 3600, "total played requires and uses time-played event")
 equal(S.record.sections.character.data.levelPlayedSeconds, 1200, "level played requires and uses time-played event")
 for _, event in ipairs({ "TIME_PLAYED_MSG", "BANKFRAME_OPENED", "TRAINER_SHOW" }) do check(S.eventFrame.events[event], "Forever event registered: " .. event) end
+check(S.eventFrame.events.TRADE_SKILL_SHOW, "profession show is registered on the core event frame")
+do
+    local oldCollector, oldSection = S.collectors.professionRecipes, S.record.sections.professionRecipes
+    local oldOpen, oldMode = S.professionRecipeOpen, S.professionRecipeMode
+    local oldForever, oldProjectID, oldMainline = addon.Forever, WOW_PROJECT_ID, WOW_PROJECT_MAINLINE
+    addon.Forever, WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = nil, 2, 1 -- exercise the non-Retail Classic handler condition
+    S.collectors.professionRecipes = function()
+        check(S.professionRecipeOpen, "SHOW collector observes open flag on the same Sync table")
+        return { observedAt = GetServerTime(), professions = { { baseSkillLineID = 164, skillLineID = 164,
+            professionName = "Blacksmithing", name = "Blacksmithing", recipes = {
+                { recipeID = 987654, learnedState = "UNKNOWN" },
+            } } } }, { completeness = "partial" }
+    end
+    GetTradeSkillLine = function() return "Blacksmithing" end
+    GetNumTradeSkills = function() return 1 end
+    S.eventFrame.scripts.OnEvent(S.eventFrame, "TRADE_SKILL_SHOW")
+    check(S.professionRecipeOpen, "core TRADE_SKILL_SHOW handler sets the tracked state")
+    equal(S.dirty.professionRecipes, nil, "SHOW capture does not wait for the deferred dirty flush")
+    equal(S.record.sections.professionRecipes.data.professions[1].professionName, "Blacksmithing",
+        "SHOW collector result is committed synchronously")
+    S.collectors.professionRecipes, S.record.sections.professionRecipes = oldCollector, oldSection
+    S.professionRecipeOpen, S.professionRecipeMode = oldOpen, oldMode
+    addon.Forever, WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = oldForever, oldProjectID, oldMainline
+end
 local output
 check(S.Export(function(text) output = text end), "export accepted")
 advance(3.2) -- allow the bounded export timeout while optional sections are unavailable in this fixture
