@@ -272,6 +272,7 @@ function S.CommitProfessionRecipes(data, meta)
     end
 
     if key:match("^name:") then
+        rows[#rows + 1] = fresh
         local merged = S.Copy(data)
         merged.professions = rows
         local now = S.Now()
