@@ -688,12 +688,6 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
     elseif event == "TRADE_SKILL_SHOW" and (addon.Forever or ((not WoWSyncCompat or not WoWSyncCompat.IsRetail or not WoWSyncCompat.IsRetail()) and S.collectors.professionRecipes)) then
         S.professionRecipeOpen = true
         S.professionRecipeMode = "TRADE_SKILL"
-        local line, count = "unavailable", "unavailable"
-        if type(GetTradeSkillLine) == "function" then local ok, value = pcall(GetTradeSkillLine); line = ok and tostring(value) or "error" end
-        if type(GetNumTradeSkills) == "function" then local ok, value = pcall(GetNumTradeSkills); count = ok and tostring(value) or "error" end
-        print("WoWSync recipe debug: TRADE_SKILL_SHOW received; line=" .. line
-            .. "; GetNumTradeSkills=" .. count .. "; professionRecipeOpen=" .. tostring(S.professionRecipeOpen)
-            .. "; collector=" .. tostring(type(S.collectors.professionRecipes) == "function"))
         CaptureProfessionRecipesNow()
     elseif event == "TRADE_SKILL_UPDATE" and S.professionRecipeOpen then
         S.Mark("professionRecipes", 0.35)

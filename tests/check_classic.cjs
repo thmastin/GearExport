@@ -6,6 +6,7 @@ const classicAlias = fs.readFileSync('GearExport-Classic.toc', 'utf8');
 const tbcToc = fs.readFileSync('GearExport-BCC.toc', 'utf8');
 const retailToc = fs.readFileSync('GearExport.toc', 'utf8');
 const core = fs.readFileSync('WoWSyncCore.lua', 'utf8');
+assert(!core.includes('WoWSync recipe debug: TRADE_SKILL_SHOW'), 'temporary recipe SHOW debug print must be removed');
 assert(/## Interface:\s*11509/.test(classicToc), 'Classic Era TOC must target interface 11509');
 assert.strictEqual(classicAlias, classicToc, 'Classic flavor TOC alias must match Classic Era package');
 assert(/## Interface:\s*20506/.test(tbcToc), 'TBC TOC interface must remain 20506');

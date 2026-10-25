@@ -128,13 +128,22 @@ S.collectors.professionRecipes = function()
     local recipes, partial = {}, false
     for i=1,math.min(n,1000) do
         local state,name,kind,_,_,_,_,_,_,_,link = safeCall(GetTradeSkillInfo,i)
-        if state=="OBSERVED" and kind~="header" then
-            local rs, rc = safeCall(GetTradeSkillNumReagents,i); local reagents={}
-            if rs=="OBSERVED" and type(rc)=="number" then for j=1,math.min(rc,30) do
-                local _,rn,_,required,_,rLink=safeCall(GetTradeSkillReagentInfo,i,j)
-                reagents[#reagents+1]={name=rn,itemLink=rLink,count=required}
-            end else partial=true end
+        if state=="OBSERVED" and kind=="header" then
+            -- Category rows are not recipes and do not indicate missing capture data.
+        elseif state=="OBSERVED" then
             local itemID=type(link)=="string" and tonumber(link:match("item:(%d+)"))
+            if type(name)~="string" or name=="" or not itemID then partial=true end
+            local rs, rc = safeCall(GetTradeSkillNumReagents,i); local reagents={}
+            if rs=="OBSERVED" and type(rc)=="number" and rc>=0 and rc<=30 then
+                for j=1,rc do
+                    local reagentState,rn,_,required,_,rLink=safeCall(GetTradeSkillReagentInfo,i,j)
+                    if reagentState~="OBSERVED" or type(rn)~="string" or rn=="" or type(required)~="number" then
+                        partial=true
+                    end
+                    reagents[#reagents+1]={name=rn,itemLink=rLink,count=required}
+                end
+                if #reagents~=rc then partial=true end
+            else partial=true end
             recipes[#recipes+1]={name=name,itemID=itemID,itemLink=link,difficulty=kind,reagents=reagents}
         else partial=true end
     end

@@ -44,6 +44,25 @@ d=S.collectors.professionRecipes()
 assert(d.professions[1].professionName=="Cooking" and d.professions[1].recipes[1].itemID==2589
     and d.professions[1].recipes[1].reagents[1].count==2,
     "tracked open state captures recipes even while the load-on-demand frame is hidden")
+local oldCount, oldInfo, oldNumReagents = GetNumTradeSkills, GetTradeSkillInfo, GetTradeSkillNumReagents
+GetNumTradeSkills=function() return 3 end
+GetTradeSkillInfo=function(i)
+    if i==1 then return "Cloth Armor","header" end
+    if i==2 then return "Linen Belt","optimal",1,false,0,1,1,1,0,"item:2589" end
+    return "Wool Belt","optimal",1,false,0,1,1,1,0,"item:2592"
+end
+d,meta=S.collectors.professionRecipes()
+assert(meta.completeness=="complete" and #d.professions[1].recipes==2,
+    "category header rows do not make complete recipe captures partial")
+GetTradeSkillNumReagents=function(i) return i==2 and 1 or 1 end
+GetTradeSkillReagentInfo=function(i,j)
+    if i==2 then return "Linen Cloth",nil,2,true,"item:2589" end
+    return nil
+end
+local _, missingReagentMeta=S.collectors.professionRecipes()
+assert(missingReagentMeta.completeness=="partial", "unreadable recipe reagent keeps capture partial")
+GetNumTradeSkills,GetTradeSkillInfo,GetTradeSkillNumReagents=oldCount,oldInfo,oldNumReagents
+GetTradeSkillReagentInfo=function() return "Linen Cloth",nil,2,true,"item:2589" end
 local getTradeSkillLine=GetTradeSkillLine
 GetTradeSkillLine=function() return nil end
 local missingLine, missingLineMeta=S.collectors.professionRecipes()
