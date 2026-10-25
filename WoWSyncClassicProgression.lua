@@ -115,10 +115,16 @@ S.collectors.reputation = function()
 end
 
 S.collectors.professionRecipes = function()
-    local open = (TradeSkillFrame and TradeSkillFrame.IsShown and TradeSkillFrame:IsShown()) or (CraftFrame and CraftFrame.IsShown and CraftFrame:IsShown())
+    local open = S.professionRecipeOpen or (TradeSkillFrame and TradeSkillFrame.IsShown and TradeSkillFrame:IsShown())
+        or (CraftFrame and CraftFrame.IsShown and CraftFrame:IsShown())
     if not open then return nil, { reason="Profession window closed", stale=true } end
+    if S.professionRecipeMode == "CRAFT" then return nil, { reason="Craft window recipe APIs unavailable; capture is UNKNOWN", stale=true } end
+    local lineState, professionName = safeCall(GetTradeSkillLine)
+    if lineState ~= "OBSERVED" or type(professionName) ~= "string" or professionName == "" then
+        return nil, { reason="Profession identity " .. lineState, stale=true }
+    end
     local ns, n = safeCall(GetNumTradeSkills)
-    if ns ~= "OBSERVED" or type(n) ~= "number" then return nil, { reason="Recipe list "..ns, stale=true } end
+    if ns ~= "OBSERVED" or type(n) ~= "number" or n <= 0 then return nil, { reason="Recipe list "..ns..(n == 0 and " (empty)" or ""), stale=true } end
     local recipes, partial = {}, false
     for i=1,math.min(n,1000) do
         local state,name,kind,_,_,_,_,_,_,_,link = safeCall(GetTradeSkillInfo,i)
@@ -132,13 +138,15 @@ S.collectors.professionRecipes = function()
             recipes[#recipes+1]={name=name,itemID=itemID,itemLink=link,difficulty=kind,reagents=reagents}
         else partial=true end
     end
-    return {formatVersion=1,evidence="OBSERVED",observedAt=S.Now(),clientFamily=family(),recipes=recipes}, {completeness=partial and "partial" or "complete"}
+    return {formatVersion=1,evidence="OBSERVED",observedAt=S.Now(),clientFamily=family(),
+        professions={{ name=professionName, professionName=professionName, observedAt=S.Now(), recipes=recipes }}},
+        {completeness=partial and "partial" or "complete"}
 end
 if addon.Forever then
     if foreverQuests then S.collectors.quests = foreverQuests end
     if foreverRecipes then S.collectors.professionRecipes = foreverRecipes end
 end
 
-for _, event in ipairs({ "CHARACTER_POINTS_CHANGED", "UPDATE_FACTION", "QUEST_LOG_UPDATE", "QUEST_LOG_CRITERIA_UPDATE", "TRADE_SKILL_SHOW", "CRAFT_SHOW", "TRADE_SKILL_CLOSE" }) do
+for _, event in ipairs({ "CHARACTER_POINTS_CHANGED", "UPDATE_FACTION", "QUEST_LOG_UPDATE", "QUEST_LOG_CRITERIA_UPDATE", "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "CRAFT_SHOW", "TRADE_SKILL_CLOSE", "CRAFT_CLOSE" }) do
     pcall(S.eventFrame.RegisterEvent, S.eventFrame, event)
 end

@@ -239,6 +239,9 @@ function S.CommitTrainer(category, data, meta)
 end
 
 local function ProfessionRecipeKey(row)
+    if type(row) == "table" and type(row.professionName or row.name) == "string" and not row.baseSkillLineID then
+        return "name:" .. (row.professionName or row.name)
+    end
     if type(row) ~= "table" or type(row.baseSkillLineID) ~= "number" or type(row.skillLineID) ~= "number" then return nil end
     return tostring(row.baseSkillLineID) .. ":" .. tostring(row.skillLineID)
 end
@@ -268,6 +271,16 @@ function S.CommitProfessionRecipes(data, meta)
         end
     end
 
+    if key:match("^name:") then
+        local merged = S.Copy(data)
+        merged.professions = rows
+        local now = S.Now()
+        local changed = not old or not Equal(old.data, merged)
+        owner.sections.professionRecipes = { data = merged, observedAt = now,
+            changedAt = changed and now or old.changedAt, revision = ((old and old.revision) or 0) + (changed and 1 or 0),
+            completeness = meta.completeness or "partial", reason = meta.reason, source = "client", capture = S.capture }
+        return
+    end
     local priorByID = {}
     for _, recipe in ipairs(currentPrior and currentPrior.recipes or {}) do
         if type(recipe) == "table" and type(recipe.recipeID) == "number" then priorByID[recipe.recipeID] = recipe end
@@ -653,11 +666,13 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
     elseif event == "TRAINER_CLOSED" then
         S.trainerOpen = false; Close("trainer"); S.trainerCategory = nil
     elseif (addon.Forever or not (WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail()) and S.collectors.professionRecipes) and event == "TRADE_SKILL_SHOW" then
-        S.professionRecipeOpen = true; S.Mark("professionRecipes")
+        S.professionRecipeOpen = true; S.professionRecipeMode = "TRADE_SKILL"; S.Mark("professionRecipes", 0)
+    elseif event == "TRADE_SKILL_UPDATE" and S.professionRecipeOpen then
+        S.Mark("professionRecipes", 0.35)
     elseif (addon.Forever or not (WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail()) and S.collectors.professionRecipes) and (event == "TRADE_SKILL_CLOSE" or event == "CRAFT_CLOSE") then
-        S.professionRecipeOpen = false
+        S.professionRecipeOpen = false; S.professionRecipeMode = nil
     elseif event == "CRAFT_SHOW" then
-        S.professionRecipeOpen = true; S.Mark("professionRecipes")
+        S.professionRecipeOpen = true; S.professionRecipeMode = "CRAFT"; S.Mark("professionRecipes", 0)
     elseif event:match("^TRAINER_") then
         S.Mark("trainer")
     elseif event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED"
