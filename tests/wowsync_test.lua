@@ -323,6 +323,9 @@ local oldRecord = S.record
 guid = "Player-1-B"; S.record = nil; event("PLAYER_LOGIN"); advance(1)
 check(S.record ~= oldRecord, "characters isolated by GUID")
 check(not S.record.sections.bank, "alt does not inherit bank")
+check(S.record.latestExport == nil, "new alt has no export before sync or logout")
+event("PLAYER_LOGOUT")
+check(S.record.latestExport and S.record.latestExport.text:find("[END]", 1, true), "logout creates the first export for a brand-new character")
 equal(WoWSyncDB.characters["Player-1-A"], oldRecord, "previous character remains available")
 equal(movingCalls, 0, "no gameplay action APIs called")
 
