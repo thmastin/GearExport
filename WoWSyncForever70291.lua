@@ -170,6 +170,11 @@ S.collectors = {
 -- This section is isolated to exact allowlisted Forever builds. The older
 -- Forever trainer tuple adapter is intentionally not activated here.
 S.order[#S.order + 1] = "forever70291Evidence"
+local captureOrderContainsEvidence = false
+for _, key in ipairs(S.captureOrder) do
+    if key == "forever70291Evidence" then captureOrderContainsEvidence = true; break end
+end
+if not captureOrderContainsEvidence then S.captureOrder[#S.captureOrder + 1] = "forever70291Evidence" end
 -- Keep WOWSYNC v1 text parse-compatible with the currently deployed Dashboard.
 -- The version-specific raw section is persisted alongside the export and is
 -- consumed by the separate Forever parser integration handoff.
