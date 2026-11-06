@@ -91,7 +91,7 @@ function verifyPackage(packagePath, target = 'Forever') {
             throw new Error('Package TOC does not carry the Forever interface/target markers');
         }
         const runtime = readForeverBuildGuard(guard);
-        if (!runtime) throw new Error('Forever runtime guard is missing or does not contain an exact build allowlist');
+        if (!runtime) throw new Error('Forever runtime guard is missing or does not contain a valid minimum build and verified profile set');
         if (runtime.interface !== manifest.interface) throw new Error('Forever manifest interface does not match the runtime guard');
         if (manifest.clientVersion !== undefined && manifest.clientVersion !== runtime.version) throw new Error('Forever manifest version does not match the runtime guard');
         if (manifest.clientBuilds !== undefined) {
@@ -133,13 +133,37 @@ function assertPackageMatchesSource(root, packagePath, packageInfo, target = 'Fo
     return true;
 }
 
-function validateForeverDestination(destination, repositoryRoot) {
+function resolveForeverClient(destination) {
     const resolved = path.resolve(destination);
     const parts = resolved.split(path.sep).filter(Boolean).map(part => part.toLowerCase());
-    const suffix = ['_classic_beta_', 'interface', 'addons', 'gearexport'];
-    if (parts.length < suffix.length || !suffix.every((part, index) => parts[parts.length - suffix.length + index] === part)) {
-        throw new Error('Refusing destination outside *_classic_beta_/Interface/AddOns/GearExport: ' + resolved);
+    const suffix = ['interface', 'addons', 'gearexport'];
+    if (parts.length < suffix.length + 1 || !suffix.every((part, index) => parts[parts.length - suffix.length + index] === part)) {
+        throw new Error('Refusing destination outside a supported Forever Interface/AddOns/GearExport layout: ' + resolved);
     }
+    const flavor = parts[parts.length - suffix.length - 1];
+    if (flavor !== '_classic_beta_' && flavor !== '_forever_') {
+        throw new Error('Refusing destination outside *_classic_beta_ or *_forever_: ' + resolved);
+    }
+    const clientRoot = path.dirname(path.dirname(path.dirname(resolved)));
+    let executable = 'WowB.exe';
+    if (flavor === '_forever_') {
+        const flavorInfo = path.join(clientRoot, '.flavor.info');
+        if (!fs.existsSync(flavorInfo) || !fs.statSync(flavorInfo).isFile()) {
+            throw new Error('Forever launch layout requires .flavor.info: ' + clientRoot);
+        }
+        if (fs.lstatSync(flavorInfo).isSymbolicLink()) throw new Error('Refusing redirected Forever flavor metadata: ' + flavorInfo);
+        const lines = fs.readFileSync(flavorInfo, 'utf8').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+        if (!/^Product Flavor!STRING:\d+$/i.test(lines[0] || '') || (lines[lines.length - 1] || '').toLowerCase() !== 'wowf') {
+            throw new Error('Client .flavor.info does not identify the Forever launch flavor (wowf): ' + flavorInfo);
+        }
+        executable = 'Wow.exe';
+    }
+    return { destination: resolved, flavor, clientRoot, executable, executablePath: path.join(clientRoot, executable) };
+}
+
+function validateForeverDestination(destination, repositoryRoot) {
+    const client = resolveForeverClient(destination);
+    const resolved = client.destination;
     const repo = path.resolve(repositoryRoot).toLowerCase();
     if (resolved.toLowerCase() === repo || resolved.toLowerCase().startsWith(repo + path.sep.toLowerCase())) {
         throw new Error('Refusing to deploy into the repository: ' + resolved);
@@ -164,5 +188,5 @@ function validateForeverDestination(destination, repositoryRoot) {
 module.exports = {
     hashFile, listTree, readManifest, expectedPackageEntries, verifyPackage,
     verifyDirectoryAgainstPackage, assertPackageMatchesSource, validateForeverDestination,
-    tocSources, readForeverBuildGuard,
+    tocSources, readForeverBuildGuard, resolveForeverClient,
 };

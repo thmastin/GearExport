@@ -4,8 +4,8 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const assert = require('assert');
-const { deployForever } = require('../scripts/deploy-forever.cjs');
-const { verifyPackage, verifyDirectoryAgainstPackage, validateForeverDestination } = require('../scripts/package-utils.cjs');
+const { deployForever, detectForeverRunning } = require('../scripts/deploy-forever.cjs');
+const { verifyPackage, verifyDirectoryAgainstPackage, validateForeverDestination, resolveForeverClient } = require('../scripts/package-utils.cjs');
 
 const obsolete = [
     'WoWSyncForeverBags.lua', 'WoWSyncForeverBank.lua', 'WoWSyncForeverProfessions.lua',
@@ -33,13 +33,17 @@ function makePackage(name, files = { 'GearExport.toc': '## Interface: 16001\n## 
         clientVersion: '1.60.1', clientBuilds: ['70291', '70338', '70450'], schema: 'WOWSYNC v1', hashes }, null, 2) + '\n');
     return directory;
 }
-function fixture(name, packagePath) {
+function fixture(name, packagePath, layout = 'classic_beta') {
     const base = path.join(temp, name);
-    const destination = path.join(base, 'World', '_classic_beta_', 'Interface', 'AddOns', 'GearExport');
+    const flavorFolder = layout === 'forever' ? '_forever_' : '_classic_beta_';
+    const clientRoot = path.join(base, 'World', flavorFolder);
+    const destination = path.join(clientRoot, 'Interface', 'AddOns', 'GearExport');
     const addons = path.dirname(destination);
     const backupRoot = path.join(base, 'backups');
     fs.mkdirSync(addons, { recursive: true });
-    return { base, destination, addons, backupRoot, packagePath };
+    fs.writeFileSync(path.join(clientRoot, layout === 'forever' ? 'Wow.exe' : 'WowB.exe'), 'fixture executable');
+    if (layout === 'forever') write(path.join(clientRoot, '.flavor.info'), 'Product Flavor!STRING:0\nwowf\n');
+    return { base, clientRoot, destination, addons, backupRoot, packagePath };
 }
 function deploy(args, hooks, clientBuild = '70291') {
     return deployForever({ ...args, hooks, clientVersion: '1.60.1', clientBuild, buildPackage: false,
@@ -48,11 +52,31 @@ function deploy(args, hooks, clientBuild = '70291') {
 
 try {
     const powershellLauncher = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deploy-forever.ps1'), 'utf8');
-    check(/for\s*\(\$level\s*=\s*0;\s*\$level\s*-lt\s*3;\s*\$level\+\+\)/.test(powershellLauncher),
-        'PowerShell launcher resolves WowB.exe from the Forever installation root');
+    check(/Wow\.exe/.test(powershellLauncher) && /WowB\.exe/.test(powershellLauncher)
+        && /\.flavor\.info/.test(powershellLauncher) && /Win32_Process/.test(powershellLauncher),
+        'PowerShell launcher selects the client executable from either validated layout and checks running processes');
     const validPackage = makePackage('valid-package');
     const info = verifyPackage(validPackage);
     equal(info.build, { version: '1.60.1', interface: 16001, minimumBuild: 70291, builds: ['70291', '70338', '70450'] }, 'Preserves the minimum and verified runtime build contract');
+    equal(info.manifest.clientBuilds, ['70291', '70338', '70450'], 'Manifest clientBuilds remains the verified build set');
+    const legacyLayout = fixture('legacy-layout', validPackage);
+    equal(resolveForeverClient(legacyLayout.destination).executable, 'WowB.exe', 'Classic beta layout selects WowB.exe');
+    const launchLayout = fixture('launch-layout', validPackage, 'forever');
+    equal(resolveForeverClient(launchLayout.destination).executable, 'Wow.exe', 'Forever launch layout selects Wow.exe');
+    equal(validateForeverDestination(launchLayout.destination, path.join(temp, 'test-repository')), launchLayout.destination,
+        'Forever launch layout remains within validated destination rules');
+    const wrongFlavor = fixture('wrong-flavor', validPackage, 'forever');
+    write(path.join(wrongFlavor.clientRoot, '.flavor.info'), 'Product Flavor!STRING:0\nwowb\n');
+    throws(() => validateForeverDestination(wrongFlavor.destination, path.join(temp, 'test-repository')), /does not identify the Forever launch flavor/,
+        'Launch layout with another flavor metadata is rejected');
+    const wrongPath = fixture('wrong-path', validPackage);
+    wrongPath.destination = path.join(wrongPath.base, 'World', '_retail_', 'Interface', 'AddOns', 'GearExport');
+    throws(() => validateForeverDestination(wrongPath.destination, path.join(temp, 'test-repository')), /Refusing destination/,
+        'Unsupported client folder is rejected');
+    const tasklist = (_command, args) => ({ status: 0, stdout: args[1].includes('Wow.exe') ? '"Wow.exe","1234"' : 'INFO: No tasks are running' });
+    check(detectForeverRunning(tasklist, 'win32'), 'Running Wow.exe launch client is detected');
+    check(detectForeverRunning((_command, args) => ({ status: 0, stdout: args[1].includes('WowB.exe') ? '"WowB.exe","1234"' : 'INFO: No tasks are running' }), 'win32'),
+        'Running WowB.exe beta client is detected');
     const legacyGuardPackage = makePackage('legacy-single-build', {
         'GearExport.toc': '## Interface: 16001\n## X-WoWSync-Target: Forever\nWoWSyncForever.lua\n',
         'WoWSyncForever.lua': 'local F = { version = "1.60.1", build = "70291", interface = 16001 }\n',
@@ -73,7 +97,12 @@ try {
     const latestBuildInstall = fixture('latest-build', validPackage);
     equal(deploy(latestBuildInstall, undefined, '70450').status, 'installed', 'Deployment accepts a verified Forever update');
     const newerBuildInstall = fixture('newer-build', validPackage);
-    equal(deploy(newerBuildInstall, undefined, '70999').status, 'installed', 'Deployment accepts a newer unlisted Forever build above minimum');
+    const unverifiedBuildInstall = fixture('unverified-build-70790', validPackage, 'forever');
+    const unverifiedResult = deploy(unverifiedBuildInstall, undefined, '70790');
+    equal(unverifiedResult.status, 'installed', 'Deployment accepts build 70790 above minimum');
+    equal(unverifiedResult.compatibility, 'UNVERIFIED_BUILD', 'Build 70790 remains explicitly unverified');
+    check(!info.manifest.clientBuilds.includes('70790'), 'Build 70790 is not added to the verified manifest set');
+    equal(deploy(newerBuildInstall, undefined, '70999').compatibility, 'UNVERIFIED_BUILD', 'Newer unlisted build remains unverified');
     const install = fixture('fresh', validPackage);
     const freshResult = deploy(install);
     equal(freshResult.status, 'installed', 'Fresh installation succeeds');
@@ -121,11 +150,11 @@ try {
     throws(() => deploy(wrong), /Refusing destination/, 'Wrong destination is rejected in preflight');
     const running = fixture('running', validPackage);
     throws(() => deployForever({ ...running, clientRunning: true, buildPackage: false, validateSource: false, detectProcess: false, requireCommittedSource: false, repositoryRoot: path.join(temp, 'test-repository') }),
-        /Forever client .* is running/, 'Running Forever client rejected');
+        /Forever client process is running/, 'Running Forever client rejected');
     const mismatch = fixture('guard-mismatch', validPackage);
     throws(() => deployForever({ ...mismatch, clientVersion: '1.60.1', clientBuild: '70009', buildPackage: false,
         validateSource: false, detectProcess: false, requireCommittedSource: false, repositoryRoot: path.join(temp, 'test-repository') }),
-        /refusing incompatible deployment/, 'Target executable build outside exact allowlist is refused');
+        /refusing incompatible deployment/, 'Target executable build below the minimum is refused');
     const unknown = fixture('unknown-guard-build', validPackage);
     throws(() => deploy(unknown, undefined, '70009'), /refusing incompatible deployment/, 'A below-minimum build is refused');
 
