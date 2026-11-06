@@ -9,6 +9,48 @@ return function(S, check, equal)
     check(found, "70291 evidence included in normal export refresh")
     check(S.structuredOnly.forever70291Evidence, "new evidence stays out of strict WOWSYNC v1 text for parser compatibility")
 
+    local scheduled, positions = {}, {}
+    for index, key in ipairs(S.captureOrder) do
+        scheduled[key] = (scheduled[key] or 0) + 1
+        positions[key] = index
+    end
+    equal(scheduled.forever70291Evidence, 1, "70291 evidence collector is scheduled exactly once")
+    check(positions.forever70291Evidence > positions.equipment and positions.forever70291Evidence > positions.bags,
+        "70291 evidence is scheduled after equipment and bags")
+    -- gearCandidates and professionRecipes have special processing paths, but remain scheduled.
+    for key, collector in pairs(S.collectors) do
+        if type(collector) == "function" then
+            equal(scheduled[key], 1, "registered collector is scheduled exactly once: " .. key)
+        end
+    end
+
+    local oldFrame = ClassTrainerFrame
+    local oldCount, oldInfo, oldCost = GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost
+    local oldSkillReq, oldAbilityReq = GetTrainerServiceSkillReq, GetTrainerServiceAbilityReq
+    local oldDirty, oldAutoExport, oldCapture = S.dirty, S.autoExportPending, S.capture
+    local oldEvidenceSection = S.record.sections.forever70291Evidence
+    ClassTrainerFrame = { IsShown = function() return true end }
+    GetNumTrainerServices = function() return 1 end
+    GetTrainerServiceInfo = function() return "Synthetic Trainer Ability", "raw-status", 123, 10, "Rank 1", "" end
+    GetTrainerServiceCost = function() return 0 end
+    GetTrainerServiceSkillReq = function() return "Tailoring", 1, false end
+    GetTrainerServiceAbilityReq = function() return nil, true end
+    S.dirty = {}
+    S.Mark("forever70291Evidence", 0)
+    check(S.dirty.forever70291Evidence ~= nil, "marking Forever raw evidence queues its collector")
+    S.Process(true)
+    local captured = S.record.sections.forever70291Evidence
+    check(type(captured) == "table", "processing stores the Forever raw evidence section")
+    equal(captured.data.trainer.lastObserved.state, "OBSERVED_OPEN_WINDOW", "processed section contains a trainer window observation")
+    equal(captured.data.trainer.lastObserved.services[1].calls.info.returns[1].observation.value,
+        "Synthetic Trainer Ability", "processed section contains the captured trainer service")
+    check(type(captured.data.itemFacts.observedAt) == "number", "processed section contains numeric itemFacts.observedAt")
+    S.record.sections.forever70291Evidence = oldEvidenceSection
+    S.dirty, S.autoExportPending, S.capture = oldDirty, oldAutoExport, oldCapture
+    ClassTrainerFrame = oldFrame
+    GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost = oldCount, oldInfo, oldCost
+    GetTrainerServiceSkillReq, GetTrainerServiceAbilityReq = oldSkillReq, oldAbilityReq
+
     local oldSkill, oldFrame, oldItemAPI, oldSpecializationInfo, oldPlayerInfo = C_SkillInfo, ClassTrainerFrame, C_Item, C_SpecializationInfo, C_PlayerInfo
     local oldTrainerFrame, oldTrainerStep = TrainerFrame, ClassTrainerFrameSkillStep
     local oldCount, oldInfo, oldCost = GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost
