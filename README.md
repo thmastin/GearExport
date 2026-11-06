@@ -11,10 +11,12 @@ GitHub Actions runs the existing Lua regression harness with Fengari (Lua 5.3 ru
 TradeSkillMaster is optional. When it is installed, GearExport uses its public API to include market pricing and current-character inventory-location data.
 
 **Forever compatibility** provides a dedicated observational export for client
-`1.60.1`, exact builds `70291`, `70338`, and `70450`, interface `16001`. Build 70291's
+`1.60.1`, minimum build `70291`, interface `16001`. Builds `70291`, `70338`, and
+`70450` have verified profiles; newer builds meeting the minimum remain
+capture-compatible but are labelled `UNVERIFIED_BUILD` until reviewed. Build 70291's
 capture path is live-validated on Hallo. Build 70338 is allowlisted after its
 matching Forever UI-source API contract review; WoWSync has not yet run in-game
-on 70338 or 70450. Unknown builds remain rejected. The supported capture path includes character
+on 70338 or 70450. Builds below the minimum, wrong versions, and wrong interfaces remain rejected. The supported capture path includes character
 identity/build, equipped items, carried bags, and structured raw skill/runtime
 evidence. The WOWSYNC v1 export and same-refresh `WoWSyncDB` were compared after
 the live `/wowsync` capture. Location, faction, currency, playtime, XP,
@@ -23,7 +25,8 @@ equipment effective stats and skill/trainer interpretations are not inferred.
 See [70291 runtime evidence](FOREVER_EVIDENCE_70291.md) and the historical
 [70245 scoped capture record](FOREVER_PHASE3.md). Build with
 `node scripts/package.cjs Forever`; the package is `dist/Forever/GearExport`
-and targets `_classic_beta_/Interface/AddOns`. It excludes BankCleanup and the
+and installs into either `_classic_beta_/Interface/AddOns` or the Forever launch
+layout `_forever_/Interface/AddOns`. It excludes BankCleanup and the
 legacy exporter.
 
 The older [Forever bags](FOREVER_BAGS.md), [professions](FOREVER_PROFESSIONS.md),
@@ -44,7 +47,8 @@ For a single-client package, run `node scripts/package.cjs TBC`,
 `dist/<target>/GearExport` folder into that client's `Interface/AddOns`
 directory. Each package has one selected `GearExport.toc`; Retail excludes
 BankCleanup. Retail targets `_retail_`, Era targets `_classic_era_`, TBC
-Anniversary targets `_anniversary_`, and Forever targets `_classic_beta_`.
+Anniversary targets `_anniversary_`; Forever supports `_classic_beta_` and
+`_forever_` client layouts.
 
 Forever's package is larger (~28 files) because it ships Forever adapter Lua and
 Forever docs and omits the legacy exporter, collectors, and BankCleanup. The
@@ -53,8 +57,9 @@ other flavors are thinner TOC subsets of the same shared root (~18 files). See
 
 ### Deploying Forever on Windows
 
-Use this single command from a normal Windows session to build and deploy the
-Forever package:
+Use this command from a normal Windows session to build and deploy the Forever
+package. The default supports the legacy beta layout; pass the launch-layout
+destination when using the Forever launcher:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\dev\wow-addons\GearExport\scripts\deploy-forever.ps1" -Destination "D:\World of Warcraft\_classic_beta_\Interface\AddOns\GearExport"
@@ -63,18 +68,21 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\dev\wow-addons\GearE
 `-ExecutionPolicy Bypass` applies only to that PowerShell process; it does not
 change machine or user policy. The script calls the existing package builder,
 then checks the package manifest's target, interface, exact file set, SHA256
-hashes, Forever TOC marker, and literal version/build guard. It preserves the
+hashes, Forever TOC marker, and runtime version/minimum-build policy. It preserves the
 guard from the current package source and requires all tracked source changes
 to be committed. Untracked files are ignored and preserved. The backup record
-includes the source commit and package manifest hash. It rejects destinations
-that do not end in `_classic_beta_\Interface\AddOns\GearExport`, destinations
-inside this repository, redirected symlink/junction path components, a running
-`WowB.exe` Forever client, or a target executable whose version/build does not
-exactly match the package guard.
+includes the source commit and package manifest hash. It accepts only
+`_classic_beta_\Interface\AddOns\GearExport` with `WowB.exe`, or
+`_forever_\Interface\AddOns\GearExport` with `.flavor.info` identifying
+`wowf` and `Wow.exe`. It rejects other destinations, paths inside this repository,
+redirected symlink/junction components, a running WoW client process, and target
+executables whose version or minimum build is incompatible.
 
-The deployment workflow preserves the exact Forever runtime allowlist
-`1.60.1 / 70291, 70338, 70450 / interface 16001` and compares the target `WowB.exe`
-FileVersion against that allowlist before changing the installation.
+The package manifest `clientBuilds` field remains the verified profile set
+`70291, 70338, 70450`; it does not claim newer builds are verified. Deployment
+compares the selected executable's FileVersion with runtime version `1.60.1`
+and minimum build `70291`. A newer compatible build such as 70790 can be
+installed, but the addon continues to label it `UNVERIFIED_BUILD`.
 
 Before changing the installation, deployment creates a complete copy of the
 existing `GearExport` directory under
@@ -96,8 +104,8 @@ the installed package passes exact-set and SHA256 verification.
 If Codex command policy blocks deployment, do not retry with modified policy or
 another command form. Open a normal Windows PowerShell window and run the exact
 command above. For a different valid Forever installation path, change only
-the `-Destination` value while keeping the `_classic_beta_\Interface\AddOns\GearExport`
-suffix. If preflight reports a running client, close Forever and retry. If it
+the `-Destination` value while keeping either supported Forever layout suffix.
+If preflight reports a running client, close Forever and retry. If it
 reports an invalid destination, confirm the client flavor and folder layout.
 If package validation fails, keep the installation closed and resolve the
 reported source/package mismatch before retrying. Node.js must be on `PATH`.

@@ -98,7 +98,7 @@ local function advance(duration)
 end
 check(C.IsForever(), "explicit Forever package and supported exact version/build")
 build = "70291"; check(C.IsForever(), "previously live-validated build remains supported"); build = "70338"
-build = "70450"; check(C.IsForever(), "verified Forever build is supported"); build = "70999"; check(C.IsForever(), "newer unlisted Forever build remains capture-compatible"); build = "70338"
+build = "70450"; check(C.IsForever(), "verified Forever build is supported"); build = "70790"; check(C.IsForever(), "launch build 70790 remains capture-compatible"); build = "70999"; check(C.IsForever(), "newer unlisted Forever build remains capture-compatible"); build = "70338"
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
 check(not C.IsRetail(), "Forever is not routed as Retail even with a shared project ID")
 target = "Retail"; check(not C.IsForever(), "wrong package rejected"); target = "Forever"
@@ -258,10 +258,10 @@ check(C.IsSupportedForeverBuild("70450", 16001), "build 70450 passes the exact F
 check(S.RenderSection("character", launchBuildSnapshot):find("Race: Dwarf", 1, true),
     "build 70450 serializes observed race in the character section")
 local newerBuildSnapshot = S.GetSnapshot()
-newerBuildSnapshot.sections.character.data.clientBuild = "70999"
+newerBuildSnapshot.sections.character.data.clientBuild = "70790"
 local newerRendered = S.RenderSection("character", newerBuildSnapshot)
 check(newerRendered:find("Race: Dwarf", 1, true), "unlisted newer build retains observed race")
-check(newerRendered:find("Compatibility: UNVERIFIED_BUILD", 1, true) and newerRendered:find("build 70999", 1, true), "newer build is explicitly labelled with its build number")
+check(newerRendered:find("Compatibility: UNVERIFIED_BUILD", 1, true) and newerRendered:find("build 70790", 1, true), "launch build 70790 is explicitly labelled unverified")
 local unknownBuildSnapshot = S.GetSnapshot()
 unknownBuildSnapshot.sections.character.data.clientBuild = nil
 check(not S.RenderSection("character", unknownBuildSnapshot):find("Race:", 1, true),

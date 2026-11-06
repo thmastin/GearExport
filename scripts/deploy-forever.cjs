@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const {
     hashFile, listTree, verifyPackage, verifyDirectoryAgainstPackage,
-    assertPackageMatchesSource, validateForeverDestination,
+    assertPackageMatchesSource, validateForeverDestination, resolveForeverClient,
 } = require('./package-utils.cjs');
 
 const root = path.resolve(__dirname, '..');
@@ -46,11 +46,14 @@ function removeTree(directory) {
     if (fs.existsSync(directory)) fs.rmSync(directory, { recursive: true, force: true });
 }
 
-function detectForeverRunning() {
-    if (process.platform !== 'win32') return false;
-    const result = spawnSync('tasklist.exe', ['/FI', 'IMAGENAME eq WowB.exe', '/FO', 'CSV', '/NH'], { encoding: 'utf8' });
-    if (result.error || result.status !== 0) throw new Error('Could not check for the Forever process; refusing deployment. ' + (result.error?.message || result.stderr || ''));
-    return /^\s*"WowB\.exe"/im.test(result.stdout || '');
+function detectForeverRunning(runTasklist = spawnSync, platform = process.platform) {
+    if (platform !== 'win32') return false;
+    for (const executable of ['Wow.exe', 'WowB.exe']) {
+        const result = runTasklist('tasklist.exe', ['/FI', 'IMAGENAME eq ' + executable, '/FO', 'CSV', '/NH'], { encoding: 'utf8' });
+        if (result.error || result.status !== 0) throw new Error('Could not check for the Forever process; refusing deployment. ' + (result.error?.message || result.stderr || ''));
+        if (new RegExp('^\\s*"' + executable.replace('.', '\\.') + '"', 'im').test(result.stdout || '')) return true;
+    }
+    return false;
 }
 
 function getCommittedSource(rootPath) {
@@ -69,8 +72,10 @@ function deployForever({ destination, backupRoot, clientRunning = false, hooks =
     const projectRoot = path.resolve(repositoryRoot);
     const packageDirectory = path.resolve(packagePath);
     const install = validateForeverDestination(destination, projectRoot);
+    const client = resolveForeverClient(install);
     const backups = ensureBackupOutsideAddons(backupRoot, install);
-    if (clientRunning || (detectProcess && detectForeverRunning())) die('Forever client (WowB.exe) is running. Close Forever completely and retry.');
+    if (!fs.existsSync(client.executablePath) || !fs.statSync(client.executablePath).isFile()) die('Forever executable was not found: ' + client.executablePath);
+    if (clientRunning || (detectProcess && detectForeverRunning())) die('Forever client process is running. Close Forever completely and retry.');
     const sourceCommit = requireCommittedSource ? getCommittedSource(projectRoot) : 'uncommitted-working-tree';
 
     // Package once through the repository's existing builder, then validate its complete manifest contract.
@@ -81,7 +86,7 @@ function deployForever({ destination, backupRoot, clientRunning = false, hooks =
     }
     const packageInfo = verifyPackage(packageDirectory);
     if (validateSource) assertPackageMatchesSource(projectRoot, packageDirectory, packageInfo);
-    if (requireCommittedSource && (!clientVersion || !clientBuild)) die('Target WowB.exe version/build evidence was not supplied by the PowerShell launcher.');
+    if (requireCommittedSource && (!clientVersion || !clientBuild)) die('Target ' + client.executable + ' version/build evidence was not supplied by the PowerShell launcher.');
     const numericBuild = /^\d+$/.test(String(clientBuild ?? '')) ? Number(clientBuild) : NaN;
     const compatibleTargetBuild = packageInfo.build.minimumBuild !== undefined
         ? Number.isFinite(numericBuild) && numericBuild >= packageInfo.build.minimumBuild
@@ -143,7 +148,9 @@ function deployForever({ destination, backupRoot, clientRunning = false, hooks =
         return {
             status: 'installed', install, backup: recovery, sourceCommit, files: packageInfo.entries.length,
             manifestHash: hashFile(path.join(packageDirectory, 'package-manifest.json')),
-            guard: packageInfo.build, cleanupWarning,
+            guard: packageInfo.build,
+            compatibility: packageInfo.build.builds.includes(String(clientBuild)) ? 'VERIFIED_PROFILE' : 'UNVERIFIED_BUILD',
+            cleanupWarning,
         };
     } catch (deploymentError) {
         let rollbackStatus = 'not-needed';
