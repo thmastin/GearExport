@@ -12,14 +12,16 @@ if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
     S.order[#S.order + 1] = "professionRecipes"
     S.order[#S.order + 1] = "reputation"
 elseif WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever() then
+    table.insert(S.order, 9, "petSpells")
     S.order[#S.order + 1] = "quests"
     S.order[#S.order + 1] = "professionRecipes"
 end
 -- Captured into SavedVariables only: the WOWSYNC v1 text omits these sections so
 -- existing importers, which reject unknown section headers, keep working.
-S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true, talents = true }
+S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true, talents = true, petSpells = true }
 addon.Sync = S
 S.captureOrder = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer", "gearCandidates" }
+if addon.Forever then table.insert(S.captureOrder, 8, "petSpells") end
 for _, key in ipairs({ "accountBank", "guildBank", "currencies", "combatSpecialization",
     "professionSpecializations", "reputation", "quests", "professionRecipes", "talents" }) do
     S.captureOrder[#S.captureOrder + 1] = key
@@ -713,10 +715,12 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
     elseif event == "SKILL_LINES_CHANGED" or event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE"
         or event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELL_TEXT_UPDATE"
         or event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then
-        S.Mark("professions"); S.Mark("spells"); S.Mark("trainer")
+        S.Mark("professions"); S.Mark("spells"); S.Mark("petSpells"); S.Mark("trainer")
         if event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then S.Mark("professionRecipes") end
         if event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELLS_CHANGED" then S.Mark("combatSpecialization") end
         if event == "SKILL_LINES_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE" then S.Mark("professionSpecializations") end
+    elseif event == "UNIT_PET" and arg == "player" or event == "PET_BAR_UPDATE" then
+        S.Mark("petSpells")
     elseif event == "NEW_RECIPE_LEARNED" then
         S.Mark("professionRecipes")
     elseif event == "QUEST_ACCEPTED" or event == "QUEST_AUTOCOMPLETE" or event == "QUEST_COMPLETE"
