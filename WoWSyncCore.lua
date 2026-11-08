@@ -670,7 +670,9 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
     elseif event == "PLAYER_LOGOUT" then
         if S.record then
             pcall(Process, true)
-            if S.record.latestExport then RefreshLatestExport() end
+            -- A brand-new character has no export yet; create its first one on logout/reload
+            -- so the watcher picks it up without a manual /wowsync.
+            if S.record.latestExport or (S.record.identity and S.record.identity.name) then RefreshLatestExport() end
         end
     elseif event == "BANKFRAME_OPENED" then
         S.bankOpen = true; Visit("bank"); if S.collectors.accountBank then Visit("accountBank") end; S.Mark("bank"); S.Mark("accountBank"); S.Mark("bags"); MarkGearCandidates()
