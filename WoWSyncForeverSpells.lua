@@ -21,7 +21,8 @@ S.collectors.petSpells = function()
     if not guid then return nil, { reason = "Active pet identity unavailable", stale = true } end
     local family = F.Read("Pet family", UnitCreatureFamily, 1, "string", {}, "pet")
     local level = F.Number("Pet level", UnitLevel, {}, "pet")
-    if banks.Pet == nil or type(api.HasPetSpells) ~= "function"
+    if banks.Pet == nil or type(types.PetAction) ~= "number" or type(types.Spell) ~= "number"
+        or type(api.HasPetSpells) ~= "function"
         or type(api.GetSpellBookItemName) ~= "function" or type(api.GetSpellBookItemType) ~= "function" then
         return nil, { reason = "Forever pet spellbook APIs unavailable", stale = true }
     end
@@ -36,8 +37,10 @@ S.collectors.petSpells = function()
         local typeOk, itemType, actionID, spellID = pcall(api.GetSpellBookItemType, index, banks.Pet)
         if not nameOk or not typeOk then
             issues[#issues + 1] = "Pet spellbook item " .. index .. " unavailable"
-        elseif itemType == types.Spell then
-            spellID = spellID or actionID
+        -- Forever reports type PetAction for both commands/stances and learned
+        -- spells. Only its explicit spellID distinguishes abilities; actionID
+        -- contains packed pet-action identifiers and must never be substituted.
+        elseif itemType == types.Spell or itemType == types.PetAction and type(spellID) == "number" and spellID > 0 then
             if type(spellID) ~= "number" or spellID <= 0 or type(spellName) ~= "string" or spellName == "" then
                 issues[#issues + 1] = "Pet spellbook item " .. index .. " identity pending"
             elseif not seen[spellID] then

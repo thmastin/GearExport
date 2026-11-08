@@ -23,9 +23,11 @@ The Forever package keeps the owner's learned spellbook in the existing
 structured `petSpells` section of `WoWSyncDB`; they are not added to WOWSYNC v1
 text, owner spells, trainer offers, or action-bar evidence.
 
-Pet evidence uses `C_SpellBook.HasPetSpells()` and the `Pet` spell bank. Each
-observation carries the active pet GUID and any available name, family, and
-level. An unavailable spellbook, absent pet, or pet switch during enumeration
+Pet evidence uses `C_SpellBook.HasPetSpells()` and the `Pet` spell bank. Forever
+reports `PetAction` type for commands, stances, and learned abilities alike;
+only rows with an explicit spell ID are abilities. Packed `actionID` values are
+never treated as spell IDs. Each observation carries the active pet GUID and
+any available name, family, and level. An unavailable spellbook, absent pet, or pet switch during enumeration
 does not create an observed empty list. Carried data remains `LAST_SEEN` at its
 original observation time and retains the pet identity. The pet bank's
 spellbook subName is retained as `subName` (it may describe an ability subtype,
