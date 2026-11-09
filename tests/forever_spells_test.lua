@@ -166,6 +166,33 @@ return function(S, check, equal, advance)
     check(S.eventFrame.events.UNIT_PET, "pet identity change event registered")
     check(S.eventFrame.events.PET_BAR_UPDATE, "pet spellbar refresh event registered")
     check(table.concat(S.order, ","):find("petSpells", 1, true) ~= nil, "pet collector included in scheduled capture order")
+
+    -- Synthetic end-to-end regression: the pet is already out when PLAYER_LOGIN
+    -- fires, so no UNIT_PET/PET_BAR_UPDATE is available to trigger the first scan.
+    -- Login/world sync and a following export must still write OBSERVED data to
+    -- WoWSyncDB. This verifies capture flow, not live build compatibility.
+    activeGUID, petName, petFamily = "Pet-0-7073-0-3-416-B91DE90ECA", "Laznip", "Imp"
+    UnitExists = function(unit) return unit == "pet" end
+    UnitGUID = function(unit) return unit == "pet" and activeGUID or "Player-Forever-Test" end
+    UnitLevel = function(unit) return unit == "pet" and 12 or 10 end
+    useLivePetFixture(liveImp)
+    WoWSyncDB.characters["Player-Forever-Test"].sections.petSpells = nil
+    S.record = nil -- emulate addon initialization on reload using the existing SavedVariables table
+    S.dirty.petSpells = nil
+    S.eventFrame.scripts.OnEvent(S.eventFrame, "PLAYER_LOGIN")
+    advance(1)
+    local loginSection = WoWSyncDB.characters["Player-Forever-Test"].sections.petSpells
+    check(loginSection and loginSection.data and loginSection.completeness == "complete",
+        "already-summoned pet is observed on login without waiting for a pet-change event")
+    equal(loginSection.data.pet.guid, "Pet-0-7073-0-3-416-B91DE90ECA", "login capture keeps active Imp identity")
+    equal(#loginSection.data.entries, 4, "login capture stores all active Imp abilities")
+    local exportText
+    check(S.Export(function(text) exportText = text end), "export after login pet scan is accepted")
+    advance(3.2)
+    check(type(exportText) == "string", "export completes after the scheduled pet scan")
+    local savedSection = WoWSyncDB.characters["Player-Forever-Test"].sections.petSpells
+    check(savedSection.data and savedSection.completeness == "complete", "export leaves the OBSERVED pet section in SavedVariables")
+    equal(savedSection.data.pet.guid, "Pet-0-7073-0-3-416-B91DE90ECA", "SavedVariables pet section is not tied to a later pet event")
     UnitExists, UnitGUID, UnitName, UnitCreatureFamily, UnitLevel = savedExists, savedGUID, savedName, savedFamily, savedLevel
     C_SpellBook, Enum, issecretvalue, GetProfessions = savedAPI, savedEnum, oldSecret, savedProfessions
 end
