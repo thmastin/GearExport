@@ -124,11 +124,12 @@ local legacySections = { professions = { data = { entries = { { name = "Stale pr
 local legacyItems = { [6948] = { bindType = 1 } }
 local legacyVisits = { bank = { openedAt = 123 } }
 local legacyExport = { text = "old 70009 WOWSYNC export", generatedAt = 123 }
-WoWSyncDB = { schemaVersion = 1, settings = { preserve = true }, characters = {
+WoWSyncDB = { schemaVersion = 2, settings = { preserve = true, archivedCaptureRetention = 2 }, characters = {
     ["Player-Forever-Test"] = { captureProfile = "Forever:1.60.1:70009:16001",
         sections = legacySections, itemMetadata = legacyItems, visits = legacyVisits,
-        latestExport = legacyExport },
-    ["Player-Other"] = { sections = { forever70291Evidence = { data = { huge = true } }, bags = { data = { marker = true } } } },
+        latestExport = legacyExport, archivedCaptures = { { marker = "old history" } } },
+    ["Player-Other"] = { archivedCaptures = { { marker = "other old history" } },
+        sections = { forever70291Evidence = { data = { huge = true } }, bags = { data = { marker = true } } } },
 } }
 WoWSyncDB.characters["Player-Forever-Test"].sections.forever70291Evidence = { data = { huge = true } }
 S.eventFrame.scripts.OnEvent(S.eventFrame, "PLAYER_LOGIN")
@@ -152,14 +153,26 @@ equal(S.record.archivedCaptures[1].latestExport, legacyExport, "legacy export re
 check(S.record.latestExport == nil or S.record.latestExport.text ~= legacyExport.text,
     "legacy export is invalidated before a fresh build-scoped export")
 equal(WoWSyncDB.settings.preserve, true, "existing global settings remain intact")
-equal(WoWSyncDB.schemaVersion, 2, "database schema is bumped for evidence cleanup")
+equal(WoWSyncDB.schemaVersion, 3, "database schema is bumped for archive and evidence cleanup")
 check(WoWSyncDB.characters["Player-Other"].sections.forever70291Evidence == nil
     and S.record.sections.forever70291Evidence == nil, "one-time migration removes old evidence from every character")
-equal(WoWSyncDB.settings.archivedCaptureRetention, 3, "archive retention defaults to three")
+check(WoWSyncDB.characters["Player-Other"].archivedCaptures == nil
+    and S.record.archivedCaptures[1].marker == nil, "one-time migration removes old archives from every character")
+equal(WoWSyncDB.settings.archivedCaptureRetention, 2, "explicit non-default retention setting is preserved")
+local savedDB, savedRecord, savedSettings, savedPrune = WoWSyncDB, S.record, S.settings, S.PruneArchives
+WoWSyncDB = { characters = {
+    ["Player-Forever-Test"] = { captureProfile = "Forever:1.60.1:70338:16001", sections = {} },
+} }
+S.record = nil
+check(S.Initialize(), "versionless legacy database initializes through the v3 migration")
+equal(WoWSyncDB.settings.archivedCaptureRetention, 0, "archive retention defaults to zero")
+WoWSyncDB, S.record, S.settings, S.PruneArchives = savedDB, savedRecord, savedSettings, savedPrune
 local archiveRecord = { archivedCaptures = { { i = 1 }, { i = 2 }, { i = 3 }, { i = 4 } } }
+S.settings.archivedCaptureRetention = 3
 S.PruneArchives(archiveRecord)
 equal(#archiveRecord.archivedCaptures, 3, "retention prunes old archives")
 equal(archiveRecord.archivedCaptures[1].i, 2, "retention keeps newest archives")
+S.settings.archivedCaptureRetention = 0
 local memoryLines, oldPrint = {}, print
 print = function(line) memoryLines[#memoryLines + 1] = line end
 UpdateAddOnMemoryUsage = function() end

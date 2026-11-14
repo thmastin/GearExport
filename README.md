@@ -287,19 +287,20 @@ Captures update in-memory SavedVariables immediately. For an external tool readi
 the file from disk, use an explicit `/reload` or normal logout to let the client flush
 it. Copy/paste needs no reload.
 
-Forever retains the newest three archived captures per character by default.
-`/wowsync retention N` changes this to 1–25; archives are pruned at login and
-when another profile is archived. The addon has no Dashboard-ingested marker, so
-the Dashboard must ingest the file before an older archive ages out. The separate
+Forever retains zero archived captures per character by default.
+`/wowsync retention N` changes this to 0–25; archives are pruned at login and
+when another profile is archived. Set a positive value only to retain archives
+for local debugging. The addon has no Dashboard-ingested marker. The separate
 Dashboard importer selects `latestExport.text` and its existing supported
 structured sidecars; it does not read `archivedCaptures` or
-`forever70291Evidence`. Its schema 2 compatibility and regression test are in the
+`forever70291Evidence`. Its schema 2 and 3 compatibility and regression test are in the
 WoWSync-Dashboard repository (`packages/server/src/importSaved.ts` and
 `packages/server/test/importSaved.test.ts`).
 
 Forever raw `forever70291Evidence` collection is off by default. Use
-`/wowsync evidence on` for temporary diagnostics. A schema 1 to 2 migration removes
-that section from every character once while preserving all other SavedVariables.
+`/wowsync evidence on` for temporary diagnostics. A schema 1 or 2 to 3 migration
+removes archived captures and that evidence section from every character once
+while preserving all other SavedVariables.
 `/wowsync memory` prints estimated serialized bytes by structured section and for
 the ten largest characters, the total `WoWSyncDB` estimate, and the addon's current
 Lua memory reported by the client. The serialization estimate is approximate.

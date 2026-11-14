@@ -64,7 +64,8 @@ end
 function S.Initialize()
     if S.record then return true end
     if WoWSyncDB ~= nil and (type(WoWSyncDB) ~= "table"
-        or (WoWSyncDB.schemaVersion ~= nil and WoWSyncDB.schemaVersion ~= 1 and WoWSyncDB.schemaVersion ~= 2)) then
+        or (WoWSyncDB.schemaVersion ~= nil and WoWSyncDB.schemaVersion ~= 1
+            and WoWSyncDB.schemaVersion ~= 2 and WoWSyncDB.schemaVersion ~= 3)) then
         S.error = "Unsupported WoWSync database; existing data was preserved."
         return false
     end
@@ -77,19 +78,25 @@ function S.Initialize()
     if not guid then return false end
     WoWSyncDB = WoWSyncDB or {}
     local db = WoWSyncDB
-    if db.schemaVersion == 1 then
+    local migrateArchiveCleanup = db.schemaVersion == nil or db.schemaVersion == 1 or db.schemaVersion == 2
+    if migrateArchiveCleanup then
         for _, character in pairs(type(db.characters) == "table" and db.characters or {}) do
-            if type(character) == "table" and type(character.sections) == "table" then
-                character.sections.forever70291Evidence = nil
+            if type(character) == "table" then
+                character.archivedCaptures = nil
+                if type(character.sections) == "table" then character.sections.forever70291Evidence = nil end
             end
         end
-        db.schemaVersion = 2
     end
-    db.schemaVersion = 2
+    db.schemaVersion = 3
     db.settings = type(db.settings) == "table" and db.settings or {}
+    -- Schema 2 automatically wrote three as its default; reset that value while
+    -- retaining an explicitly chosen non-default retention setting.
+    if migrateArchiveCleanup and tonumber(db.settings.archivedCaptureRetention) == 3 then
+        db.settings.archivedCaptureRetention = 0
+    end
     db.characters = type(db.characters) == "table" and db.characters or {}
-    db.settings.archivedCaptureRetention = tonumber(db.settings.archivedCaptureRetention) or 3
-    if db.settings.archivedCaptureRetention < 1 then db.settings.archivedCaptureRetention = 1 end
+    db.settings.archivedCaptureRetention = tonumber(db.settings.archivedCaptureRetention) or 0
+    if db.settings.archivedCaptureRetention < 0 then db.settings.archivedCaptureRetention = 0 end
     if db.settings.archivedCaptureRetention > 25 then db.settings.archivedCaptureRetention = 25 end
     local function pruneArchives(record)
         if type(record) ~= "table" or type(record.archivedCaptures) ~= "table" then return end
@@ -857,7 +864,7 @@ SlashCmdList["WOWSYNC"] = function(argument)
             S.settings.archivedCaptureRetention = math.max(1, math.min(25, math.floor(requested)))
             for _, character in pairs(WoWSyncDB.characters or {}) do S.PruneArchives(character) end
         end
-        say("Archived capture retention: " .. tostring(S.settings.archivedCaptureRetention or 3) .. " per character (1–25). Usage: /wowsync retention 3")
+        say("Archived capture retention: " .. tostring(S.settings.archivedCaptureRetention or 0) .. " per character (0–25). Usage: /wowsync retention 3")
         return
     end
     if command == "evidence" and addon.Forever then

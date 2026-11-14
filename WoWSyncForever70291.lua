@@ -162,8 +162,7 @@ S.collectors = {
     bags = S.collectors.bags,
     trainer = function()
         -- Do not parse GetTrainerServiceInfo tuples until their exact Forever
-        -- semantics have been corroborated. forever70291Evidence stores the
-        -- visible-window calls as raw observations without asserting meaning.
+        -- semantics have been corroborated. Optional diagnostics remain UNKNOWN.
         return nil, { reason = "Forever trainer service semantics remain UNKNOWN; raw window evidence is available only through opt-in debug capture" }
     end,
 }
