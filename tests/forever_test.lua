@@ -128,7 +128,9 @@ WoWSyncDB = { schemaVersion = 1, settings = { preserve = true }, characters = {
     ["Player-Forever-Test"] = { captureProfile = "Forever:1.60.1:70009:16001",
         sections = legacySections, itemMetadata = legacyItems, visits = legacyVisits,
         latestExport = legacyExport },
+    ["Player-Other"] = { sections = { forever70291Evidence = { data = { huge = true } }, bags = { data = { marker = true } } } },
 } }
+WoWSyncDB.characters["Player-Forever-Test"].sections.forever70291Evidence = { data = { huge = true } }
 S.eventFrame.scripts.OnEvent(S.eventFrame, "PLAYER_LOGIN")
 advance(1)
 equal(S.record.identity.name, "Hallo", "identity captured")
@@ -150,6 +152,25 @@ equal(S.record.archivedCaptures[1].latestExport, legacyExport, "legacy export re
 check(S.record.latestExport == nil or S.record.latestExport.text ~= legacyExport.text,
     "legacy export is invalidated before a fresh build-scoped export")
 equal(WoWSyncDB.settings.preserve, true, "existing global settings remain intact")
+equal(WoWSyncDB.schemaVersion, 2, "database schema is bumped for evidence cleanup")
+check(WoWSyncDB.characters["Player-Other"].sections.forever70291Evidence == nil
+    and S.record.sections.forever70291Evidence == nil, "one-time migration removes old evidence from every character")
+equal(WoWSyncDB.settings.archivedCaptureRetention, 3, "archive retention defaults to three")
+local archiveRecord = { archivedCaptures = { { i = 1 }, { i = 2 }, { i = 3 }, { i = 4 } } }
+S.PruneArchives(archiveRecord)
+equal(#archiveRecord.archivedCaptures, 3, "retention prunes old archives")
+equal(archiveRecord.archivedCaptures[1].i, 2, "retention keeps newest archives")
+local memoryLines, oldPrint = {}, print
+print = function(line) memoryLines[#memoryLines + 1] = line end
+UpdateAddOnMemoryUsage = function() end
+GetAddOnMemoryUsage = function(name) equal(name, "GearExport", "memory command queries addon usage"); return 42 end
+SlashCmdList.WOWSYNC("memory")
+print = oldPrint
+check(table.concat(memoryLines, "\n"):find("WoWSyncDB: ~", 1, true) ~= nil, "memory command reports serialized total")
+check(table.concat(memoryLines, "\n"):find("character Hallo: ~", 1, true) ~= nil, "memory command reports character sizes")
+check(table.concat(memoryLines, "\n"):find("character " .. tostring("Player-Other") .. ": ~", 1, true) ~= nil,
+    "memory command includes unidentified characters")
+check(table.concat(memoryLines, "\n"):find("GearExport Lua memory: 42 KB", 1, true) ~= nil, "memory command reports addon Lua memory")
 local data = S.record.sections.character.data
 equal(data.name, "Hallo", "name")
 equal(data.surname, "Surname", "surname candidate captured from consistent name APIs")

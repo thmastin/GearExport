@@ -100,6 +100,7 @@ function addon.PrepareCaptureProfile(record)
             visits = priorVisits,
             latestExport = priorExport,
         }
+        if S.PruneArchives then S.PruneArchives(record) end
     end
     -- Data captured by another client build must not appear as current
     -- evidence. Keep it archived and start a fresh active observation record.
@@ -163,19 +164,22 @@ S.collectors = {
         -- Do not parse GetTrainerServiceInfo tuples until their exact Forever
         -- semantics have been corroborated. forever70291Evidence stores the
         -- visible-window calls as raw observations without asserting meaning.
-        return nil, { reason = "Forever trainer service semantics remain UNKNOWN; raw window evidence is stored in forever70291Evidence" }
+        return nil, { reason = "Forever trainer service semantics remain UNKNOWN; raw window evidence is available only through opt-in debug capture" }
     end,
 }
 
 -- This section is isolated to exact allowlisted Forever builds. The older
 -- Forever trainer tuple adapter is intentionally not activated here.
-S.order[#S.order + 1] = "forever70291Evidence"
-local captureOrderContainsEvidence = false
-for _, key in ipairs(S.captureOrder) do
-    if key == "forever70291Evidence" then captureOrderContainsEvidence = true; break end
-end
-if not captureOrderContainsEvidence then S.captureOrder[#S.captureOrder + 1] = "forever70291Evidence" end
--- Keep WOWSYNC v1 text parse-compatible with the currently deployed Dashboard.
--- The version-specific raw section is persisted alongside the export and is
--- consumed by the separate Forever parser integration handoff.
+-- Keep WOWSYNC v1 text parse-compatible with the Dashboard. This raw section
+-- is opt-in diagnostic data and does not participate in normal Dashboard ingest.
 S.structuredOnly.forever70291Evidence = true
+S.EnableForeverEvidenceDebug = function(enabled)
+    local function include(list)
+        for i, key in ipairs(list) do if key == "forever70291Evidence" then table.remove(list, i); break end end
+        if enabled then list[#list + 1] = "forever70291Evidence" end
+    end
+    include(S.order)
+    include(S.captureOrder)
+    if not enabled and S.record and S.record.sections then S.record.sections.forever70291Evidence = nil end
+    if enabled then S.Mark("forever70291Evidence") end
+end

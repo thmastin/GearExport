@@ -28,7 +28,7 @@ per-event disk writing. A copied export needs no reload.
 
 ## Structured state
 
-Root: `schemaVersion=1`, `settings`, `characters[UnitGUID("player")]`.
+Root: `schemaVersion=2`, `settings`, `characters[UnitGUID("player")]`.
 Settings: `showButton` (defaults false), `buttonPosition` (optional).
 Character: `identity`, `sections`, `visits`, `itemMetadata`, `latestExport` (at
 most one text block), and optional `captureProfile` / `archivedCaptures`.

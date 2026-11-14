@@ -1,12 +1,12 @@
 -- Synthetic contract fixtures only; never evidence from a live client.
 return function(S, check, equal)
-    check(S.collectors.forever70291Evidence ~= nil, "70291 raw evidence collector enabled")
+    check(S.collectors.forever70291Evidence ~= nil, "70291 raw evidence collector available for debug")
     local parsedTrainer, trainerReason = S.collectors.trainer()
     equal(parsedTrainer, nil, "unverified trainer tuple adapter stays disabled")
     check(trainerReason.reason:find("semantics remain UNKNOWN", 1, true) ~= nil, "trainer module fails closed while raw evidence collector remains enabled")
     local found = false
     for _, key in ipairs(S.order) do if key == "forever70291Evidence" then found = true end end
-    check(found, "70291 evidence included in normal export refresh")
+    check(not found, "70291 evidence omitted from normal export refresh")
     check(S.structuredOnly.forever70291Evidence, "new evidence stays out of strict WOWSYNC v1 text for parser compatibility")
 
     local scheduled, positions = {}, {}
@@ -14,13 +14,11 @@ return function(S, check, equal)
         scheduled[key] = (scheduled[key] or 0) + 1
         positions[key] = index
     end
-    equal(scheduled.forever70291Evidence, 1, "70291 evidence collector is scheduled exactly once")
-    check(positions.forever70291Evidence > positions.equipment and positions.forever70291Evidence > positions.bags,
-        "70291 evidence is scheduled after equipment and bags")
+    equal(scheduled.forever70291Evidence, nil, "70291 evidence is not scheduled by default")
     -- gearCandidates and professionRecipes have special processing paths, but remain scheduled.
     for key, collector in pairs(S.collectors) do
         if type(collector) == "function" then
-            equal(scheduled[key], 1, "registered collector is scheduled exactly once: " .. key)
+            if key ~= "forever70291Evidence" then equal(scheduled[key], 1, "registered collector is scheduled exactly once: " .. key) end
         end
     end
 
@@ -28,6 +26,7 @@ return function(S, check, equal)
     local oldCount, oldInfo, oldCost = GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost
     local oldSkillReq, oldAbilityReq = GetTrainerServiceSkillReq, GetTrainerServiceAbilityReq
     local oldDirty, oldAutoExport, oldCapture = S.dirty, S.autoExportPending, S.capture
+    local oldDebug = S.settings.debugForever70291Evidence
     local oldEvidenceSection = S.record.sections.forever70291Evidence
     ClassTrainerFrame = { IsShown = function() return true end }
     GetNumTrainerServices = function() return 1 end
@@ -36,6 +35,8 @@ return function(S, check, equal)
     GetTrainerServiceSkillReq = function() return "Tailoring", 1, false end
     GetTrainerServiceAbilityReq = function() return nil, true end
     S.dirty = {}
+    S.settings.debugForever70291Evidence = true
+    if S.EnableForeverEvidenceDebug then S.EnableForeverEvidenceDebug(true) end
     S.Mark("forever70291Evidence", 0)
     check(S.dirty.forever70291Evidence ~= nil, "marking Forever raw evidence queues its collector")
     S.Process(true)
@@ -46,6 +47,8 @@ return function(S, check, equal)
         "Synthetic Trainer Ability", "processed section contains the captured trainer service")
     check(type(captured.data.itemFacts.observedAt) == "number", "processed section contains numeric itemFacts.observedAt")
     S.record.sections.forever70291Evidence = oldEvidenceSection
+    S.settings.debugForever70291Evidence = oldDebug
+    if S.EnableForeverEvidenceDebug then S.EnableForeverEvidenceDebug(oldDebug == true) end
     S.dirty, S.autoExportPending, S.capture = oldDirty, oldAutoExport, oldCapture
     ClassTrainerFrame = oldFrame
     GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceCost = oldCount, oldInfo, oldCost

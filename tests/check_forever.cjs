@@ -19,4 +19,6 @@ assert(/version\s*=\s*"1\.60\.1"/.test(foreverGuard)
     'Runtime guard accepts verified and newer Forever builds while recording the verification set');
 assert(/S\.structuredOnly\.forever70291Evidence\s*=\s*true/.test(fs.readFileSync('WoWSyncForever70291.lua', 'utf8')),
     'new raw evidence remains outside strict WOWSYNC v1 text');
+assert(!/S\.order\[#S\.order\s*\+\s*1\]\s*=\s*"forever70291Evidence"/.test(fs.readFileSync('WoWSyncForever70291.lua', 'utf8')),
+    'raw evidence is not part of default capture');
 console.log('PASS: Forever interface 16001, build-matched guard, target marker, SavedVariables and isolated load order');
