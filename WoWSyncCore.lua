@@ -64,7 +64,8 @@ end
 function S.Initialize()
     if S.record then return true end
     if WoWSyncDB ~= nil and (type(WoWSyncDB) ~= "table"
-        or (WoWSyncDB.schemaVersion ~= nil and WoWSyncDB.schemaVersion ~= 1)) then
+        or (WoWSyncDB.schemaVersion ~= nil and WoWSyncDB.schemaVersion ~= 1
+            and WoWSyncDB.schemaVersion ~= 2 and WoWSyncDB.schemaVersion ~= 3)) then
         S.error = "Unsupported WoWSync database; existing data was preserved."
         return false
     end
@@ -77,9 +78,33 @@ function S.Initialize()
     if not guid then return false end
     WoWSyncDB = WoWSyncDB or {}
     local db = WoWSyncDB
-    db.schemaVersion = 1
+    local migrateArchiveCleanup = db.schemaVersion == nil or db.schemaVersion == 1 or db.schemaVersion == 2
+    if migrateArchiveCleanup then
+        for _, character in pairs(type(db.characters) == "table" and db.characters or {}) do
+            if type(character) == "table" then
+                character.archivedCaptures = nil
+                if type(character.sections) == "table" then character.sections.forever70291Evidence = nil end
+            end
+        end
+    end
+    db.schemaVersion = 3
     db.settings = type(db.settings) == "table" and db.settings or {}
+    -- Schema 2 automatically wrote three as its default; reset that value while
+    -- retaining an explicitly chosen non-default retention setting.
+    if migrateArchiveCleanup and tonumber(db.settings.archivedCaptureRetention) == 3 then
+        db.settings.archivedCaptureRetention = 0
+    end
     db.characters = type(db.characters) == "table" and db.characters or {}
+    db.settings.archivedCaptureRetention = tonumber(db.settings.archivedCaptureRetention) or 0
+    if db.settings.archivedCaptureRetention < 0 then db.settings.archivedCaptureRetention = 0 end
+    if db.settings.archivedCaptureRetention > 25 then db.settings.archivedCaptureRetention = 25 end
+    local function pruneArchives(record)
+        if type(record) ~= "table" or type(record.archivedCaptures) ~= "table" then return end
+        local archives, limit = record.archivedCaptures, db.settings.archivedCaptureRetention
+        while #archives > limit do table.remove(archives, 1) end
+    end
+    S.PruneArchives = function(record) pruneArchives(record) end
+    for _, character in pairs(db.characters) do pruneArchives(character) end
     if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
         -- Account/Warband storage belongs to this SavedVariables account scope,
         -- not to whichever character happened to make the observation.
@@ -101,6 +126,7 @@ function S.Initialize()
     S.record = record
     S.sessionStartedAt = S.Now()
     S.settings = db.settings
+    if addon.EnableForeverEvidenceDebug then addon.EnableForeverEvidenceDebug(db.settings.debugForever70291Evidence == true) end
     S.error = nil
     return true
 end
@@ -768,6 +794,20 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
 end)
 
 SLASH_WOWSYNC1 = "/wowsync"
+local function ApproxSerializedSize(value)
+    local kind = type(value)
+    if kind == "string" then return #value + 2 end
+    if kind == "number" or kind == "boolean" then return #tostring(value) end
+    if kind ~= "table" then return 4 end
+    local size = 2
+    for key, child in pairs(value) do
+        local keyType = type(key)
+        size = size + (keyType == "string" and (#key + 4) or #tostring(key))
+            + ApproxSerializedSize(child) + 2
+    end
+    return size
+end
+S.ApproxSerializedSize = ApproxSerializedSize
 SlashCmdList["WOWSYNC"] = function(argument)
     local raw = tostring(argument or "")
     local command = (raw:match("^%s*(%S*)") or ""):lower()
@@ -791,6 +831,49 @@ SlashCmdList["WOWSYNC"] = function(argument)
         say("latestExport: generatedAt=" .. tostring(latest and latest.generatedAt or "none")
             .. (S.autoExportPending and ", autoRefreshPending" or "")
             .. (S.lastRenderError and (", renderError=" .. S.lastRenderError) or ""))
+        return
+    end
+    if command == "memory" then
+        if not S.Initialize() then say(S.error or "Not ready"); return end
+        local db = WoWSyncDB or {}
+        local sectionSizes = {}
+        for _, character in pairs(db.characters or {}) do
+            for key, section in pairs(type(character) == "table" and character.sections or {}) do
+                sectionSizes[key] = (sectionSizes[key] or 0) + ApproxSerializedSize(section)
+            end
+        end
+        local labels = {}
+        for key in pairs(sectionSizes) do labels[#labels + 1] = key end
+        table.sort(labels)
+        for _, key in ipairs(labels) do say(key .. ": ~" .. sectionSizes[key] .. " bytes") end
+        local characters = {}
+        for guid, character in pairs(db.characters or {}) do
+            characters[#characters + 1] = { id = tostring(character.identity and character.identity.name or guid), bytes = ApproxSerializedSize(character) }
+        end
+        table.sort(characters, function(a, b) return a.bytes > b.bytes end)
+        for i = 1, math.min(10, #characters) do say("character " .. characters[i].id .. ": ~" .. characters[i].bytes .. " bytes") end
+        say("WoWSyncDB: ~" .. ApproxSerializedSize(db) .. " bytes serialized")
+        if type(UpdateAddOnMemoryUsage) == "function" then UpdateAddOnMemoryUsage() end
+        local addonMemory = type(GetAddOnMemoryUsage) == "function" and GetAddOnMemoryUsage("GearExport")
+        say("GearExport Lua memory: " .. tostring(addonMemory or "unavailable") .. " KB")
+        return
+    end
+    if command == "retention" then
+        local requested = tonumber(raw:match("^%s*%S+%s+(%d+)"))
+        if requested then
+            S.settings.archivedCaptureRetention = math.max(1, math.min(25, math.floor(requested)))
+            for _, character in pairs(WoWSyncDB.characters or {}) do S.PruneArchives(character) end
+        end
+        say("Archived capture retention: " .. tostring(S.settings.archivedCaptureRetention or 0) .. " per character (0–25). Usage: /wowsync retention 3")
+        return
+    end
+    if command == "evidence" and addon.Forever then
+        local enabled = raw:match("^%s*%S+%s+(%S+)")
+        if enabled == "on" or enabled == "off" then
+            S.settings.debugForever70291Evidence = enabled == "on"
+            if addon.EnableForeverEvidenceDebug then addon.EnableForeverEvidenceDebug(S.settings.debugForever70291Evidence) end
+        end
+        say("Forever raw evidence debug capture: " .. (S.settings.debugForever70291Evidence and "on" or "off") .. ". Usage: /wowsync evidence on|off")
         return
     end
     if command == "minimap" or command == "map" then

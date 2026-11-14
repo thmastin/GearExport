@@ -17,8 +17,9 @@ capture-compatible but are labelled `UNVERIFIED_BUILD` until reviewed. Build 702
 capture path is live-validated on Hallo. Build 70338 is allowlisted after its
 matching Forever UI-source API contract review; WoWSync has not yet run in-game
 on 70338 or 70450. Builds below the minimum, wrong versions, and wrong interfaces remain rejected. The supported capture path includes character
-identity/build, equipped items, carried bags, and structured raw skill/runtime
-evidence. The WOWSYNC v1 export and same-refresh `WoWSyncDB` were compared after
+identity/build, and carried bags. Structured raw skill/runtime evidence is
+available only through opt-in Forever debug capture. The WOWSYNC v1 export and
+same-refresh `WoWSyncDB` were compared after
 the live `/wowsync` capture. Location, faction, currency, playtime, XP,
 professions, spells, banks and trainer services remain unknown or unobserved;
 equipment effective stats and skill/trainer interpretations are not inferred.
@@ -285,6 +286,24 @@ Because GearExport declares both variables, they share the existing
 Captures update in-memory SavedVariables immediately. For an external tool reading
 the file from disk, use an explicit `/reload` or normal logout to let the client flush
 it. Copy/paste needs no reload.
+
+Forever retains zero archived captures per character by default.
+`/wowsync retention N` changes this to 0–25; archives are pruned at login and
+when another profile is archived. Set a positive value only to retain archives
+for local debugging. The addon has no Dashboard-ingested marker. The separate
+Dashboard importer selects `latestExport.text` and its existing supported
+structured sidecars; it does not read `archivedCaptures` or
+`forever70291Evidence`. Its schema 2 and 3 compatibility and regression test are in the
+WoWSync-Dashboard repository (`packages/server/src/importSaved.ts` and
+`packages/server/test/importSaved.test.ts`).
+
+Forever raw `forever70291Evidence` collection is off by default. Use
+`/wowsync evidence on` for temporary diagnostics. A schema 1 or 2 to 3 migration
+removes archived captures and that evidence section from every character once
+while preserving all other SavedVariables.
+`/wowsync memory` prints estimated serialized bytes by structured section and for
+the ten largest characters, the total `WoWSyncDB` estimate, and the addon's current
+Lua memory reported by the client. The serialization estimate is approximate.
 
 ## Compatibility
 

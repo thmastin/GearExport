@@ -107,6 +107,6 @@ return function(S, check, equal, advance)
     c(S.GetSnapshot().sections.quests ~= nil, "quest section appears in structured snapshot")
     c(before == nil or S.record.sections.quests.observedAt >= before, "section timestamp is monotonic")
     e(S.record.sections.quests.data.clientFamily, "Forever", "stored section carries client version family")
-    e(addon.schemaVersion, 1, "existing SavedVariables schema remains unchanged")
+    e(WoWSyncDB.schemaVersion, 3, "SavedVariables schema bump is applied")
     return passed
 end

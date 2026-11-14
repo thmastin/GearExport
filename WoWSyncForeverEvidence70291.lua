@@ -462,7 +462,7 @@ for _, event in ipairs({ "SKILL_LINES_CHANGED", "TRAINER_SHOW", "TRAINER_UPDATE"
     eventFrame:RegisterEvent(event)
 end
 eventFrame:SetScript("OnEvent", function(_, event, unit)
-    if F and WoWSyncCompat and WoWSyncCompat.IsForever() and S.collectors.forever70291Evidence then
+    if F and WoWSyncCompat and WoWSyncCompat.IsForever() and S.settings and S.settings.debugForever70291Evidence and S.collectors.forever70291Evidence then
         if event == "UNIT_INVENTORY_CHANGED" and unit ~= "player" then return end
         if event == "BAG_UPDATE_DELAYED" then S.Mark("bags")
         elseif event == "UNIT_INVENTORY_CHANGED" then S.Mark("equipment") end
