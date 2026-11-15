@@ -198,29 +198,43 @@ S.collectors = {
             if type(UnitClass) == "function" then className = publicName(UnitClass("player")) end
         end
         trainerName = trainerName or professionName or className or (profession and "Profession Trainer" or "Class Trainer")
-        local services = {}
+        local services, droppedRowCount = {}, 0
         for i = 1, count do
-            local name, rank, status, _, subtext = GetTrainerServiceInfo(i)
-            name = publicName(name)
-            if name and status ~= "header" and status ~= "headerbutton" then
-                if status == "known" then status = "used" end
-                if status == "available" or status == "used" or status == "unavailable" then
+            local called, name, rawStatus, icon, levelReq, rank, category = pcall(GetTrainerServiceInfo, i)
+            if not called then
+                droppedRowCount = droppedRowCount + 1
+            elseif rawStatus ~= "header" and rawStatus ~= "headerbutton" then
+                name = publicName(name)
+                if not name then
+                    droppedRowCount = droppedRowCount + 1
+                else
+                    local status = rawStatus
+                    if status == "known" then status = "used" end
+                    if status ~= "available" and status ~= "used" and status ~= "unavailable" then status = "unknown" end
                     local cost = type(GetTrainerServiceCost) == "function" and GetTrainerServiceCost(i) or nil
                     local level = type(GetTrainerServiceLevelReq) == "function" and GetTrainerServiceLevelReq(i) or nil
                     local skill, skillRank
                     if type(GetTrainerServiceSkillReq) == "function" then skill, skillRank = GetTrainerServiceSkillReq(i) end
                     skill = publicName(skill)
-                    services[#services + 1] = { name = name, rank = publicName(subtext) or publicName(rank), status = status,
+                    services[#services + 1] = { name = name, rank = publicName(rank), status = status,
+                        rawStatus = type(rawStatus) == "string" and rawStatus or nil,
+                        icon = type(icon) == "number" and icon or nil,
+                        category = publicName(category),
                         costCopper = type(cost) == "number" and cost >= 0 and cost or nil,
-                        requiredLevel = type(level) == "number" and level >= 0 and level or nil,
+                        requiredLevel = type(level) == "number" and level or type(levelReq) == "number" and levelReq or nil,
                         requiredSkill = skill and { name = skill, rank = type(skillRank) == "number" and skillRank or nil } or nil }
                 end
             end
         end
+        local emptyReportedList = count > 0 and #services == 0
+        local incomplete = droppedRowCount > 0 or emptyReportedList
+        local reason
+        if emptyReportedList then reason = "Trainer reported services but no service rows could be parsed"
+        elseif droppedRowCount > 0 then reason = tostring(droppedRowCount) .. " trainer service row(s) could not be parsed" end
         local at = type(GetServerTime) == "function" and GetServerTime() or S.Now()
         return { category = trainerName, snapshot = { capturedAt = at, name = trainerName, type = trainerType,
-            professionName = professionName, className = className, services = services } },
-            { completeness = "complete", source = "Forever trainer service API" }
+            professionName = professionName, className = className, services = services, droppedRowCount = droppedRowCount } },
+            { completeness = incomplete and "partial" or "complete", reason = reason, source = "Forever trainer service API" }
     end,
 }
 
