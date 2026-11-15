@@ -441,6 +441,15 @@ end
 
 function S.RequestSync()
     if not S.Initialize() then return false, S.error or "Character is not ready yet." end
+    if addon.Forever then
+        for _, name in ipairs({ "ClassTrainerFrame", "TrainerFrame" }) do
+            local trainerFrame = _G[name]
+            if trainerFrame and type(trainerFrame.IsShown) == "function" then
+                local ok, shown = pcall(trainerFrame.IsShown, trainerFrame)
+                if ok and shown == true then S.trainerOpen = true; break end
+            end
+        end
+    end
     S.RequestPlayed()
     for _, key in ipairs(S.order) do S.Mark(key, 0.15) end
     if not (WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail()) then
@@ -889,5 +898,5 @@ SlashCmdList["WOWSYNC"] = function(argument)
         say("Core loaded. Export UI missing - use /wowsync status. Try /gearx as a load check.")
         return
     end
-    say("/wowsync [export] - refresh handoff. /wowsync status - freshness. /wowsync minimap - toggle minimap button (left=sync, right=reload UI). /wowsync button - toggle floating SYNC. Natural /reload flushes SavedVariables for the Dashboard.")
+    say("/wowsync [export] - refresh handoff. /wowsync status - freshness. /wowsync evidence on|off - toggle raw debug evidence. /wowsync minimap - toggle minimap button (left=sync, right=reload UI). /wowsync button - toggle floating SYNC. Natural /reload flushes SavedVariables for the Dashboard.")
 end

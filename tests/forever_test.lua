@@ -320,6 +320,7 @@ assert(loadfile("tests/forever_evidence_70291_test.lua"))()(S, check, equal)
 assert(loadfile("tests/forever_professions_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_spells_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_remaining_test.lua"))()(S, check, equal, advance)
+assert(loadfile("tests/forever_trainer_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_quests_test.lua"))()(S, check, equal, advance)
 assert(loadfile("tests/forever_recipes_test.lua"))()(S, check, equal)
 for _, key in ipairs({ "UnitName", "GetRealmName", "UnitClass", "UnitRace", "UnitLevel", "UnitFactionGroup", "GetMoney", "UnitXP", "UnitXPMax" }) do
