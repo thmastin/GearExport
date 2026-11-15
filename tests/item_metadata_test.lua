@@ -23,13 +23,28 @@ return function(S, C, check, equal)
     local savedGetInfo = C.GetItemInfo
     C.GetItemInfo = function(id)
         local numeric = type(id) == "number" and id or tonumber(type(id) == "string" and id:match("item:(%d+)"))
-        if numeric == 236949 then return "Test blade", "item:236949", 2, 12, 10, 0, "Armor", "Miscellaneous", 1, "", 135637, 123, 2, 0 end
+        if numeric == 236949 then return "Test blade", "item:236949", 2, 12, 10, "Armor", "Miscellaneous", 1, "", 135637, 123, 2, 0 end
     end
     local instantOrderItem = S.Item("item:236949", 236949)
     equal(instantOrderItem.equipLoc, "INVTYPE_WEAPON", "instant equipLoc comes from return 4, never icon return 5")
     equal(instantOrderItem.icon, 135637, "instant icon fileID is stored separately")
     equal(instantOrderItem.vendorCopper, 123, "GetItemInfo vendor value comes from return 12")
     C.GetItemInfo = savedGetInfo
+    local savedGetInfoGlobal, savedIsRetail, savedItemInfoAPI = GetItemInfo, C.IsRetail, C_Item.GetItemInfo
+    C.IsRetail = function() return false end
+    local lightLeatherTuple = { "Light Leather", "item:2318", 1, 10, 0, "Trade Goods", "Leather", 20,
+        "INVTYPE_NON_EQUIP_IGNORE", 134252, 15, 7, 6, 0, 0, nil, true, "" }
+    C_Item.GetItemInfo = function() return table.unpack(lightLeatherTuple) end
+    GetItemInfo = function() error("global GetItemInfo must not be called on Forever") end
+    local lightLeather = S.Item("item:2318", 2318)
+    equal(lightLeather.equipLoc, "INVTYPE_NON_EQUIP_IGNORE", "Forever Light Leather equipLoc uses the real tuple position")
+    equal(lightLeather.icon, 134252, "Forever Light Leather icon is kept separate from equipLoc")
+    equal(lightLeather.vendorCopper, 15, "Forever Light Leather vendorCopper uses the real tuple position")
+    equal(lightLeather.classID, 7, "Forever Light Leather classID uses the real tuple position")
+    equal(lightLeather.subClassID, 6, "Forever Light Leather subClassID uses the real tuple position")
+    equal(lightLeather.itemMetadataState, "OBSERVED", "known non-equippable inventory type is not UNKNOWN")
+    C_Item.GetItemInfo = savedItemInfoAPI
+    GetItemInfo, C.IsRetail = savedGetInfoGlobal, savedIsRetail
     local oldTooltip, oldFrame, oldParent = C.recipeTooltip, CreateFrame, UIParent
     C.recipeTooltip, UIParent = nil, {}
     CreateFrame = function(_, name)

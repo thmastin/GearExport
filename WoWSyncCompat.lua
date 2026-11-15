@@ -47,7 +47,8 @@ end
 
 function C.GetItemInfo(reference)
     if reference == nil then return nil end
-    return Optional(C.IsRetail() and C_Item and C_Item.GetItemInfo or GetItemInfo, reference)
+    if type(C_Item) == "table" then return Optional(C_Item.GetItemInfo, reference) end
+    return Optional(GetItemInfo, reference)
 end
 
 function C.GetItemInfoInstant(reference)

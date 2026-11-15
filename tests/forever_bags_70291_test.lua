@@ -1,13 +1,13 @@
 -- Synthetic API fixtures based on the 70245 runtime shape; none of these
 -- synthetic item rows are presented as additional live Hallo observations.
 return function(S, check, equal)
-    local oldAPI = C_Container
+    local oldAPI, oldCItem = C_Container, C_Item
     local oldGetItemInfo = GetItemInfo
-    GetItemInfo = function(id)
+    C_Item = { GetItemInfo = function(id)
         local numeric = type(id) == "number" and id or tonumber(type(id) == "string" and id:match("item:(%d+)"))
-        if numeric == 6948 then return "Synthetic item", "item:6948", 1, 1, 1, 0, "Weapon", "Daggers", 1, "INVTYPE_WEAPON", 135637, 0, 15, 0 end
-        if numeric then return "Synthetic item", "item:" .. numeric, 1, 1, 1, 0, "Miscellaneous", "Junk", 1, "", 0, 0, 15, 0 end
-    end
+        if numeric == 6948 then return "Synthetic item", "item:6948", 1, 1, 1, "Weapon", "Daggers", 1, "INVTYPE_WEAPON", 135637, 0, 15, 0 end
+        if numeric then return "Synthetic item", "item:" .. numeric, 1, 1, 1, "Miscellaneous", "Junk", 1, "INVTYPE_NON_EQUIP_IGNORE", 0, 0, 15, 0 end
+    end }
     local capacities = { [0] = 20, [1] = 6, [2] = 6, [3] = 6, [4] = 0, [5] = 0 }
     local inventory = {
         [0] = {
@@ -319,7 +319,7 @@ return function(S, check, equal)
     local stale = S.RenderSection("bags", S.GetSnapshot())
     check(stale:find("State: LAST_SEEN", 1, true), "previous bag evidence is not labeled current after failure")
     check(stale:find("RefreshIssue:", 1, true), "failed capture reason is exported")
-    GetItemInfo = function() return nil end
+    C_Item.GetItemInfo = function() return nil end
     C_Container.GetContainerNumSlots = function(bag) return capacities[bag] end
     C_Container.GetContainerItemInfo = oldInfo
     local uncached = S.collectors.bags()
@@ -328,5 +328,5 @@ return function(S, check, equal)
     equal(unknown.classID, nil, "uncached item class remains absent")
     equal(unknown.requiredLevel, nil, "uncached required level remains absent")
     equal(unknown.itemMetadataState, "UNKNOWN", "uncached row explicitly marked unknown")
-    GetItemInfo, C_Container, issecretvalue = oldGetItemInfo, oldAPI, nil
+    GetItemInfo, C_Container, C_Item, issecretvalue = oldGetItemInfo, oldAPI, oldCItem, nil
 end

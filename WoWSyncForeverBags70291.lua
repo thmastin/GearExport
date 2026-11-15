@@ -240,9 +240,9 @@ S.collectors.bags = function()
                 local count = F.Number("Carried item stack count", Field(info, "stackCount"), issues)
                 if not ref and (not count or count == 0) then return Failed("carried item quantity unknown", true) end
                 local item = { itemID = ref and (id or linkID) or id, count = count }
-                local infoFn = type(C_Item) == "table" and C_Item.GetItemInfo or GetItemInfo
+                local infoFn = WoWSyncCompat and WoWSyncCompat.GetItemInfo
                 if type(infoFn) == "function" then
-                    local infoOK, name, itemLink, quality, itemLevel, requiredLevel, minLevel, itemType, subType,
+                    local infoOK, name, itemLink, quality, itemLevel, requiredLevel, itemType, subType,
                         maxStack, equipLoc, icon, vendorCopper, classID, subClassID = pcall(infoFn, ref or id)
                     if infoOK then
                         if not name then quality, classID, subClassID, equipLoc, requiredLevel = nil, nil, nil, nil, nil end

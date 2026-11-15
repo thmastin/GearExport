@@ -72,7 +72,7 @@ C_Item = {
     GetItemInfo = function(ref)
         check(ref ~= nil, "item reference supplied")
         if pending then return nil end
-        return "Crafted Sample", link, 4, 200, 80, 0, "Armor", "Plate", 1, baseEquipLocation, 1, 4321,
+        return "Crafted Sample", link, 4, 200, 80, "Armor", "Plate", 1, baseEquipLocation, 1, 4321,
             7, 11, 0, 11, nil, true
     end,
     GetItemInfoInstant = function(ref) return 240001, "Armor", "Plate", "INVTYPE_HEAD", 1, 7, 11 end,
@@ -418,9 +418,9 @@ C_Item.GetCurrentItemLevel = savedAPIs.currentLevel
 C_Item.GetItemInventoryType = function() return nil end
 candidate = rawCandidate(); equal(candidate.equipType.state, "UNKNOWN", "missing equip type remains unknown")
 C_Item.GetItemInventoryType = savedAPIs.invType
-C_Item.GetItemInfo = function() return "x", link, 4, 200, 0, 0, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 1, 4, 4 end
+C_Item.GetItemInfo = function() return "x", link, 4, 200, 0, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 1, 4, 4 end
 candidate = rawCandidate(); equal(candidate.requiredLevel.value, 0, "explicit required-level zero stays known")
-C_Item.GetItemInfo = function() return "x", link, 4, 200, nil, 0, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 1, 4, 4 end
+C_Item.GetItemInfo = function() return "x", link, 4, 200, nil, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 1, 4, 4 end
 candidate = rawCandidate(); equal(candidate.requiredLevel.state, "UNKNOWN", "missing required level remains unknown")
 C_Item.IsBound = function() return true end
 C_Item.IsBoundToAccountUntilEquip = function() return true end

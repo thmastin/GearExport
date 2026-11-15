@@ -152,6 +152,19 @@ S.eventFrame.scripts.OnEvent(S.eventFrame, "PLAYER_LOGIN")
 advance(1)
 equal(S.record.identity.name, "Hallo", "identity captured")
 equal(S.record.captureProfile, "Forever:1.60.1:70338:16001", "active saved-data profile is scoped to actual allowlisted build")
+local savedForeverItemAPI, savedForeverGlobalItemInfo = C_Item, GetItemInfo
+local lightLeatherTuple = { "Light Leather", "item:2318", 1, 10, 0, "Trade Goods", "Leather", 20,
+    "INVTYPE_NON_EQUIP_IGNORE", 134252, 15, 7, 6, 0, 0, nil, true, "" }
+C_Item = { GetItemInfo = function() return table.unpack(lightLeatherTuple) end }
+GetItemInfo = function() error("global GetItemInfo must not be called on Forever") end
+local _, _, _, _, _, _, _, _, leatherEquipLoc, leatherIcon, leatherVendor,
+    leatherClass, leatherSubclass = C.GetItemInfo("item:2318")
+equal(leatherEquipLoc, "INVTYPE_NON_EQUIP_IGNORE", "Forever Light Leather uses the observed equipLoc return")
+equal(leatherIcon, 134252, "Forever Light Leather icon stays separate")
+equal(leatherVendor, 15, "Forever Light Leather vendorCopper uses return 11")
+equal(leatherClass, 7, "Forever Light Leather classID uses return 12")
+equal(leatherSubclass, 6, "Forever Light Leather subclassID uses return 13")
+C_Item, GetItemInfo = savedForeverItemAPI, savedForeverGlobalItemInfo
 local oldEquipmentSetAPI, oldItemAPI = C_EquipmentSet, C_Item
 local oldEquipmentSection, oldBagsSection = S.record.sections.equipment, S.record.sections.bags
 C_Item = { GetItemID = function(location) return location.itemID end,

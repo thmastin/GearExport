@@ -10,7 +10,7 @@ end
 function S.Item(link, itemID)
     itemID = itemID or (link and tonumber(link:match("item:(%d+)")))
     local item = { itemID = itemID, itemString = link and link:match("(item:[^|]+)") }
-    local name, _, quality, level, requiredLevel, _, _, _, maxStack, equipLoc, icon,
+    local name, _, quality, level, requiredLevel, _, _, maxStack, equipLoc, icon,
         vendor, classID, subclassID, bindType, expansionID, setID, isCraftingReagent = Compat.GetItemInfo(link or itemID)
     local instantEquipLoc, instantIcon
     if Compat.GetItemInfoInstant then
