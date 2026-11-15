@@ -97,6 +97,22 @@ local function advance(duration)
     end
 end
 check(C.IsForever(), "explicit Forever package and supported exact version/build")
+for _, itemString in ipairs({ "item:6267:15:...", "item:281322:15:...", "item:3152:15:..." }) do
+    local parsedItem = {}
+    addon.Forever.ParseItemString(parsedItem, itemString)
+    equal(parsedItem.enchantID, 15, itemString .. " carries enchant ID 15")
+    equal(parsedItem.enchantName, nil, itemString .. " name remains unknown without a green tooltip line")
+    equal(parsedItem.enchantNameState, "UNKNOWN", itemString .. " unknown enchant name is explicit")
+end
+local gems = {}
+addon.Forever.ParseItemString(gems, "item:123:0:456:789:0:0")
+equal(gems.enchantID, 0, "observed empty enchant field is retained")
+equal(gems.gemIDs[1], 456, "first gem field parsed")
+equal(gems.gemIDs[2], 789, "second gem field parsed")
+equal(gems.gemIDs[3], 0, "empty gem socket position retained")
+local emptyEnchant = {}
+addon.Forever.ParseItemString(emptyEnchant, "item:124::0:0:0")
+equal(emptyEnchant.enchantID, 0, "empty enchant field is represented as ID zero")
 build = "70291"; check(C.IsForever(), "previously live-validated build remains supported"); build = "70338"
 build = "70450"; check(C.IsForever(), "verified Forever build is supported"); build = "70790"; check(C.IsForever(), "launch build 70790 remains capture-compatible"); build = "70999"; check(C.IsForever(), "newer unlisted Forever build remains capture-compatible"); build = "70338"
 WOW_PROJECT_ID, WOW_PROJECT_MAINLINE = 1, 1
@@ -136,6 +152,32 @@ S.eventFrame.scripts.OnEvent(S.eventFrame, "PLAYER_LOGIN")
 advance(1)
 equal(S.record.identity.name, "Hallo", "identity captured")
 equal(S.record.captureProfile, "Forever:1.60.1:70338:16001", "active saved-data profile is scoped to actual allowlisted build")
+local oldEquipmentSetAPI, oldItemAPI = C_EquipmentSet, C_Item
+local oldEquipmentSection, oldBagsSection = S.record.sections.equipment, S.record.sections.bags
+C_Item = { GetItemID = function(location) return location.itemID end,
+    GetItemLink = function(location) return "|Hitem:" .. location.itemID .. "|h[item]|h" end }
+C_EquipmentSet = {
+    GetEquipmentSetIDs = function() return { 4, 5 } end,
+    GetEquipmentSetInfo = function(id) return id == 4 and "Travel" or "Fishing", 135637, id, id == 4, 2, 2 end,
+    GetItemLocations = function(id) return id == 4 and { { itemID = 6948 }, { itemID = 279960 } } or {} end,
+}
+S.record.sections.equipment = { data = { slots = { [1] = { itemID = 6948, itemString = "item:6948" } } } }
+S.record.sections.bags = { data = { containers = { { slots = { [1] = { itemID = 279960, itemString = "item:279960" }, [2] = { itemID = 99, itemString = "item:99" } } } } } }
+local setData = S.collectors.equipmentSets()
+equal(setData.state, "OBSERVED", "Forever Equipment Manager sets observed")
+equal(setData.sets[1].setID, 4, "equipment set ID retained")
+equal(setData.sets[1].icon, 135637, "equipment set icon retained")
+equal(setData.sets[2].isEquipped, false, "explicit unequipped set state is preserved")
+equal(S.record.sections.equipment.data.slots[1].equipmentSets[1], "Travel", "equipped item carries set name")
+equal(S.record.sections.bags.data.containers[1].slots[1].equipmentSets[1], "Travel", "bag item carries set name")
+equal(S.record.sections.bags.data.containers[1].slots[2].equipmentSetsState, "OBSERVED", "unmatched item has observed empty set list")
+C_EquipmentSet = nil
+setData = S.collectors.equipmentSets()
+equal(setData.state, "UNKNOWN", "missing Equipment Manager API remains UNKNOWN")
+equal(S.record.sections.equipment.data.slots[1].equipmentSetsState, "UNKNOWN", "missing API marks per-item membership UNKNOWN")
+S.record.sections.equipment, S.record.sections.bags = oldEquipmentSection, oldBagsSection
+C_EquipmentSet, C_Item = oldEquipmentSetAPI, oldItemAPI
+check(S.eventFrame.events.EQUIPMENT_SETS_CHANGED, "Forever listens for equipment set changes")
 local previousBuildRecord = { captureProfile = "Forever:1.60.1:70291:16001",
     sections = { equipment = { data = { marker = "70291 evidence" } } },
     latestExport = { text = "70291 export" } }
@@ -282,7 +324,7 @@ end
 local output
 check(S.Export(function(text) output = text end), "export accepted")
 advance(3.2) -- allow the bounded export timeout while optional sections are unavailable in this fixture
-check(output and output:find("WOWSYNC v1", 1, true), "shared canonical export")
+check(output and output:find("WOWSYNC v1", 1, true), "shared canonical export; render error=" .. tostring(S.lastRenderError))
 check(output:find("Client: 1.60.1 build 70338", 1, true)
     and output:find("Interface: 16001", 1, true), "actual allowlisted client build and interface serialized")
 check(output:find("Race: Dwarf", 1, true), "supported Forever profile serializes observed race")

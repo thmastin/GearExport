@@ -283,7 +283,7 @@ local function BuildItemReport(argument)
         return "## Item\n\nNo item found. Hover an item and run `/itemx`, or use `/itemx <item link or item ID>`."
     end
 
-    local name, link, quality, _, _, _, _, _, _, _, vendorValue = GetItemInfo(itemReference)
+    local name, link, quality, _, _, _, _, _, _, _, _, vendorValue = GetItemInfo(itemReference)
     local itemID = tonumber(tostring(link or itemReference):match("item:(%d+)")) or tonumber(itemReference)
     if not itemID then
         return "## Item\n\nItem information is not available yet. Try again after the item tooltip has loaded."
@@ -414,7 +414,7 @@ local function AddContainerItems(items, firstBag, lastBag, location)
         for slot = 1, GetContainerSlotCount(bag) do
             local itemLink, quantity, discoveredItemID = GetContainerSlotItem(bag, slot)
             if itemLink then
-                local name, resolvedLink, quality, _, _, itemType, itemSubType, _, _, _, vendorEach,
+                local name, resolvedLink, quality, _, _, itemType, itemSubType, _, _, _, _, vendorEach,
                     classID, subClassID, bindType = GetItemInfo(itemLink)
                 local itemID = discoveredItemID or tonumber(itemLink:match("item:(%d+)"))
                 if itemID then

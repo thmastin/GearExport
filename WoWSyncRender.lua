@@ -4,7 +4,7 @@ local _, addon = ...
 local S = addon.Sync
 local C = WoWSyncCompat
 local labels = { character = "CHARACTER", location = "LOCATION", equipment = "EQUIPMENT",
-    bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", guildBank = "GUILD BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS", itemMetadata = "ITEM METADATA",
+    bags = "BAGS", bank = "BANK", accountBank = "ACCOUNT BANK", guildBank = "GUILD BANK", professions = "PROFESSIONS", spells = "KNOWN SPELLS", trainer = "TRAINERS", itemMetadata = "ITEM METADATA", equipmentSets = "EQUIPMENT SETS",
     talents = "TALENTS", quests = "QUESTS", reputation = "REPUTATION", professionRecipes = "KNOWN RECIPES" }
 labels.forever70291Evidence = "FOREVER CLIENT EVIDENCE"
 
@@ -39,6 +39,11 @@ local function SortedKeys(map)
     return keys
 end
 local function Ref(item) return item.itemString or (item.itemID and "item:" .. item.itemID) end
+local function Enchant(item)
+    if type(item.enchantID) ~= "number" then return nil end
+    if item.enchantID <= 0 then return "-" end
+    return item.enchantName and (tostring(item.enchantID) .. ":" .. item.enchantName) or tostring(item.enchantID)
+end
 local function Stats(item)
     local parts = {}
     for _, stat in ipairs(item.stats or {}) do parts[#parts + 1] = stat.name .. "=" .. tostring(stat.value) end
@@ -182,12 +187,21 @@ renderers.location = function(out, data)
     if data.x and data.y then Field(out, "PositionPercent", data.x .. "," .. data.y) end
 end
 renderers.equipment = function(out, data)
-    Row(out, "slot", "itemRef", "name", "ilvl", "requiredLevel", "effectiveStats")
+    Row(out, "slot", "itemRef", "name", "ilvl", "requiredLevel", "enchant", "effectiveStats")
     for slot = 1, 19 do
         local item = data.slots[slot]
         local label = slot .. ":" .. (addon.Readers.SlotNames[slot] or "")
-        if item then Row(out, label, Ref(item), item.name, item.itemLevel, item.requiredLevel, Stats(item))
+        if item then Row(out, label, Ref(item), item.name, item.itemLevel, item.requiredLevel, Enchant(item), Stats(item))
         else Row(out, label, "EMPTY") end
+    end
+end
+renderers.equipmentSets = function(out, data)
+    if data.state ~= "OBSERVED" then Field(out, "State", "UNKNOWN"); Field(out, "Reason", data.reason); return end
+    Row(out, "setID", "name", "icon", "isEquipped", "itemIDs")
+    for _, set in ipairs(data.sets or {}) do
+        local ids = {}
+        for _, location in ipairs(set.itemLocations or {}) do ids[#ids + 1] = location.itemID end
+        Row(out, set.setID, set.name, set.icon, set.isEquipped, table.concat(ids, ","))
     end
 end
 
@@ -287,14 +301,16 @@ local function RenderTrainerSnapshot(out, category, data, visit, active)
         if visit.location and visit.location.zone then Field(out, "VisitedZone", visit.location.zone) end
         if visit.unreconciled then Field(out, "VisitStatus", "Closed before capture settled") end
     end
-    Field(out, "Name", data.name); Field(out, "Type", data.trainerType)
+    Field(out, "Name", data.name)
+    Field(out, "Type", data.trainerType or data.type)
     Field(out, "Coverage", data.coverage)
     local filter = data.filters or {}
     Field(out, "Filters", "available=" .. Text(filter.available) .. "; unavailable=" .. Text(filter.unavailable) .. "; known=" .. Text(filter.used))
     Field(out, "MoneyAtVisitCopper", data.moneyAtVisit)
-    Row(out, "spellID", "ability", "rank", "statusAtVisit", "requiredLevel", "costCopper", "requirementsAtVisit")
+    Row(out, "spellID", "ability", "rank", "statusAtVisit", "requiredLevel", "costCopper", "category", "type", "requirementsAtVisit")
     for _, service in ipairs(data.services) do
-        Row(out, service.spellID, service.name, service.rank or "-", service.status, service.requiredLevel, service.cost, Requirements(service))
+        Row(out, service.spellID, service.name, service.rank or "-", service.status,
+            service.requiredLevel, service.costCopper or service.cost, service.category, service.type, Requirements(service))
     end
 end
 

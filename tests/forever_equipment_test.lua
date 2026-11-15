@@ -35,8 +35,8 @@ return function(S, check, equal, advance)
     check(not meta.retry, "semantic unknown does not cause a retry loop")
     S.RequestSync(); advance(1)
     local text = S.RenderSection("equipment", S.GetSnapshot())
-    check(text:find("slot\titemRef\tname\tilvl\trequiredLevel\teffectiveStats", 1, true), "shared contract header")
-    check(text:find("5:Chest\titem:900001:7:0:0\tSynthetic tunic\t12\t0\t?", 1, true), "human-readable Forever slot and unknown effective stats render")
+    check(text:find("slot\titemRef\tname\tilvl\trequiredLevel\tenchant\teffectiveStats", 1, true), "shared contract header includes enchant")
+    check(text:find("5:Chest\titem:900001:7:0:0\tSynthetic tunic\t12\t0\t7\t?", 1, true), "human-readable Forever enchant and unknown effective stats render")
     check(S.eventFrame.events.PLAYER_EQUIPMENT_CHANGED, "equipment event registered")
     check(S.eventFrame.events.ITEM_DATA_LOAD_RESULT, "item cache event registered")
     pending = true
@@ -109,7 +109,9 @@ return function(S, check, equal, advance)
         local row = real[slot]
         local expected = slot .. ":" .. slotNames[slot] .. "\tEMPTY"
         if row then
-            expected = slot .. ":" .. slotNames[slot] .. "\t" .. table.concat(row, "\t") .. "\t?"
+            local enchantField = row[1]:match("^item:%d+:([^:]*)")
+            local enchant = enchantField == "" and "-" or tonumber(enchantField) and (tonumber(enchantField) > 0 and tostring(tonumber(enchantField)) or "-") or "?"
+            expected = slot .. ":" .. slotNames[slot] .. "\t" .. table.concat(row, "\t") .. "\t" .. enchant .. "\t?"
             equal(data.slots[slot].stats, nil, "equipped effective stats remain unknown")
         end
         check(("\n" .. actual .. "\n"):find("\n" .. expected .. "\n", 1, true),

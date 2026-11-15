@@ -52,9 +52,11 @@ S.collectors.bank = function()
                 if locked ~= false or not count or count <= 0 or not (idValue or linkID) then
                     return nil, { reason = label .. " contents are restricted or changing", retry = true }
                 end
-                tab.slots[slot] = { itemID = idValue or linkID, itemString = ref, count = count,
+                local item = { itemID = idValue or linkID, itemString = ref, count = count,
                     name = F.Read(label .. " slot " .. slot .. " name", Field(info, "itemName"), 1, "string", issues),
                     bound = F.Read(label .. " slot " .. slot .. " binding", Field(info, "isBound"), 1, "boolean", issues) }
+                if F.ParseItemString then F.ParseItemString(item, ref) end
+                tab.slots[slot] = item
             end
         end
         tab.free = free

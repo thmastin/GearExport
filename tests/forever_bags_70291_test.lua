@@ -5,7 +5,8 @@ return function(S, check, equal)
     local oldGetItemInfo = GetItemInfo
     GetItemInfo = function(id)
         local numeric = type(id) == "number" and id or tonumber(type(id) == "string" and id:match("item:(%d+)"))
-        if numeric then return "Synthetic item", "item:" .. numeric, 1, 1, 1, 0, "Miscellaneous", "Junk", 1, "", 0, 15, 0 end
+        if numeric == 6948 then return "Synthetic item", "item:6948", 1, 1, 1, 0, "Weapon", "Daggers", 1, "INVTYPE_WEAPON", 135637, 0, 15, 0 end
+        if numeric then return "Synthetic item", "item:" .. numeric, 1, 1, 1, 0, "Miscellaneous", "Junk", 1, "", 0, 0, 15, 0 end
     end
     local capacities = { [0] = 20, [1] = 6, [2] = 6, [3] = 6, [4] = 0, [5] = 0 }
     local inventory = {
@@ -25,6 +26,8 @@ return function(S, check, equal)
     equal(data.containers[1].slots[1].itemString, "item:6948::::::::8:1485::75:::::::", "full item string retained")
     equal(data.containers[1].slots[1].bound, true, "binding facet retained")
     equal(data.containers[1].slots[1].quality, 1, "cached bag item quality captured")
+    equal(data.containers[1].slots[1].equipLoc, "INVTYPE_WEAPON", "Forever bag equipLoc is the tuple inventory type string")
+    equal(data.containers[1].slots[1].icon, 135637, "Forever bag icon fileID is stored in its own field")
     equal(data.containers[1].slots[1].classID, 15, "cached bag item class captured")
     equal(data.containers[1].slots[1].subClassID, 0, "cached bag item subclass captured")
     equal(data.containers[1].slots[1].itemMetadataState, "OBSERVED", "cached metadata marked observed")

@@ -50,6 +50,12 @@ function C.GetItemInfo(reference)
     return Optional(C.IsRetail() and C_Item and C_Item.GetItemInfo or GetItemInfo, reference)
 end
 
+function C.GetItemInfoInstant(reference)
+    if reference == nil then return nil end
+    local api = type(C_Item) == "table" and C_Item or nil
+    return Optional(api and api.GetItemInfoInstant, reference)
+end
+
 function C.ReadRecipeTooltip(reference)
     if type(GetLocale) ~= "function" or GetLocale() ~= "enUS" then return nil end
     if not C.recipeTooltip and type(CreateFrame) == "function" then
@@ -76,6 +82,31 @@ function C.ReadRecipeTooltip(reference)
     return profession and { profession = profession, skill = skill } or nil, known
 end
 
+function C.ReadEnchantTooltipLine(reference)
+    if not C.recipeTooltip and type(CreateFrame) == "function" then
+        C.recipeTooltip = CreateFrame("GameTooltip", "GearExportRecipeTooltip", UIParent, "GameTooltipTemplate")
+        if C.recipeTooltip.SetOwner then C.recipeTooltip:SetOwner(UIParent, "ANCHOR_NONE") end
+    end
+    local tip = C.recipeTooltip
+    if type(tip) ~= "table" then return nil end
+    if tip.SetOwner then tip:SetOwner(UIParent, "ANCHOR_NONE") end
+    local link = type(reference) == "string" and reference:find("item:", 1, true) and reference or ("item:" .. tostring(reference))
+    if tip.SetHyperlink then tip:SetHyperlink(link) elseif tip.SetItemByID then tip:SetItemByID(tonumber(reference)) else return nil end
+    for i = 2, (tip.NumLines and tip:NumLines() or 0) do
+        local line = _G[tip:GetName() .. "TextLeft" .. i]
+        local text = line and line:GetText()
+        local r, g, b
+        if line and line.GetTextColor then r, g, b = line:GetTextColor() end
+        if type(text) == "string" and text ~= "" and type(r) == "number" and type(g) == "number" and type(b) == "number"
+            and g >= 0.75 and r <= 0.5 and b <= 0.5 then
+            if tip.Hide then tip:Hide() end
+            return text
+        end
+    end
+    if tip.Hide then tip:Hide() end
+    return nil
+end
+
 local function MetadataNumber(value)
     if issecretvalue and issecretvalue(value) then return nil end
     if type(value) ~= "number" or value ~= value or value < 0
@@ -88,9 +119,9 @@ end
 -- fill only class/subclass while item data is still loading.
 function C.GetItemMetadata(itemID, classID, subclassID, bindType, expansionID, isCraftingReagent)
     local instantClass, instantSubclass
-    if C.IsRetail() and itemID and type(GetItemInfoInstant) == "function" then
-        local _, _, _, _, _, classValue, subclassValue = Optional(GetItemInfoInstant, itemID)
-        instantClass, instantSubclass = MetadataNumber(classValue), MetadataNumber(subclassValue)
+    if C.IsRetail() and itemID and type(C_Item) == "table" and type(C_Item.GetItemInfoInstant) == "function" then
+        local ok, _, _, _, _, _, classValue, subclassValue = pcall(C_Item.GetItemInfoInstant, itemID)
+        if ok then instantClass, instantSubclass = MetadataNumber(classValue), MetadataNumber(subclassValue) end
     end
     local metadata = {
         classID = MetadataNumber(classID) or instantClass,

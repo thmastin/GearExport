@@ -1,6 +1,32 @@
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 
+function F.ParseItemString(item, itemString)
+    if type(item) ~= "table" or type(itemString) ~= "string" then return end
+    local fields = {}
+    for field in (itemString .. ":"):gmatch("(.-):") do fields[#fields + 1] = field end
+    if fields[1] ~= "item" then return end
+    if fields[3] ~= nil then
+        local enchantID = fields[3] == "" and 0 or tonumber(fields[3])
+        if enchantID and enchantID >= 0 and enchantID % 1 == 0 then item.enchantID = enchantID end
+    end
+    local gemIDs, hasGemFields = {}, false
+    for index = 4, 7 do
+        if fields[index] ~= nil then
+            hasGemFields = true
+            local gemID = tonumber(fields[index])
+            if gemID and gemID >= 0 and gemID % 1 == 0 then gemIDs[index - 3] = gemID end
+        end
+    end
+    if hasGemFields then item.gemIDs = gemIDs end
+    local enchantID = item.enchantID
+    if enchantID and enchantID > 0 and type(WoWSyncCompat.ReadEnchantTooltipLine) == "function" then
+        local ok, name = pcall(WoWSyncCompat.ReadEnchantTooltipLine, itemString)
+        if ok and type(name) == "string" and name ~= "" then item.enchantName = name end
+    end
+    if enchantID and enchantID > 0 then item.enchantNameState = item.enchantName and "OBSERVED" or "UNKNOWN" end
+end
+
 local function Meta(issues)
     table.sort(issues)
     return { completeness = #issues > 0 and "partial" or "complete",
@@ -92,6 +118,7 @@ S.collectors.equipment = function()
                 local linkID = reference and tonumber(reference:match("^item:(%d+)"))
                 if linkID and linkID > 0 and (not item.itemID or linkID == item.itemID) then
                     item.itemString, item.itemID = reference, linkID
+                    F.ParseItemString(item, reference)
                 else
                     link = nil
                     issues[#issues + 1] = label .. " link identity unavailable or inconsistent"

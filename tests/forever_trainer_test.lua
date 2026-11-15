@@ -4,6 +4,8 @@ return function(S, check, equal, advance)
         "GetNumTrainerServices", "GetTrainerServiceInfo", "GetTrainerServiceCost", "GetTrainerServiceLevelReq",
         "GetTrainerServiceSkillReq", "IsTradeskillTrainer", "UnitClass", "GetServerTime" }
     local old = {}; for _, name in ipairs(names) do old[name] = _G[name] end
+    local oldMoney = GetMoney
+    GetMoney = function() return 12345 end
     local open = true
     ClassTrainerFrame = { IsShown = function() return open end }
     ClassTrainerFrameTitleText = { GetText = function() return "Gretta Finespindle" end }
@@ -38,7 +40,7 @@ return function(S, check, equal, advance)
     equal(captured.snapshot.services[2].rawStatus, "known", "source status retained")
     equal(captured.snapshot.services[2].rank, "Apprentice", "Leatherworking rank captured")
     equal(captured.snapshot.services[2].costCopper, 150, "Leatherworking service cost captured in copper")
-    equal(captured.snapshot.services[2].requiredLevel, 18, "numeric required-level API result takes precedence")
+    equal(captured.snapshot.services[2].requiredLevel, 20, "required level uses levelReq from GetTrainerServiceInfo")
     equal(captured.snapshot.services[2].requiredSkill.name, "Leatherworking", "required skill captured")
     equal(captured.snapshot.services[2].requiredSkill.rank, 100, "required skill rank captured")
     equal(captured.snapshot.services[3].status, "unknown", "unrecognized status row retained as unknown")
@@ -49,6 +51,11 @@ return function(S, check, equal, advance)
     S.CommitTrainer(captured.category, captured.snapshot, meta)
     equal(S.record.sections.trainer.data.snapshots["Gretta Finespindle"].services[2].costCopper,
         150, "latest trainer visit saved under trainer name")
+    local trainerText = S.RenderSection("trainer", S.GetSnapshot())
+    check(trainerText:find("Embossed Leather Gloves\tApprentice\tused\t20\t150\tLeatherworking", 1, true),
+        "plain trainer block matches structured required level, cost, rank, status, and category")
+    check(trainerText:find("MoneyAtVisitCopper: 12345", 1, true), "plain trainer block renders captured money at visit")
+    check(trainerText:find("Filters: available=?; unavailable=?; known=?", 1, true), "unreadable filter state stays explicitly unknown")
     ClassTrainerFrameTitleText.GetText = function() return "Ironforge Druid Trainer" end
     IsTradeskillTrainer = function() return false end
     GetNumTrainerServices = function() return 1 end
@@ -76,4 +83,5 @@ return function(S, check, equal, advance)
     for key in pairs(S.dirty) do S.dirty[key] = nil end
     S.trainerOpen = false
     for _, name in ipairs(names) do _G[name] = old[name] end
+    GetMoney = oldMoney
 end
