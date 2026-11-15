@@ -3,10 +3,16 @@
 -- expansion-name mapping.
 return function(S, C, check, equal)
     local savedInstant = GetItemInfoInstant
+    local savedCItem = C_Item
+    C_Item = { GetItemInfoInstant = function(id)
+        if id == 236949 then return id, "Armor", "Miscellaneous", "INVTYPE_WEAPON", 135637, 7, 11 end
+    end }
     local savedRetail = C.IsRetail
     C.IsRetail = function() return true end
-    GetItemInfoInstant = function(id)
-        if id == 236949 then return id, "Trade Goods", "Parts", "", 1, 7, 11 end
+    GetItemInfoInstant = nil -- Retail must use C_Item.GetItemInfoInstant.
+    C_Item.GetItemInfoInstant = function(reference)
+        local id = type(reference) == "number" and reference or tonumber(type(reference) == "string" and reference:match("item:(%d+)"))
+        if id == 236949 then return id, "Armor", "Miscellaneous", "INVTYPE_WEAPON", 135637, 7, 11 end
     end
     local instant = C.GetItemMetadata(236949, nil, nil, 0, 11, true)
     equal(instant.classID, 7, "instant class ID fills an uncached full record")
@@ -14,10 +20,45 @@ return function(S, C, check, equal)
     equal(instant.bindType, 0, "raw bind type preserves zero")
     equal(instant.expansionID, 11, "raw expansion ID preserves live value")
     equal(instant.isCraftingReagent, true, "explicit reagent true preserved")
+    local savedGetInfo = C.GetItemInfo
+    C.GetItemInfo = function(id)
+        local numeric = type(id) == "number" and id or tonumber(type(id) == "string" and id:match("item:(%d+)"))
+        if numeric == 236949 then return "Test blade", "item:236949", 2, 12, 10, "Armor", "Miscellaneous", 1, "", 135637, 123, 2, 0 end
+    end
+    local instantOrderItem = S.Item("item:236949", 236949)
+    equal(instantOrderItem.equipLoc, "INVTYPE_WEAPON", "instant equipLoc comes from return 4, never icon return 5")
+    equal(instantOrderItem.icon, 135637, "instant icon fileID is stored separately")
+    equal(instantOrderItem.vendorCopper, 123, "GetItemInfo vendor value comes from return 12")
+    C.GetItemInfo = savedGetInfo
+    local savedGetInfoGlobal, savedIsRetail, savedItemInfoAPI = GetItemInfo, C.IsRetail, C_Item.GetItemInfo
+    C.IsRetail = function() return false end
+    local lightLeatherTuple = { "Light Leather", "item:2318", 1, 10, 0, "Trade Goods", "Leather", 20,
+        "INVTYPE_NON_EQUIP_IGNORE", 134252, 15, 7, 6, 0, 0, nil, true, "" }
+    C_Item.GetItemInfo = function() return table.unpack(lightLeatherTuple) end
+    GetItemInfo = function() error("global GetItemInfo must not be called on Forever") end
+    local lightLeather = S.Item("item:2318", 2318)
+    equal(lightLeather.equipLoc, "INVTYPE_NON_EQUIP_IGNORE", "Forever Light Leather equipLoc uses the real tuple position")
+    equal(lightLeather.icon, 134252, "Forever Light Leather icon is kept separate from equipLoc")
+    equal(lightLeather.vendorCopper, 15, "Forever Light Leather vendorCopper uses the real tuple position")
+    equal(lightLeather.classID, 7, "Forever Light Leather classID uses the real tuple position")
+    equal(lightLeather.subClassID, 6, "Forever Light Leather subClassID uses the real tuple position")
+    equal(lightLeather.itemMetadataState, "OBSERVED", "known non-equippable inventory type is not UNKNOWN")
+    C_Item.GetItemInfo = savedItemInfoAPI
+    GetItemInfo, C.IsRetail = savedGetInfoGlobal, savedIsRetail
+    local oldTooltip, oldFrame, oldParent = C.recipeTooltip, CreateFrame, UIParent
+    C.recipeTooltip, UIParent = nil, {}
+    CreateFrame = function(_, name)
+        return { GetName = function() return name end, SetOwner = function() end, SetHyperlink = function() end,
+            NumLines = function() return 3 end, Hide = function() end }
+    end
+    GearExportRecipeTooltipTextLeft2 = { GetText = function() return "Light Armor Kit" end, GetTextColor = function() return 0, 1, 0 end }
+    GearExportRecipeTooltipTextLeft3 = { GetText = function() return "Not an enchant" end, GetTextColor = function() return 1, 1, 1 end }
+    equal(C.ReadEnchantTooltipLine("item:6267:15"), "Light Armor Kit", "only a green tooltip line supplies the enchant name")
+    C.recipeTooltip, CreateFrame, UIParent = oldTooltip, oldFrame, oldParent
     GetItemInfoInstant = nil
     local unavailable = C.GetItemMetadata(999999, nil, nil, nil, nil, nil)
     equal(unavailable.classID, nil, "unavailable instant metadata remains unknown")
-    GetItemInfoInstant, C.IsRetail = savedInstant, savedRetail
+    GetItemInfoInstant, C_Item, C.IsRetail = savedInstant, savedCItem, savedRetail
 
     local function Item(id, variant)
         return { itemID = id, itemString = "item:" .. id .. ":" .. (variant or "0"), count = 1 }

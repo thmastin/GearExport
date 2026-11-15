@@ -75,6 +75,7 @@ C_Item = {
         return "Crafted Sample", link, 4, 200, 80, "Armor", "Plate", 1, baseEquipLocation, 1, 4321,
             7, 11, 0, 11, nil, true
     end,
+    GetItemInfoInstant = function(ref) return 240001, "Armor", "Plate", "INVTYPE_HEAD", 1, 7, 11 end,
     GetItemID = function(loc) requireValidLocation(loc); return 240001 end,
     DoesItemExist = function(loc) requireValidLocation(loc); return true end,
     GetItemLink = function(loc) requireValidLocation(loc); return link end,
@@ -104,7 +105,7 @@ C_TooltipInfo = {
     end,
 }
 C_PlayerInfo = { CanUseItem = function(id) equal(id, 240001, "current character query uses base ID"); return true end }
-function GetItemInfoInstant(ref) return 240001, "Armor", "Plate", "INVTYPE_HEAD", 1, 7, 11 end
+GetItemInfoInstant = nil -- Retail instant info is exposed through C_Item only.
 C_Bank = {
     CanViewBank = function(kind)
         if kind == Enum.BankType.Character then return bankView end

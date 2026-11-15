@@ -240,13 +240,13 @@ S.collectors.bags = function()
                 local count = F.Number("Carried item stack count", Field(info, "stackCount"), issues)
                 if not ref and (not count or count == 0) then return Failed("carried item quantity unknown", true) end
                 local item = { itemID = ref and (id or linkID) or id, count = count }
-                local infoFn = type(C_Item) == "table" and C_Item.GetItemInfo or GetItemInfo
+                local infoFn = WoWSyncCompat and WoWSyncCompat.GetItemInfo
                 if type(infoFn) == "function" then
-                    local infoOK, name, itemLink, quality, itemLevel, requiredLevel, minLevel, itemType, subType,
-                        maxStack, equipLoc, texture, classID, subClassID = pcall(infoFn, ref or id)
+                    local infoOK, name, itemLink, quality, itemLevel, requiredLevel, itemType, subType,
+                        maxStack, equipLoc, icon, vendorCopper, classID, subClassID = pcall(infoFn, ref or id)
                     if infoOK then
                         if not name then quality, classID, subClassID, equipLoc, requiredLevel = nil, nil, nil, nil, nil end
-                        item.quality, item.classID, item.subClassID, item.equipLoc, item.requiredLevel = quality, classID, subClassID, equipLoc, requiredLevel
+                        item.quality, item.classID, item.subClassID, item.equipLoc, item.icon, item.maxStack, item.vendorCopper, item.requiredLevel = quality, classID, subClassID, equipLoc, icon, maxStack, vendorCopper, requiredLevel
                         item.itemMetadataState = name and quality ~= nil and classID ~= nil and subClassID ~= nil and equipLoc ~= nil and requiredLevel ~= nil and "OBSERVED" or "UNKNOWN"
                         if item.itemMetadataState == "UNKNOWN" then issues[#issues + 1] = "Carried item metadata unknown" end
                         if classID == 9 and type(WoWSyncCompat.ReadRecipeTooltip) == "function" and type(GetLocale) == "function" and GetLocale() == "enUS" then
@@ -258,6 +258,7 @@ S.collectors.bags = function()
                 if ref then
                     item.itemString, item.itemStringSource = ref, linkSource
                     item.itemIdentityState = "OBSERVED_EXACT_ITEM_STRING"
+                    if F.ParseItemString then F.ParseItemString(item, ref) end
                 else
                     item.itemIdentityState = "UNKNOWN"
                     item.itemIdentityReason = linkID

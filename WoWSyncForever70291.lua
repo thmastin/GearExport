@@ -221,7 +221,7 @@ S.collectors = {
                         icon = type(icon) == "number" and icon or nil,
                         category = publicName(category),
                         costCopper = type(cost) == "number" and cost >= 0 and cost or nil,
-                        requiredLevel = type(level) == "number" and level or type(levelReq) == "number" and levelReq or nil,
+                        requiredLevel = type(levelReq) == "number" and levelReq or type(level) == "number" and level or nil,
                         requiredSkill = skill and { name = skill, rank = type(skillRank) == "number" and skillRank or nil } or nil }
                 end
             end
@@ -232,11 +232,100 @@ S.collectors = {
         if emptyReportedList then reason = "Trainer reported services but no service rows could be parsed"
         elseif droppedRowCount > 0 then reason = tostring(droppedRowCount) .. " trainer service row(s) could not be parsed" end
         local at = type(GetServerTime) == "function" and GetServerTime() or S.Now()
+        local moneyAtVisitIssues = {}
+        local moneyAtVisit = F.Number("Trainer money at visit", GetMoney, moneyAtVisitIssues)
         return { category = trainerName, snapshot = { capturedAt = at, name = trainerName, type = trainerType,
-            professionName = professionName, className = className, services = services, droppedRowCount = droppedRowCount } },
+            professionName = professionName, className = className, moneyAtVisit = moneyAtVisit,
+            filters = { available = nil, unavailable = nil, used = nil }, services = services, droppedRowCount = droppedRowCount } },
             { completeness = incomplete and "partial" or "complete", reason = reason, source = "Forever trainer service API" }
     end,
 }
+
+S.collectors.equipmentSets = function()
+    local function markUnknown()
+        local sections = S.record and S.record.sections or {}
+        local function mark(item) if type(item) == "table" then item.equipmentSetsState = "UNKNOWN" end end
+        local equipment = sections.equipment and sections.equipment.data
+        for _, item in pairs(equipment and equipment.slots or {}) do mark(item) end
+        for _, key in ipairs({ "bags", "bank" }) do
+            local data = sections[key] and sections[key].data
+            for _, container in ipairs(data and data.containers or {}) do
+                for _, item in pairs(container.slots or {}) do mark(item) end
+            end
+        end
+    end
+    local api = type(C_EquipmentSet) == "table" and C_EquipmentSet or nil
+    if not api or type(api.GetEquipmentSetIDs) ~= "function"
+        or type(api.GetEquipmentSetInfo) ~= "function" or type(api.GetItemLocations) ~= "function" then
+        markUnknown()
+        return { state = "UNKNOWN", reason = "Equipment Manager APIs unavailable" }, { completeness = "partial" }
+    end
+    local okIDs, ids = pcall(api.GetEquipmentSetIDs)
+    if not okIDs or type(ids) ~= "table" then
+        markUnknown()
+        return { state = "UNKNOWN", reason = "Equipment set IDs unavailable" }, { completeness = "partial" }
+    end
+    local itemAPI = type(C_Item) == "table" and C_Item or {}
+    if type(itemAPI.GetItemID) ~= "function" or type(itemAPI.GetItemLink) ~= "function" then
+        markUnknown()
+        return { state = "UNKNOWN", reason = "Item location identity/link APIs unavailable" }, { completeness = "partial" }
+    end
+    local sets, namesByItemString = {}, {}
+    for _, setID in ipairs(ids) do
+        local okInfo, name, icon, returnedID, equipped = pcall(api.GetEquipmentSetInfo, setID)
+        local okLocations, locations = pcall(api.GetItemLocations, setID)
+        if not okInfo or type(name) ~= "string" or not okLocations or type(locations) ~= "table" then
+            markUnknown()
+            return { state = "UNKNOWN", reason = "Equipment set details unavailable" }, { completeness = "partial" }
+        end
+        local rows = {}
+        for _, location in ipairs(locations) do
+            local okItem, itemID = pcall(itemAPI.GetItemID, location)
+            if okItem and type(itemID) == "number" and itemID > 0 then
+                local okLink, link = pcall(itemAPI.GetItemLink, location)
+                local itemString = okLink and type(link) == "string" and link:match("(item:[^|]+)") or nil
+                local linkID = itemString and tonumber(itemString:match("^item:(%d+)"))
+                if linkID == itemID then
+                    rows[#rows + 1] = { itemID = itemID, itemString = itemString }
+                    namesByItemString[itemString] = namesByItemString[itemString] or {}
+                    namesByItemString[itemString][name] = true
+                else
+                    rows[#rows + 1] = { itemID = itemID }
+                end
+            end
+        end
+        table.sort(rows, function(a, b) return a.itemID < b.itemID end)
+        local isEquipped
+        if type(equipped) == "boolean" then isEquipped = equipped end
+        sets[#sets + 1] = { setID = setID, name = name, icon = icon,
+            isEquipped = isEquipped, itemLocations = rows }
+    end
+    local function attach(item)
+        if type(item) ~= "table" then return end
+        local names = item.itemString and namesByItemString[item.itemString]
+        if not item.itemString then item.equipmentSetsState = "UNKNOWN"; return end
+        item.equipmentSets = {}
+        if names then for name in pairs(names) do item.equipmentSets[#item.equipmentSets + 1] = name end end
+        table.sort(item.equipmentSets)
+        item.equipmentSetsState = "OBSERVED"
+    end
+    local function annotate()
+        local record = S.record
+        local sections = record and record.sections
+        if not sections then return end
+        local equipment = sections.equipment and sections.equipment.data
+        for _, item in pairs(equipment and equipment.slots or {}) do attach(item) end
+        for _, key in ipairs({ "bags", "bank" }) do
+            local data = sections[key] and sections[key].data
+            for _, container in ipairs(data and data.containers or {}) do
+                for _, item in pairs(container.slots or {}) do attach(item) end
+            end
+        end
+    end
+    table.sort(sets, function(a, b) return a.setID < b.setID end)
+    annotate()
+    return { state = "OBSERVED", sets = sets }, { completeness = "complete" }
+end
 
 -- Raw diagnostic evidence is opt-in and excluded from ordinary exports.
 -- Keep WOWSYNC v1 text parse-compatible with the currently deployed Dashboard.

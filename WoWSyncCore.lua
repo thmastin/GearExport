@@ -13,14 +13,16 @@ if WoWSyncCompat and WoWSyncCompat.IsRetail and WoWSyncCompat.IsRetail() then
     S.order[#S.order + 1] = "reputation"
 elseif WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever() then
     table.insert(S.order, 9, "petSpells")
+    S.order[#S.order + 1] = "equipmentSets"
     S.order[#S.order + 1] = "quests"
     S.order[#S.order + 1] = "professionRecipes"
 end
 -- Captured into SavedVariables only: the WOWSYNC v1 text omits these sections so
 -- existing importers, which reject unknown section headers, keep working.
-S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true, talents = true, petSpells = true }
+S.structuredOnly = { currencies = true, combatSpecialization = true, professionSpecializations = true, professionRecipes = true, reputation = true, accountReputation = true, quests = true, talents = true, petSpells = true, equipmentSets = true }
 addon.Sync = S
 S.captureOrder = { "character", "location", "equipment", "bags", "bank", "professions", "spells", "trainer", "gearCandidates" }
+if WoWSyncCompat and WoWSyncCompat.IsForever and WoWSyncCompat.IsForever() then S.captureOrder[#S.captureOrder + 1] = "equipmentSets" end
 if addon.Forever then table.insert(S.captureOrder, 8, "petSpells") end
 for _, key in ipairs({ "accountBank", "guildBank", "currencies", "combatSpecialization",
     "professionSpecializations", "reputation", "quests", "professionRecipes", "talents" }) do
@@ -426,6 +428,9 @@ function S.Mark(key, delay)
     local pending = S.dirty[key]
     if not pending then pending = { first = now, tries = 0 }; S.dirty[key] = pending end
     pending.due = math.min(now + (delay or 0.35), pending.first + 1.5)
+    if addon.Forever and key ~= "equipmentSets" and (key == "equipment" or key == "bags" or key == "bank") then
+        S.Mark("equipmentSets", delay)
+    end
     if not S.structuredOnly[key] then S.autoExportPending = true end
     S.Wake()
 end
@@ -658,7 +663,7 @@ local events = addon.SyncEvents or {
     "PLAYERBANKBAGSLOTS_CHANGED", "BANKFRAME_OPENED", "BANKFRAME_CLOSED",
     "TRAINER_SHOW", "TRAINER_UPDATE", "TRAINER_DESCRIPTION_UPDATE",
     "TRAINER_SERVICE_INFO_NAME_UPDATE", "TRAINER_CLOSED",
-    "PLAYER_EQUIPMENT_CHANGED", "UNIT_INVENTORY_CHANGED", "SKILL_LINES_CHANGED",
+    "PLAYER_EQUIPMENT_CHANGED", "UNIT_INVENTORY_CHANGED", "EQUIPMENT_SETS_CHANGED", "SKILL_LINES_CHANGED",
     "SPELLS_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE", "PLAYER_MONEY", "PLAYER_LEVEL_UP",
     "PLAYER_XP_UPDATE", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
     "GET_ITEM_INFO_RECEIVED", "TIME_PLAYED_MSG", "CHARACTER_POINTS_CHANGED",
@@ -747,6 +752,8 @@ frame:SetScript("OnEvent", function(_, event, arg, arg2)
         MarkGearCandidates()
     elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "UNIT_INVENTORY_CHANGED" and arg == "player" then
         S.Mark("equipment"); S.Mark("bags"); MarkGearCandidates()
+    elseif event == "EQUIPMENT_SETS_CHANGED" then
+        S.Mark("equipmentSets")
     elseif event == "SKILL_LINES_CHANGED" or event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE"
         or event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELL_TEXT_UPDATE"
         or event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then

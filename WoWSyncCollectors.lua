@@ -10,8 +10,15 @@ end
 function S.Item(link, itemID)
     itemID = itemID or (link and tonumber(link:match("item:(%d+)")))
     local item = { itemID = itemID, itemString = link and link:match("(item:[^|]+)") }
-    local name, _, quality, level, requiredLevel, _, _, _, _, _, vendor,
-        classID, subclassID, bindType, expansionID, _, isCraftingReagent = Compat.GetItemInfo(link or itemID)
+    local name, _, quality, level, requiredLevel, _, _, maxStack, equipLoc, icon,
+        vendor, classID, subclassID, bindType, expansionID, setID, isCraftingReagent = Compat.GetItemInfo(link or itemID)
+    local instantEquipLoc, instantIcon
+    if Compat.GetItemInfoInstant then
+        local _, _, _, equipLocValue, iconValue = Compat.GetItemInfoInstant(link or itemID)
+        instantEquipLoc, instantIcon = equipLocValue, iconValue
+    end
+    if equipLoc == nil or equipLoc == "" then equipLoc = instantEquipLoc end
+    if icon == nil then icon = instantIcon end
     if Compat.GetItemLevel and link then level = Compat.GetItemLevel(link, level) end
     if not name then Compat.RequestItemData(itemID) end
     if Compat.GetItemMetadata then
@@ -19,9 +26,9 @@ function S.Item(link, itemID)
             bindType, expansionID, isCraftingReagent))
     end
     item.name, item.quality, item.itemLevel, item.requiredLevel = name, quality, level, requiredLevel
-    item.classID, item.subClassID, item.equipLoc = classID, subclassID, select(9, Compat.GetItemInfo(link or itemID))
+    item.classID, item.subClassID, item.equipLoc, item.icon, item.maxStack, item.equipmentSetID = classID, subclassID, equipLoc, icon, maxStack, setID
     if not name then
-        item.quality, item.classID, item.subClassID, item.equipLoc, item.requiredLevel = nil, nil, nil, nil, nil
+        item.quality, item.classID, item.subClassID, item.equipLoc, item.icon, item.requiredLevel = nil, nil, nil, nil, nil, nil
     end
     if not name or quality == nil or classID == nil or subclassID == nil or item.equipLoc == nil or requiredLevel == nil then
         item.itemMetadataState = "UNKNOWN"
