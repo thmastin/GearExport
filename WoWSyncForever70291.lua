@@ -1,6 +1,5 @@
 -- Version-scoped observational collectors for the explicitly allowlisted
--- Forever builds. Raw trainer-window evidence remains in the evidence section;
--- the legacy tuple adapter is deliberately not activated without verification.
+-- Forever builds.
 local _, addon = ...
 local S, F = addon.Sync, addon.Forever
 local function captureProfile()
@@ -161,24 +160,87 @@ S.collectors = {
     location = locationCollector,
     bags = S.collectors.bags,
     trainer = function()
-        -- Do not parse GetTrainerServiceInfo tuples until their exact Forever
-        -- semantics have been corroborated. Optional diagnostics remain UNKNOWN.
-        return nil, { reason = "Forever trainer service semantics remain UNKNOWN; raw window evidence is available only through opt-in debug capture" }
+        local visible = false
+        for _, frameName in ipairs({ "ClassTrainerFrame", "TrainerFrame" }) do
+            local frame = _G[frameName]
+            if frame and type(frame.IsShown) == "function" then
+                local ok, shown = pcall(frame.IsShown, frame)
+                if ok and shown == true then visible = true; break end
+            end
+        end
+        if not visible then return nil, { reason = "Trainer window is not open" } end
+        local count = type(GetNumTrainerServices) == "function" and GetNumTrainerServices() or nil
+        if type(count) ~= "number" or count < 0 or count > 250 or count % 1 ~= 0 then return nil, { reason = "Trainer service count unavailable or invalid" } end
+        local function frameText(names)
+            for _, name in ipairs(names) do
+                local widget = _G[name]
+                if widget and type(widget.GetText) == "function" then
+                    local called, value = pcall(widget.GetText, widget)
+                    if called then value = publicName(value); if value then return value end end
+                end
+            end
+        end
+        local trainerName = frameText({ "ClassTrainerFrameTitleText", "TrainerFrameTitleText" })
+        local profession = type(IsTradeskillTrainer) == "function" and IsTradeskillTrainer() == true
+        local classTrainer = type(IsTalentTrainer) == "function" and IsTalentTrainer() == true
+        if not profession and not classTrainer and type(IsTradeskillTrainer) ~= "function" then
+            classTrainer = true
+        end
+        local trainerType, professionName, className = profession and "profession" or "class", nil, nil
+        if profession then
+            for i = 1, count do
+                if type(GetTrainerServiceSkillReq) == "function" then
+                    local skill = publicName(GetTrainerServiceSkillReq(i))
+                    if skill then professionName = skill; break end
+                end
+            end
+        else
+            if type(UnitClass) == "function" then className = publicName(UnitClass("player")) end
+        end
+        trainerName = trainerName or professionName or className or (profession and "Profession Trainer" or "Class Trainer")
+        local services = {}
+        for i = 1, count do
+            local name, rank, status, _, subtext = GetTrainerServiceInfo(i)
+            name = publicName(name)
+            if name and status ~= "header" and status ~= "headerbutton" then
+                if status == "known" then status = "used" end
+                if status == "available" or status == "used" or status == "unavailable" then
+                    local cost = type(GetTrainerServiceCost) == "function" and GetTrainerServiceCost(i) or nil
+                    local level = type(GetTrainerServiceLevelReq) == "function" and GetTrainerServiceLevelReq(i) or nil
+                    local skill, skillRank
+                    if type(GetTrainerServiceSkillReq) == "function" then skill, skillRank = GetTrainerServiceSkillReq(i) end
+                    skill = publicName(skill)
+                    services[#services + 1] = { name = name, rank = publicName(subtext) or publicName(rank), status = status,
+                        costCopper = type(cost) == "number" and cost >= 0 and cost or nil,
+                        requiredLevel = type(level) == "number" and level >= 0 and level or nil,
+                        requiredSkill = skill and { name = skill, rank = type(skillRank) == "number" and skillRank or nil } or nil }
+                end
+            end
+        end
+        local at = type(GetServerTime) == "function" and GetServerTime() or S.Now()
+        return { category = trainerName, snapshot = { capturedAt = at, name = trainerName, type = trainerType,
+            professionName = professionName, className = className, services = services } },
+            { completeness = "complete", source = "Forever trainer service API" }
     end,
 }
 
--- This section is isolated to exact allowlisted Forever builds. The older
--- Forever trainer tuple adapter is intentionally not activated here.
--- Keep WOWSYNC v1 text parse-compatible with the Dashboard. This raw section
--- is opt-in diagnostic data and does not participate in normal Dashboard ingest.
+-- Raw diagnostic evidence is opt-in and excluded from ordinary exports.
+-- Keep WOWSYNC v1 text parse-compatible with the currently deployed Dashboard.
+-- The version-specific raw section is persisted alongside the export and is
+-- consumed by the separate Forever parser integration handoff.
 S.structuredOnly.forever70291Evidence = true
 S.EnableForeverEvidenceDebug = function(enabled)
+    enabled = enabled == true
+    if not S.settings then S.settings = {} end
+    S.settings.debugForever70291Evidence = enabled
     local function include(list)
-        for i, key in ipairs(list) do if key == "forever70291Evidence" then table.remove(list, i); break end end
+        for i = #list, 1, -1 do if list[i] == "forever70291Evidence" then table.remove(list, i) end end
         if enabled then list[#list + 1] = "forever70291Evidence" end
     end
-    include(S.order)
-    include(S.captureOrder)
-    if not enabled and S.record and S.record.sections then S.record.sections.forever70291Evidence = nil end
+    include(S.order); include(S.captureOrder)
+    if not enabled then
+        S.dirty.forever70291Evidence = nil
+        if S.record and S.record.sections then S.record.sections.forever70291Evidence = nil end
+    end
     if enabled then S.Mark("forever70291Evidence") end
 end

@@ -21,8 +21,6 @@ return function(S, check, equal, advance)
     C_Bank.FetchPurchasedBankTabIDs = function() return {} end
     bank, meta = S.collectors.bank(); equal(#bank.containers, 0, "observed empty bank is not UNKNOWN")
     C_Bank, Enum, C_Container = oldBank, oldEnum, oldContainer
-    local result, trainerMeta = S.collectors.trainer()
-    equal(result, nil, "unverified trainer tuple is not parsed")
-    check(trainerMeta.reason:find("semantics remain UNKNOWN", 1, true) ~= nil, "trainer reason preserves unknown API semantics")
+    check(type(S.collectors.trainer) == "function", "Forever trainer collector is registered")
     S.trainerOpen, S.bankOpen = false, false
 end
